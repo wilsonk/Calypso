@@ -146,6 +146,9 @@ public:
     const char *mangleOverride;      // overridden symbol with pragma(mangle, "...")
     Semantic sem;
 
+    // CALYPSO
+    virtual LangPlugin *langPlugin() { return NULL; }
+
     Declaration(Identifier *id);
     void semantic(Scope *sc);
     const char *kind();
@@ -966,6 +969,9 @@ public:
 
     // true if has inline assembler
     bool inlineAsm;
+
+    // CALYPSO
+    virtual void toResolveFunction();
 #endif
 
     void accept(Visitor *v) { v->visit(this); }

@@ -221,6 +221,10 @@ Dsymbols *Parser::parseDeclDefs(int once, Dsymbol **pLastDecl)
                 s = parseImport(decldefs, 0);
                 break;
 
+            case TOKmodmap:
+                s = parseModmap(decldefs);
+                break;
+
             case TOKtemplate:
                 s = (Dsymbol *)parseTemplateDeclaration();
                 break;
@@ -2381,12 +2385,45 @@ Objects *Parser::parseTemplateArgument()
 Import *Parser::parseImport(Dsymbols *decldefs, int isstatic)
 {
     Identifier *aliasid = NULL;
+    unsigned plugin;  // index of the relevant langPlugin if not D
+    int treeId = -1;  // id returned by the plugin
 
     //printf("Parser::parseImport()\n");
+
     do
     {
      L1:
         nextToken();
+
+        // parse the import tree if specified
+        if (token.value == TOKlparen)
+        {
+            parenthesedSpecialToken(&token);    // WARNING: is bypassing scan() ok?
+
+            if (!token.len)
+                error("import tree expected");
+            else if (strcmp(token.toChars(), "D") == 0)
+                ;
+            else
+            {
+                int t;
+                for (plugin = 0; plugin < global.langPlugins.dim; plugin++)
+                {
+                    t = global.langPlugins[plugin]->doesHandleImport(token.ustring);
+                    if (t != -1)
+                    {
+                        treeId = t;
+                        break;
+                    }
+                }
+
+                if (plugin == global.langPlugins.dim)
+                    error("no language plugin was found to support import tree %s", token.toChars());
+            }
+
+            nextToken();
+        }
+
         if (token.value != TOKidentifier)
         {   error("Identifier expected following import");
             break;
@@ -2415,7 +2452,11 @@ Import *Parser::parseImport(Dsymbols *decldefs, int isstatic)
             nextToken();
         }
 
-        Import *s = new Import(loc, a, id, aliasid, isstatic);
+        Import *s;
+        if (treeId == -1)
+            s = new Import(loc, a, id, aliasid, isstatic);
+        else
+            s = global.langPlugins[plugin]->createImport(treeId, loc, a, id, aliasid, isstatic);
         decldefs->push(s);
 
         /* Look for
@@ -2463,6 +2504,68 @@ Import *Parser::parseImport(Dsymbols *decldefs, int isstatic)
         error("';' expected");
         nextToken();
     }
+
+    return NULL;
+}
+
+Modmap *Parser::parseModmap(Dsymbols *decldefs)
+{
+    Loc loc;
+    StringExp *arg;
+    unsigned plugin;  // index of the relevant langPlugin
+    int langId = -1;  // id returned by the plugin when several languages are supported (e.g Calypso has one for C, one for C++, ..)
+
+    //printf("Parser::parseModmap()\n");
+
+    nextToken();
+
+    // parse the language token and look for a language plugin supporting it
+    if (token.value != TOKlparen)
+        error("modmap language expected");
+    else
+    {
+        parenthesedSpecialToken(&token);
+
+        if (!token.len)
+            error("modmap language expected");
+        else
+        {
+            int l;
+            for (plugin = 0; plugin < global.langPlugins.dim; plugin++)
+            {
+                l = global.langPlugins[plugin]->doesHandleModmap(token.ustring);
+                if (l != -1)
+                {
+                    langId = l;
+                    break;
+                }
+            }
+
+            if (plugin == global.langPlugins.dim)
+                error("no language plugin was found to support language %s", token.toChars());
+        }
+        nextToken();
+    }
+
+    // parse the argument (typically a string, might force that later)
+    do
+    {
+     L1:
+        loc = token.loc;
+        arg = static_cast<StringExp*>(parsePrimaryExp()); // TODO: split into parseStringExp() to avoid the cast?
+
+        Modmap *s = global.langPlugins[plugin]->createModmap(langId, loc, arg);
+        decldefs->push(s);
+
+        if (token.value != TOKcomma)
+            break;
+        nextToken();
+    } while (1);
+
+    if (token.value != TOKsemicolon)
+        error("';' expected");
+
+    nextToken();
 
     return NULL;
 }

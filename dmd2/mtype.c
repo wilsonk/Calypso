@@ -10114,3 +10114,16 @@ int Parameter::foreach(Parameters *args, Parameter::ForeachDg dg, void *ctx, siz
         *pn = n; // update index
     return result;
 }
+
+//CALYPSO
+
+LangPlugin* Type::langPlugin()
+{
+    return NULL;
+}
+
+LangPlugin* TypeStruct::langPlugin()
+{
+    return sym->langPlugin();
+}
+

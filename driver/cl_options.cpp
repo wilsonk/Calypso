@@ -390,6 +390,12 @@ cl::opt<unsigned, true> nestedTemplateDepth("template-depth",
     cl::location(global.params.nestedTmpl),
     cl::init(500));
 
+// CALYPSO
+
+cl::list<std::string> cppArgs("cpp-args",
+    cl::desc("Clang args (PCH)"),
+    cl::Positional,
+    cl::PositionalEatsArgs);
 
 static cl::extrahelp footer("\n"
 "-d-debug can also be specified without options, in which case it enables all\n"

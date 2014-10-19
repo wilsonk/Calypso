@@ -128,9 +128,6 @@ public:
 
     Module(const char *arg, Identifier *ident, int doDocComment, int doHdrGen);
     static Module* create(const char *arg, Identifier *ident, int doDocComment, int doHdrGen);
-    ~Module();
-
-    static Module *load(Loc loc, Identifiers *packages, Identifier *ident);
 
     void toCBuffer(OutBuffer *buf, HdrGenState *hgs);
     const char *kind();
@@ -217,6 +214,14 @@ public:
     Module *isModule() { return this; }
     void accept(Visitor *v) { v->visit(this); }
 };
+
+namespace d
+{
+namespace Module
+{
+    ::Module *load(Loc loc, Identifiers *packages, Identifier *ident);
+};
+}
 
 
 struct ModuleDeclaration

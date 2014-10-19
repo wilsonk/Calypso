@@ -252,6 +252,9 @@ public:
     static char needThisPrefix();
     static void init();
 
+    // CALYPSO
+    virtual LangPlugin *langPlugin();
+
     #define SIZE_INVALID (~(d_uns64)0)
     d_uns64 size();
     virtual d_uns64 size(Loc loc);
@@ -884,6 +887,9 @@ class TypeStruct : public Type
 public:
     StructDeclaration *sym;
     AliasThisRec att;
+
+    // CALYPSO
+    LangPlugin *langPlugin();
 
     TypeStruct(StructDeclaration *sym);
     const char *kind();

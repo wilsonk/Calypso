@@ -63,6 +63,9 @@ public:
     Dsymbol *deferred;          // any deferred semantic2() or semantic3() symbol
     bool isdeprecated;          // !=0 if deprecated
 
+    // CALYPSO
+    virtual LangPlugin *langPlugin() { return NULL; }
+
     Dsymbol *enclosing;         /* !=NULL if is nested
                                  * pointing to the dsymbol that directly enclosing it.
                                  * 1. The function that enclosing it (nested struct and class)

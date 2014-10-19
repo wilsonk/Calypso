@@ -16,6 +16,8 @@
 #include "rmem.h"
 #include "root.h"
 #include "scope.h"
+#include "cpp/calypso.h"
+#include "cpp/cppmodule.h"
 #include "dmd2/target.h"
 #include "driver/cl_options.h"
 #include "driver/configfile.h"
@@ -921,9 +923,49 @@ static void emitEntryPointInto(llvm::Module* lm)
         error(Loc(), "%s", linkError.c_str());
 }
 
+static void genModules(Modules &modules,
+                       std::vector<llvm::Module*> &llvmModules)
+{
+    llvm::LLVMContext& context = llvm::getGlobalContext();
+
+    for (unsigned i = 0; i < modules.dim; i++)
+    {
+        Module *m = modules[i];
+        if (global.params.verbose)
+            fprintf(global.stdmsg, "code      %s\n", m->toChars());
+        if (global.params.obj)
+        {
+            llvm::Module* lm = m->genLLVMModule(context);
+
+            if (global.errors)
+                fatal();
+
+            if (entrypoint && rootHasMain == m)
+                emitEntryPointInto(lm);
+
+            if (!singleObj)
+            {
+                assert(m->objfile); // CALYPSO
+                m->deleteObjFile();
+                writeModule(lm, m->objfile->name->str);
+                global.params.objfiles->push(const_cast<char*>(m->objfile->name->str));
+                delete lm;
+            }
+            else
+            {
+                llvmModules.push_back(lm);
+            }
+        }
+        if (global.params.doDocComments)
+            m->gendocfile();
+    }
+}
 
 int main(int argc, char **argv)
 {
+    global.langPlugins.push_back(&cpp::calypso);
+    cpp::calypso.init();
+
     // stack trace on signals
     llvm::sys::PrintStackTraceOnErrorSignal();
 
@@ -1241,6 +1283,15 @@ int main(int argc, char **argv)
             fprintf(global.stdmsg, "semantic  %s\n", modules[i]->toChars());
         modules[i]->semantic();
     }
+    // CALYPSO HACK? Calypso modules shouldn't be special
+    // How about compiling modules in applications but only importing them in static libraries?
+    for (unsigned i = 0; i < cpp::Module::amodules.dim; i++)
+    {
+        Module *m = cpp::Module::amodules[i];
+        m->buildTargetFiles(singleObj);
+        m->deleteObjFile();
+        m->semantic();
+    }
     if (global.errors)
         fatal();
 
@@ -1254,6 +1305,8 @@ int main(int argc, char **argv)
             fprintf(global.stdmsg, "semantic2 %s\n", modules[i]->toChars());
         modules[i]->semantic2();
     }
+    for (unsigned i = 0; i < cpp::Module::amodules.dim; i++)
+        cpp::Module::amodules[i]->semantic2();
     if (global.errors)
         fatal();
 
@@ -1264,6 +1317,8 @@ int main(int argc, char **argv)
             fprintf(global.stdmsg, "semantic3 %s\n", modules[i]->toChars());
         modules[i]->semantic3();
     }
+    for (unsigned i = 0; i < cpp::Module::amodules.dim; i++)
+        cpp::Module::amodules[i]->semantic3();
     if (global.errors)
         fatal();
 
@@ -1326,36 +1381,9 @@ int main(int argc, char **argv)
     llvm::LLVMContext& context = llvm::getGlobalContext();
 
     // Generate output files
-    for (unsigned i = 0; i < modules.dim; i++)
-    {
-        Module *m = modules[i];
-        if (global.params.verbose)
-            fprintf(global.stdmsg, "code      %s\n", m->toChars());
-        if (global.params.obj)
-        {
-            llvm::Module* lm = m->genLLVMModule(context);
-
-            if (global.errors)
-                fatal();
-
-            if (entrypoint && rootHasMain == m)
-                emitEntryPointInto(lm);
-
-            if (!singleObj)
-            {
-                m->deleteObjFile();
-                writeModule(lm, m->objfile->name->str);
-                global.params.objfiles->push(const_cast<char*>(m->objfile->name->str));
-                delete lm;
-            }
-            else
-            {
-                llvmModules.push_back(lm);
-            }
-        }
-        if (global.params.doDocComments)
-            m->gendocfile();
-    }
+    genModules(modules, llvmModules);
+    genModules(cpp::Module::amodules, llvmModules);
+            // CALYPSO
 
     // internal linking for singleobj
     if (singleObj && llvmModules.size() > 0)
@@ -1390,6 +1418,7 @@ int main(int argc, char **argv)
 #endif
 
         std::string errormsg;
+
         for (size_t i = 0; i < llvmModules.size(); i++)
         {
 #if LDC_LLVM_VER >= 303

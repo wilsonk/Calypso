@@ -16,7 +16,7 @@ include(CheckCXXCompilerFlag)
 #
 
 find_package(LLVM 3.1 REQUIRED
-    all-targets bitwriter linker ipo instrumentation backend support tablegen asmparser lto ${EXTRA_LLVM_MODULES})
+    all-targets bitreader bitwriter linker ipo instrumentation backend support tablegen asmparser lto option ${EXTRA_LLVM_MODULES})
 math(EXPR LDC_LLVM_VER ${LLVM_VERSION_MAJOR}*100+${LLVM_VERSION_MINOR})
 
 #
@@ -145,6 +145,9 @@ append("${SANITIZE_CXXFLAGS}" LDC_CXXFLAGS)
 # LLVM_CXXFLAGS may contain -Werror which causes compile errors with dmd source
 string(REPLACE "-Werror" "" LLVM_CXXFLAGS ${LLVM_CXXFLAGS})
 
+# CALYPSO
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+
 #
 # Run idgen and impcnvgen.
 #
@@ -211,7 +214,7 @@ configure_file(driver/ldc-version.cpp.in driver/ldc-version.cpp)
 
 # Also add the header files to the build so that they are available in IDE
 # project files generated via CMake.
-file(GLOB_RECURSE FE_SRC ${DMDFE_PATH}/*.c)
+file(GLOB_RECURSE FE_SRC ${DMDFE_PATH}/*.c ${DMDFE_PATH}/*.cpp)
 file(GLOB_RECURSE FE_HDR ${DMDFE_PATH}/*.h)
 file(GLOB_RECURSE GEN_SRC gen/*.cpp)
 file(GLOB_RECURSE GEN_HDR gen/*.h)
@@ -408,8 +411,24 @@ set_target_properties(
     LINK_FLAGS "${SANITIZE_LDFLAGS}"
 )
 
+### CALYPSO
+
+find_package(Clang REQUIRED)
+include_directories("${CLANG_INCLUDE_DIRS}")
+
+set(LLVM_SOURCE_PATH "" CACHE PATH
+        "Path to LLVM (with Clang) source code tree.")
+
+if (EXISTS "${LLVM_SOURCE_PATH}/tools/clang/lib")
+        include_directories("${LLVM_SOURCE_PATH}/tools")
+else()
+        message(FATAL_ERROR "A Clang source code tree is required, since many CodeGen symbols aren't exposed in include/clang.")
+endif()
+
+### CALYPSO
+
 # LDFLAGS should actually be in target property LINK_FLAGS, but this works, and gets around linking problems
-target_link_libraries(${LDC_LIB} ${LLVM_LIBRARIES} ${PTHREAD_LIBS} ${TERMINFO_LIBS} "${LLVM_LDFLAGS}")
+target_link_libraries(${LDC_LIB} ${CLANG_LIBS} ${LLVM_LIBRARIES} ${PTHREAD_LIBS} ${TERMINFO_LIBS} "${LLVM_LDFLAGS}")
 if(WIN32)
     target_link_libraries(${LDC_LIB} imagehlp psapi)
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
@@ -532,3 +551,5 @@ endif()
 
 include (CMakeCPack.cmake)
 include (CPack)
+
+add_subdirectory(tests/calypso)

@@ -1753,6 +1753,81 @@ TOK Lexer::escapeStringConstant(Token *t, int wide)
 /**************************************
  */
 
+TOK Lexer::parenthesedSpecialToken(Token *t)
+{   unsigned c;
+    Loc start = scanloc;
+    bool pendingSpace = false;
+
+    p++;
+    stringbuffer.reset();
+    while (1)
+    {
+        c = *p++;
+        switch (c)
+        {
+            case ' ':
+            case '\t':
+            case '\v':
+            case '\f':
+                if (stringbuffer.data)
+                    pendingSpace = true;
+                break;                       // skip white space
+
+            case '\n':
+                scanloc.linnum++;
+                break;
+
+            case '\r':
+                if (*p == '\n')
+                    continue;   // ignore
+                c = '\n';       // treat EndOfLine as \n character
+                scanloc.linnum++;
+                break;
+
+            case ')':
+                t->len = stringbuffer.offset;
+                stringbuffer.writeByte(0);
+                t->ustring = (unsigned char *)mem.malloc(stringbuffer.offset);
+                memcpy(t->ustring, stringbuffer.data, stringbuffer.offset);
+                stringPostfix(t);
+                return TOKstring;
+
+            case 0:
+            case 0x1A:
+                p--;
+                error("unterminated string enclosed within parentheses starting at %s", start.toChars());
+                t->ustring = (unsigned char *)"";
+                t->len = 0;
+                t->postfix = 0;
+                return TOKstring;
+
+            default:
+                if (c & 0x80)
+                {
+                    p--;
+                    c = decodeUTF();
+                    if (c == LS || c == PS)
+                    {   c = '\n';
+                        scanloc.linnum++;
+                    }
+                    p++;
+                    if (pendingSpace)
+                    {
+                        stringbuffer.writeByte(' ');
+                        pendingSpace = false;
+                    }
+                    stringbuffer.writeUTF8(c);
+                    continue;
+                }
+                break;
+        }
+        stringbuffer.writeByte(c);
+    }
+}
+
+/**************************************
+ */
+
 TOK Lexer::charConstant(Token *t, int wide)
 {
     unsigned c;
@@ -2736,6 +2811,7 @@ static Keyword keywords[] =
     {   "union",        TOKunion        },
     {   "enum",         TOKenum         },
     {   "import",       TOKimport       },
+    {   "modmap",       TOKmodmap       },
     {   "mixin",        TOKmixin        },
     {   "static",       TOKstatic       },
     {   "final",        TOKfinal        },

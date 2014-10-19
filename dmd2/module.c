@@ -100,24 +100,27 @@ Module::Module(const char *filename, Identifier *ident, int doDocComment, int do
     nameoffset = 0;
     namelen = 0;
 
-    srcfilename = FileName::defaultExt(filename, global.mars_ext);
+    if (filename)
+    {
+        srcfilename = FileName::defaultExt(filename, global.mars_ext);
 
-    if (global.run_noext && global.params.run &&
-        !FileName::ext(filename) &&
-        FileName::exists(srcfilename) == 0 &&
-        FileName::exists(filename) == 1)
-    {
-        FileName::free(srcfilename);
-        srcfilename = FileName::removeExt(filename);    // just does a mem.strdup(filename)
+        if (global.run_noext && global.params.run &&
+            !FileName::ext(filename) &&
+            FileName::exists(srcfilename) == 0 &&
+            FileName::exists(filename) == 1)
+        {
+            FileName::free(srcfilename);
+            srcfilename = FileName::removeExt(filename);    // just does a mem.strdup(filename)
+        }
+        else if (!FileName::equalsExt(srcfilename, global.mars_ext) &&
+            !FileName::equalsExt(srcfilename, global.hdr_ext) &&
+            !FileName::equalsExt(srcfilename, "dd"))
+        {
+            error("source file name '%s' must have .%s extension", srcfilename, global.mars_ext);
+            fatal();
+        }
+        srcfile = new File(srcfilename);
     }
-    else if (!FileName::equalsExt(srcfilename, global.mars_ext) &&
-        !FileName::equalsExt(srcfilename, global.hdr_ext) &&
-        !FileName::equalsExt(srcfilename, "dd"))
-    {
-        error("source file name '%s' must have .%s extension", srcfilename, global.mars_ext);
-        fatal();
-    }
-    srcfile = new File(srcfilename);
 
 #if IN_DMD
     objfile = setOutfile(global.params.objname, global.params.objdir, filename, global.obj_ext);
@@ -214,8 +217,8 @@ const char *Module::kind()
     return "module";
 }
 
-Module *Module::load(Loc loc, Identifiers *packages, Identifier *ident)
-{   Module *m;
+::Module *d::Module::load(Loc loc, Identifiers *packages, Identifier *ident)
+{   ::Module *m;
     char *filename;
 
     //printf("Module::load(ident = '%s')\n", ident->toChars());
@@ -244,7 +247,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *ident)
         filename = (char *)buf.extractData();
     }
 
-    m = new Module(filename, ident, 0, 0);
+    m = new ::Module(filename, ident, 0, 0);
     m->loc = loc;
 
     /* Look for the source file
@@ -622,7 +625,7 @@ void Module::parse()
         dst = Package::resolve(md->packages, &this->parent, &ppack);
         assert(dst);
 
-        Module *m = ppack ? ppack->isModule() : NULL;
+        ::Module *m = ppack ? ppack->isModule() : NULL;
         if (m && strcmp(m->srcfile->name->name(), "package.d") != 0)
         {
             ::error(md->loc, "package name '%s' conflicts with usage as a module name in file %s",
@@ -678,7 +681,7 @@ void Module::parse()
          */
         Dsymbol *prev = dst->lookup(ident);
         assert(prev);
-        if (Module *mprev = prev->isModule())
+        if (::Module *mprev = prev->isModule())
         {
             if (strcmp(srcname, mprev->srcfile->toChars()) == 0)
                 error(loc, "from file %s must be imported as module '%s'",

@@ -24,6 +24,7 @@
 #include "gen/abi.h"
 #include "gen/arrays.h"
 #include "gen/classes.h"
+#include "gen/cgforeign.h"
 #include "gen/functions.h"
 #include "gen/irstate.h"
 #include "gen/llvm.h"
@@ -597,6 +598,9 @@ static void codegenModule(Module* m)
     #endif
     }
 
+    //TEMP CALYPSO
+    gIR->module->dump();
+
     // verify the llvm
     verifyModule(*gIR->module);
 }
@@ -633,11 +637,20 @@ llvm::Module* Module::genLLVMModule(llvm::LLVMContext& context)
         mname = md->toChars();
 #endif
 
+    // CALYPSO
+    auto mod = new llvm::Module(mname, context);
+
     // create a new ir state
     // TODO look at making the instance static and moving most functionality into IrModule where it belongs
-    IRState ir(new llvm::Module(mname, context));
+    IRState ir(mod);
     gIR = &ir;
     ir.dmodule = this;
+
+    for (unsigned pi = 0; pi < global.langPlugins.dim; pi++)
+    {
+        auto& lp = global.langPlugins[pi];
+        lp->codegen()->enterModule(mod);
+    }
 
     // reset all IR data stored in Dsymbols
     IrDsymbol::resetAll();

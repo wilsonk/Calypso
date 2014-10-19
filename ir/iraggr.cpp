@@ -11,9 +11,11 @@
 #include "aggregate.h"
 #include "declaration.h"
 #include "init.h"
+#include "import.h"
 #include "mtype.h"
 #include "target.h"
 #include "gen/irstate.h"
+#include "gen/cgforeign.h"
 #include "gen/llvmhelpers.h"
 #include "gen/logger.h"
 #include "gen/tollvm.h"
@@ -78,7 +80,10 @@ llvm::Constant * IrAggr::getDefaultInit()
 
     DtoType(type);
     VarInitMap noExplicitInitializers;
-    constInit = createInitializerConstant(noExplicitInitializers, init_type);
+    if (auto lp = type->langPlugin()) // CALYPSO
+        constInit = lp->codegen()->createInitializerConstant(this, noExplicitInitializers, init_type);
+    else
+        constInit = createInitializerConstant(noExplicitInitializers, init_type);
     return constInit;
 }
 

@@ -25,6 +25,7 @@ class Expression;
 class Declaration;
 class Statement;
 class Import;
+class Modmap;
 class Initializer;
 class FuncDeclaration;
 class CtorDeclaration;
@@ -109,6 +110,7 @@ public:
     Dsymbol *parseAggregate();
     BaseClasses *parseBaseClasses();
     Import *parseImport(Dsymbols *decldefs, int isstatic);
+    Modmap *parseModmap(Dsymbols *decldefs);
     Type *parseType(Identifier **pident = NULL, TemplateParameters **tpl = NULL);
     Type *parseBasicType();
     Type *parseBasicType2(Type *t);

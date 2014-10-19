@@ -12,6 +12,7 @@
 #include "declaration.h"
 #include "id.h"
 #include "init.h"
+#include "import.h"
 #include "module.h"
 #include "mtype.h"
 #include "statement.h"
@@ -20,6 +21,7 @@
 #include "gen/arrays.h"
 #include "gen/classes.h"
 #include "gen/dvalue.h"
+#include "gen/cgforeign.h"
 #include "gen/irstate.h"
 #include "gen/llvm.h"
 #include "gen/llvmhelpers.h"
@@ -507,17 +509,21 @@ static llvm::Function* DtoDeclareVaFunction(FuncDeclaration* fdecl)
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
-void DtoResolveFunction(FuncDeclaration* fdecl)
+void DtoResolveFunction(FuncDeclaration* fdecl) {
+    fdecl->toResolveFunction();
+}
+
+void FuncDeclaration::toResolveFunction()
 {
-    if ((!global.params.useUnitTests || !fdecl->type) && fdecl->isUnitTestDeclaration()) {
-        IF_LOG Logger::println("Ignoring unittest %s", fdecl->toPrettyChars());
+    if ((!global.params.useUnitTests || !this->type) && this->isUnitTestDeclaration()) {
+        IF_LOG Logger::println("Ignoring unittest %s", this->toPrettyChars());
         return; // ignore declaration completely
     }
 
-    if (fdecl->ir.resolved) return;
-    fdecl->ir.resolved = true;
+    if (this->ir.resolved) return;
+    this->ir.resolved = true;
 
-    Type *type = fdecl->type;
+    Type *type = this->type;
     // If errors occurred compiling it, such as bugzilla 6118
     if (type && type->ty == Tfunction) {
         Type *next = static_cast<TypeFunction *>(type)->next;
@@ -525,71 +531,71 @@ void DtoResolveFunction(FuncDeclaration* fdecl)
             return;
     }
 
-    //printf("resolve function: %s\n", fdecl->toPrettyChars());
+    //printf("resolve function: %s\n", this->toPrettyChars());
 
-    if (fdecl->parent)
-    if (TemplateInstance* tinst = fdecl->parent->isTemplateInstance())
+    if (this->parent)
+    if (TemplateInstance* tinst = this->parent->isTemplateInstance())
     {
         if (TemplateDeclaration* tempdecl = tinst->tempdecl->isTemplateDeclaration())
         {
             if (tempdecl->llvmInternal == LLVMva_arg)
             {
                 Logger::println("magic va_arg found");
-                fdecl->llvmInternal = LLVMva_arg;
-                fdecl->ir.resolved = true;
-                fdecl->ir.declared = true;
-                fdecl->ir.initialized = true;
-                fdecl->ir.defined = true;
+                this->llvmInternal = LLVMva_arg;
+                this->ir.resolved = true;
+                this->ir.declared = true;
+                this->ir.initialized = true;
+                this->ir.defined = true;
                 return; // this gets mapped to an instruction so a declaration makes no sence
             }
             else if (tempdecl->llvmInternal == LLVMva_start)
             {
                 Logger::println("magic va_start found");
-                fdecl->llvmInternal = LLVMva_start;
+                this->llvmInternal = LLVMva_start;
             }
             else if (tempdecl->llvmInternal == LLVMintrinsic)
             {
                 Logger::println("overloaded intrinsic found");
-                fdecl->llvmInternal = LLVMintrinsic;
-                DtoOverloadedIntrinsicName(tinst, tempdecl, fdecl->intrinsicName);
+                this->llvmInternal = LLVMintrinsic;
+                DtoOverloadedIntrinsicName(tinst, tempdecl, this->intrinsicName);
             }
             else if (tempdecl->llvmInternal == LLVMinline_asm)
             {
                 Logger::println("magic inline asm found");
-                TypeFunction* tf = static_cast<TypeFunction*>(fdecl->type);
-                if (tf->varargs != 1 || (fdecl->parameters && fdecl->parameters->dim != 0))
+                TypeFunction* tf = static_cast<TypeFunction*>(this->type);
+                if (tf->varargs != 1 || (this->parameters && this->parameters->dim != 0))
                 {
                     tempdecl->error("invalid __asm declaration, must be a D style variadic with no explicit parameters");
                     fatal();
                 }
-                fdecl->llvmInternal = LLVMinline_asm;
-                fdecl->ir.resolved = true;
-                fdecl->ir.declared = true;
-                fdecl->ir.initialized = true;
-                fdecl->ir.defined = true;
+                this->llvmInternal = LLVMinline_asm;
+                this->ir.resolved = true;
+                this->ir.declared = true;
+                this->ir.initialized = true;
+                this->ir.defined = true;
                 return; // this gets mapped to a special inline asm call, no point in going on.
             }
             else if (tempdecl->llvmInternal == LLVMinline_ir)
             {
-                fdecl->llvmInternal = LLVMinline_ir;
-                fdecl->linkage = LINKc;
-                fdecl->ir.defined = true;
-                Type* type = fdecl->type;
+                this->llvmInternal = LLVMinline_ir;
+                this->linkage = LINKc;
+                this->ir.defined = true;
+                Type* type = this->type;
                 assert(type->ty == Tfunction);
                 static_cast<TypeFunction*>(type)->linkage = LINKc;
             }
         }
     }
 
-    DtoFunctionType(fdecl);
+    DtoFunctionType(this);
 
-    IF_LOG Logger::println("DtoResolveFunction(%s): %s", fdecl->toPrettyChars(), fdecl->loc.toChars());
+    IF_LOG Logger::println("DtoResolveFunction(%s): %s", this->toPrettyChars(), this->loc.toChars());
     LOG_SCOPE;
 
     // queue declaration unless the function is abstract without body
-    if (!fdecl->isAbstract() || fdecl->fbody)
+    if (!this->isAbstract() || this->fbody)
     {
-        DtoDeclareFunction(fdecl);
+        DtoDeclareFunction(this);
     }
 }
 
@@ -1172,6 +1178,15 @@ void DtoDefineFunction(FuncDeclaration* fd)
     FuncGen fg;
     irfunction->gen = &fg;
 
+    // CALYPSO
+    for (auto I = global.langPlugins.begin(),
+                E = global.langPlugins.end();
+                I != E; ++I)
+    {
+        auto cg = (*I)->codegen();
+        cg->enterFunc(fd);
+    }
+
     DtoCreateNestedContext(fd);
 
     if (fd->vresult && !
@@ -1241,6 +1256,15 @@ void DtoDefineFunction(FuncDeclaration* fd)
     gIR->func()->allocapoint = 0;
 
     gIR->scopes.pop_back();
+
+    //CALYPSO
+    for (auto I = global.langPlugins.begin(),
+                E = global.langPlugins.end();
+                I != E; ++I)
+    {
+        auto cg = (*I)->codegen();
+        cg->leaveFunc();
+    }
 
     // get rid of the endentry block, it's never used
     assert(!func->getBasicBlockList().empty());

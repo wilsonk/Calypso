@@ -19,11 +19,13 @@
 #include "declaration.h"
 #include "init.h"
 #include "mtype.h"
+#include "import.h"
 
 #include "gen/irstate.h"
 #include "gen/tollvm.h"
 #include "gen/logger.h"
 #include "gen/llvmhelpers.h"
+#include "gen/cgforeign.h"
 
 //////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
@@ -101,6 +103,15 @@ IrTypeStruct* IrTypeStruct::get(StructDeclaration* sd)
     IF_LOG Logger::println("Building struct type %s @ %s",
         sd->toPrettyChars(), sd->loc.toChars());
     LOG_SCOPE;
+
+    // CALYPSO
+    if (auto lp = sd->langPlugin())
+    {
+        // FIXME: the LLVM D type shouldn't be created then discarded
+        t->type = lp->codegen()->toType(sd->type);
+                // what about default_fields
+        return t;
+    }
 
     // if it's a forward declaration, all bets are off, stick with the opaque
     if (sd->sizeok != SIZEOKdone)

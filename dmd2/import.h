@@ -25,6 +25,7 @@ class Module;
 class Package;
 class AliasDeclaration;
 struct HdrGenState;
+class StringExp;
 
 class Import : public Dsymbol
 {
@@ -64,8 +65,42 @@ public:
     bool overloadInsert(Dsymbol *s);
     void toCBuffer(OutBuffer *buf, HdrGenState *hgs);
 
+    // CALYPSO
+    virtual Module *loadModule(Loc loc, Identifiers *packages, Identifier *ident);
+
     Import *isImport() { return this; }
     void accept(Visitor *v) { v->visit(this); }
+};
+
+class Modmap : public Dsymbol
+{
+public:
+    StringExp *arg;
+
+    Modmap(Loc loc, StringExp *arg);
+};
+
+class CodeGen;
+
+class LangPlugin
+{
+public:
+    // returns -1 if said lang isn't handled by this plugin, or its id number
+    // to be passed to createImport otherwise
+    virtual int doesHandleModmap(const utf8_t *lang) = 0;
+
+    virtual Modmap *createModmap(int langId,
+        Loc loc, Expression *arg) = 0;
+
+    // returns -1 if said tree isn't handled by this plugin, or its id number
+    // to be passed to createImport otherwise
+    virtual int doesHandleImport(const utf8_t *tree) = 0;
+
+    virtual Import *createImport(int treeId,
+        Loc loc, Identifiers *packages, Identifier *id,
+        Identifier *aliasId, int isstatic) = 0;
+
+     virtual CodeGen *codegen() = 0;
 };
 
 #endif /* DMD_IMPORT_H */

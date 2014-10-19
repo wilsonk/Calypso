@@ -65,6 +65,8 @@ the target object file format:
 #include <stddef.h>
 #include <stdarg.h>
 
+#include "root/stringref.h"
+
 #if IN_LLVM
 #include "llvm/ADT/Triple.h"
 #endif
@@ -278,6 +280,9 @@ struct Compiler
     const char *vendor;     // Compiler backend name
 };
 
+struct LangPlugin;
+typedef Array<struct LangPlugin *> LangPlugins;
+
 typedef unsigned structalign_t;
 #define STRUCTALIGN_DEFAULT ((structalign_t) ~0)  // magic value means "match whatever the underlying C compiler does"
 // other values are all powers of 2
@@ -326,6 +331,7 @@ struct Global
 
     Compiler compiler;
     Param params;
+    LangPlugins langPlugins;
     unsigned errors;       // number of errors reported so far
     unsigned warnings;     // number of warnings reported so far
     FILE *stdmsg;          // where to send verbose messages
@@ -394,13 +400,12 @@ class Module;
 //typedef unsigned Loc;         // file location
 struct Loc
 {
-    const char *filename;
+    StringRef filename;
     unsigned linnum;
 
     Loc()
     {
         linnum = 0;
-        filename = NULL;
     }
 
     Loc(Module *mod, unsigned linnum);

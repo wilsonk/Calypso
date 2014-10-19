@@ -132,7 +132,7 @@ enum TOK
         // Aggregates
         TOKstruct, TOKclass, TOKinterface, TOKunion, TOKenum, TOKimport,
         TOKtypedef, TOKalias, TOKoverride, TOKdelegate, TOKfunction,
-        TOKmixin,
+        TOKmixin, TOKmodmap,
 
         TOKalign, TOKextern, TOKprivate, TOKprotected, TOKpublic, TOKexport,
         TOKstatic, /*TOKvirtual,*/ TOKfinal, TOKconst, TOKabstract, TOKvolatile,
@@ -266,6 +266,8 @@ public:
     TOK delimitedStringConstant(Token *t);
     TOK tokenStringConstant(Token *t);
     TOK escapeStringConstant(Token *t, int wide);
+        // In import (C++), C++ is neither a keyword, nor an identifier, it's more of a string but whitespaces are ignored
+    TOK parenthesedSpecialToken(Token *t);
     TOK charConstant(Token *t, int wide);
     void stringPostfix(Token *t);
     TOK number(Token *t);

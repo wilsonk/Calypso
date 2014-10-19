@@ -72,6 +72,9 @@ namespace opts {
 
     extern cl::opt<unsigned, true> nestedTemplateDepth;
 
+    // CALYPSO
+    extern cl::list<std::string> cppArgs;
+
     // Arguments to -d-debug
     extern std::vector<std::string> debugArgs;
     // Arguments to -run

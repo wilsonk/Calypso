@@ -99,6 +99,12 @@ Dsymbol *Import::syntaxCopy(Dsymbol *s)
     return si;
 }
 
+// CALYPSO
+Module *Import::loadModule(Loc loc, Identifiers *packages, Identifier *ident)
+{
+    d::Module::load(loc, packages, ident);
+}
+
 void Import::load(Scope *sc)
 {
     //printf("Import::load('%s') %p\n", toPrettyChars(), this);
@@ -129,7 +135,7 @@ void Import::load(Scope *sc)
             {
                 if (p->isPkgMod == PKGunknown)
                 {
-                    mod = Module::load(loc, packages, id);
+                    mod = loadModule(loc, packages, id);
                     if (!mod)
                         p->isPkgMod = PKGpackage;
                     else
@@ -161,7 +167,7 @@ void Import::load(Scope *sc)
     if (!mod)
     {
         // Load module
-        mod = Module::load(loc, packages, id);
+        mod = loadModule(loc, packages, id);
         if (mod)
         {
             dst->insert(id, mod);           // id may be different from mod->ident,
