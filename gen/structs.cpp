@@ -36,8 +36,8 @@ void DtoResolveStruct(StructDeclaration* sd)
 void DtoResolveStruct(StructDeclaration* sd, Loc& callerLoc)
 {
     // Make sure to resolve each struct type exactly once.
-    if (sd->ir.resolved) return;
-    sd->ir.resolved = true;
+    if (sd->ir.isResolved()) return;
+    sd->ir.setResolved();
 
     IF_LOG Logger::println("Resolving struct type: %s (%s)", sd->toChars(), sd->loc.toChars());
     LOG_SCOPE;
@@ -53,8 +53,7 @@ void DtoResolveStruct(StructDeclaration* sd, Loc& callerLoc)
     }
 
     // create the IrAggr
-    IrAggr* iraggr = new IrAggr(sd);
-    sd->ir.irAggr = iraggr;
+    getIrAggr(sd, true);
 
     // Set up our field metadata.
     for (VarDeclarations::iterator I = sd->fields.begin(),
@@ -62,8 +61,11 @@ void DtoResolveStruct(StructDeclaration* sd, Loc& callerLoc)
                                    I != E; ++I)
     {
         VarDeclaration *vd = *I;
-        assert(!vd->ir.irField);
-        (void)new IrField(vd);
+        IF_LOG {
+            if (isIrFieldCreated(vd))
+                Logger::println("struct field already exists");
+        }
+        getIrField(vd, true);
     }
 }
 
@@ -86,46 +88,7 @@ LLValue* DtoStructEquals(TOK op, DValue* lhs, DValue* rhs)
     // call memcmp
     size_t sz = getTypePaddedSize(DtoType(t));
     LLValue* val = DtoMemCmp(lhs->getRVal(), rhs->getRVal(), DtoConstSize_t(sz));
-    return gIR->ir->CreateICmp(cmpop, val, LLConstantInt::get(val->getType(), 0, false), "tmp");
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////
-
-LLValue* DtoIndexStruct(LLValue* src, StructDeclaration* sd, VarDeclaration* vd)
-{
-    IF_LOG Logger::println("indexing struct field %s:", vd->toPrettyChars());
-    LOG_SCOPE;
-
-    DtoResolveStruct(sd);
-
-    // vd must be a field
-    IrField* field = vd->ir.irField;
-    assert(field);
-
-    // get the start pointer
-    LLType* st = getPtrToType(DtoType(sd->type));
-
-    // cast to the formal struct type
-    src = DtoBitCast(src, st);
-
-    // gep to the index
-    LLValue* val = DtoGEPi(src, 0, field->index);
-
-    // do we need to offset further? (union area)
-    if (field->unionOffset)
-    {
-        // cast to void*
-        val = DtoBitCast(val, getVoidPtrType());
-        // offset
-        val = DtoGEPi1(val, field->unionOffset);
-    }
-
-    // cast it to the right type
-    val = DtoBitCast(val, getPtrToType(i1ToI8(DtoType(vd->type))));
-
-    IF_LOG Logger::cout() << "value: " << *val << '\n';
-
-    return val;
+    return gIR->ir->CreateICmp(cmpop, val, LLConstantInt::get(val->getType(), 0, false));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -175,7 +138,7 @@ LLValue* DtoUnpaddedStruct(Type* dty, LLValue* v) {
     LLValue* newval = llvm::UndefValue::get(DtoUnpaddedStructType(dty));
 
     for (unsigned i = 0; i < fields.dim; i++) {
-        LLValue* fieldptr = DtoIndexStruct(v, sty->sym, fields[i]);
+        LLValue* fieldptr = DtoIndexAggregate(v, sty->sym, fields[i]);
         LLValue* fieldval;
         if (fields[i]->type->ty == Tstruct) {
             // Nested structs are the only members that can contain padding
@@ -195,7 +158,7 @@ void DtoPaddedStruct(Type* dty, LLValue* v, LLValue* lval) {
     VarDeclarations& fields = sty->sym->fields;
 
     for (unsigned i = 0; i < fields.dim; i++) {
-        LLValue* fieldptr = DtoIndexStruct(lval, sty->sym, fields[i]);
+        LLValue* fieldptr = DtoIndexAggregate(lval, sty->sym, fields[i]);
         LLValue* fieldval = DtoExtractValue(v, i);
         if (fields[i]->type->ty == Tstruct) {
             // Nested structs are the only members that can contain padding

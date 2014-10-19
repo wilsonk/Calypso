@@ -11,7 +11,7 @@
 #include "../import.h"
 #include "../gen/cgforeign.h"
 
-#include "llvm/ADT/OwningPtr.h"
+#include <memory>
 #include "llvm/IR/DataLayout.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Sema/DeclSpec.h"
@@ -58,11 +58,11 @@ struct PCH
 // Avoiding the redundancy would mean altering Clang's source code, so to keep Calypso compatible with vanilla binaries it seems more reasonable to handle it like that
 class AssistantBuilder : public clang::ASTConsumer {
     clang::DiagnosticsEngine &Diags;
-    llvm::OwningPtr<const llvm::DataLayout> TD;
+    std::unique_ptr<const llvm::DataLayout> TD;
     clang::ASTContext *Ctx;
     const clang::CodeGenOptions CodeGenOpts;  // Intentionally copied in.
 protected:
-    llvm::OwningPtr<clang::CodeGen::CodeGenModule> Builder;
+    std::unique_ptr<clang::CodeGen::CodeGenModule> Builder;
 public:
     AssistantBuilder( clang::DiagnosticsEngine& diags, llvm::Module* M, const clang::CodeGenOptions& CGO, llvm::LLVMContext& C );
     virtual ~AssistantBuilder();

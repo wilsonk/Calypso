@@ -93,7 +93,10 @@ TargetABI * TargetABI::getTarget()
         else
             return getX86_64TargetABI();
     case llvm::Triple::ppc64:
-        return getPPC64TargetABI();
+#if LDC_LLVM_VER >= 305
+    case llvm::Triple::ppc64le:
+#endif
+        return getPPC64TargetABI(global.params.targetTriple.isArch64Bit());
     default:
         Logger::cout() << "WARNING: Unknown ABI, guessing...\n";
         return new UnknownTargetABI;

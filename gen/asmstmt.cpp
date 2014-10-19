@@ -99,38 +99,6 @@ Statement *AsmStatement::syntaxCopy()
     return a_s;
 }
 
-void AsmStatement::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
-{
-    bool sep = 0, nsep = 0;
-    buf->writestring("asm { ");
-
-    for (Token * t = tokens; t; t = t->next) {
-        switch (t->value) {
-        case TOKlparen:
-        case TOKrparen:
-        case TOKlbracket:
-        case TOKrbracket:
-        case TOKcolon:
-        case TOKsemicolon:
-        case TOKcomma:
-        case TOKstring:
-        case TOKcharv:
-        case TOKwcharv:
-        case TOKdcharv:
-            nsep = 0;
-            break;
-        default:
-            nsep = 1;
-        }
-        if (sep + nsep == 2)
-                buf->writeByte(' ');
-        sep = nsep;
-        buf->writestring(t->toChars());
-    }
-    buf->writestring("; }");
-    buf->writenl();
-}
-
 struct AsmParserCommon
 {
     virtual ~AsmParserCommon() {}
@@ -160,26 +128,26 @@ static void replace_func_name(IRState* p, std::string& insnt)
     while (std::string::npos != (pos = insnt.find(needle)))
     {
         // This will only happen for few instructions, and only once for those.
-        insnt.replace(pos, needle.size(), p->func()->decl->mangle(false));
+        insnt.replace(pos, needle.size(), mangle(p->func()->decl));
     }
 }
 
-Statement *AsmStatement::semantic(Scope *sc)
+Statement* asmSemantic(AsmStatement *s, Scope *sc)
 {
     if (sc->func && sc->func->isSafe())
-        error("inline assembler not allowed in @safe function %s", sc->func->toChars());
+        s->error("inline assembler not allowed in @safe function %s", sc->func->toChars());
 
     bool err = false;
     llvm::Triple const t = global.params.targetTriple;
     if (!(t.getArch() == llvm::Triple::x86 || t.getArch() == llvm::Triple::x86_64))
     {
-        error("inline asm is not supported for the \"%s\" architecture",
+        s->error("inline asm is not supported for the \"%s\" architecture",
             t.getArchName().str().c_str());
         err = true;
     }
     if (!global.params.useInlineAsm)
     {
-        error("inline asm is not allowed when the -noasm switch is used");
+        s->error("inline asm is not allowed when the -noasm switch is used");
         err = true;
     }
     if (err)
@@ -190,8 +158,8 @@ Statement *AsmStatement::semantic(Scope *sc)
     sc->func->hasReturnExp |= 8;
 
     // empty statement -- still do the above things because they might be expected?
-    if (! tokens)
-        return this;
+    if (!s->tokens)
+        return s;
 
     if (!asmparser)
     {
@@ -201,22 +169,12 @@ Statement *AsmStatement::semantic(Scope *sc)
             asmparser = new AsmParserx8664::AsmParser;
     }
 
-    asmparser->run(sc, this);
+    asmparser->run(sc, s);
 
-    return this;
+    return s;
 }
 
-int AsmStatement::blockExit(bool mustNotThrow)
-{
-    //printf("AsmStatement::blockExit(%p)\n", this);
-    if (mustNotThrow)
-        error("asm statements are assumed to throw");
-    // Assume the worst
-    return BEfallthru | BEthrow | BEreturn | BEgoto | BEhalt;
-}
-
-void
-AsmStatement_toIR(AsmStatement *stmt, IRState * irs)
+void AsmStatement_toIR(AsmStatement *stmt, IRState * irs)
 {
     IF_LOG Logger::println("AsmStatement::toIR(): %s", stmt->loc.toChars());
     LOG_SCOPE;
@@ -266,18 +224,18 @@ AsmStatement_toIR(AsmStatement *stmt, IRState * irs)
 
         switch (arg->type) {
         case Arg_Integer:
-            arg_val = arg->expr->toElem(irs)->getRVal();
+            arg_val = toElem(arg->expr)->getRVal();
         do_integer:
             cns = i_cns;
             break;
         case Arg_Pointer:
-        assert(arg->expr->op == TOKvar);
-        arg_val = arg->expr->toElem(irs)->getRVal();
-        cns = p_cns;
+            assert(arg->expr->op == TOKvar);
+            arg_val = toElem(arg->expr)->getRVal();
+            cns = p_cns;
 
             break;
         case Arg_Memory:
-        arg_val = arg->expr->toElem(irs)->getRVal();
+            arg_val = toElem(arg->expr)->getRVal();
 
             switch (arg->mode) {
             case Mode_Input:  cns = m_cns; break;
@@ -563,7 +521,7 @@ void AsmBlockStatement_toIR(AsmBlockStatement *stmt, IRState* p)
     // a post-asm switch
 
     // maps each goto destination to its special value
-    std::map<Identifier*, int> gotoToVal;
+    std::map<LabelDsymbol*, int> gotoToVal;
 
     // location of the special value determining the goto label
     // will be set if post-asm dispatcher block is needed
@@ -571,7 +529,7 @@ void AsmBlockStatement_toIR(AsmBlockStatement *stmt, IRState* p)
 
     {
         FuncDeclaration* fd = gIR->func()->decl;
-        const char* fdmangle = fd->mangle();
+        const char* fdmangle = mangle(fd);
 
         // we use a simple static counter to make sure the new end labels are unique
         static size_t uniqueLabelsId = 0;
@@ -601,7 +559,7 @@ void AsmBlockStatement_toIR(AsmBlockStatement *stmt, IRState* p)
             end = asmblock->internalLabels.end();
             bool skip = false;
             for(it = asmblock->internalLabels.begin(); it != end; ++it)
-                if((*it)->equals(a->isBranchToLabel))
+                if((*it)->equals(a->isBranchToLabel->ident))
                     skip = true;
             if(skip)
                 continue;
@@ -614,8 +572,8 @@ void AsmBlockStatement_toIR(AsmBlockStatement *stmt, IRState* p)
             gotoToVal[a->isBranchToLabel] = n_goto;
 
             // provide an in-asm target for the branch and set value
-            IF_LOG Logger::println("statement '%s' references outer label '%s': creating forwarder", a->code.c_str(), a->isBranchToLabel->string);
-            printLabelName(code, fdmangle, a->isBranchToLabel->string);
+            IF_LOG Logger::println("statement '%s' references outer label '%s': creating forwarder", a->code.c_str(), a->isBranchToLabel->ident->string);
+            printLabelName(code, fdmangle, a->isBranchToLabel->ident->string);
             code << ":\n\t";
             code << "movl $<<in" << n_goto << ">>, $<<out0>>\n";
             //FIXME: Store the value -> label mapping somewhere, so it can be referenced later
@@ -796,7 +754,7 @@ void AsmBlockStatement_toIR(AsmBlockStatement *stmt, IRState* p)
         llvm::SwitchInst* sw = p->ir->CreateSwitch(val, bb, gotoToVal.size());
 
         // add all cases
-        std::map<Identifier*, int>::iterator it, end = gotoToVal.end();
+        std::map<LabelDsymbol*, int>::iterator it, end = gotoToVal.end();
         for(it = gotoToVal.begin(); it != end; ++it)
         {
             llvm::BasicBlock* casebb = llvm::BasicBlock::Create(gIR->context(), "case", p->topfunc(), bb);
@@ -835,7 +793,6 @@ Statement *AsmBlockStatement::syntaxCopy()
 Statement *AsmBlockStatement::semantic(Scope *sc)
 {
     enclosingFinally = sc->tf;
-    enclosingScopeExit = sc->enclosingScopeExit;
 
     return CompoundStatement::semantic(sc);
 }

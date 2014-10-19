@@ -20,6 +20,7 @@
 #include "gen/logger.h"
 #include "gen/tollvm.h"
 #include "ir/iraggr.h"
+#include "irdsymbol.h"
 #include "ir/irtypeclass.h"
 #include "ir/irtypestruct.h"
 #include <algorithm>
@@ -29,7 +30,6 @@
 IrAggr::IrAggr(AggregateDeclaration* aggr)
 :   aggrdecl(aggr),
     type(aggr->type),
-    packed((type->ty == Tstruct) ? type->alignsize() == 1 : false),
     // above still need to be looked at
     init(0),
     constInit(0),
@@ -53,7 +53,7 @@ LLGlobalVariable * IrAggr::getInitSymbol()
 
     // create the initZ symbol
     std::string initname("_D");
-    initname.append(aggrdecl->mangle());
+    initname.append(mangle(aggrdecl));
     initname.append("6__initZ");
 
     init = getOrCreateGlobal(aggrdecl->loc,
@@ -217,10 +217,15 @@ llvm::Constant* IrAggr::createInitializerConstant(
         offset = Target::ptrsize * 2;
     }
 
-    addFieldInitializers(constants, explicitInitializers, aggrdecl, offset);
+    // Add the initializers for the member fields. While we are traversing the
+    // class hierarchy, use the opportunity to populate interfacesWithVtbls if
+    // we haven't done so previously (due to e.g. ClassReferenceExp, we can
+    // have multiple initializer constants for a single class).
+    addFieldInitializers(constants, explicitInitializers, aggrdecl, offset,
+        interfacesWithVtbls.empty());
 
     // tail padding?
-    const size_t structsize = type->size();
+    const size_t structsize = aggrdecl->size(Loc());
     if (offset < structsize)
     {
         add_zeros(constants, offset, structsize);
@@ -235,9 +240,9 @@ llvm::Constant* IrAggr::createInitializerConstant(
         for (itr = constants.begin(); itr != end; ++itr)
             types.push_back((*itr)->getType());
         if (!initializerType)
-            initializerType = LLStructType::get(gIR->context(), types, packed);
+            initializerType = LLStructType::get(gIR->context(), types, isPacked());
         else
-            initializerType->setBody(types, packed);
+            initializerType->setBody(types, isPacked());
     }
 
     // build constant
@@ -251,20 +256,18 @@ void IrAggr::addFieldInitializers(
     llvm::SmallVectorImpl<llvm::Constant*>& constants,
     const VarInitMap& explicitInitializers,
     AggregateDeclaration* decl,
-    unsigned& offset)
+    unsigned& offset,
+    bool populateInterfacesWithVtbls
+    )
 {
     if (ClassDeclaration* cd = decl->isClassDeclaration())
     {
         if (cd->baseClass)
         {
             addFieldInitializers(constants, explicitInitializers,
-                cd->baseClass, offset);
+                cd->baseClass, offset, populateInterfacesWithVtbls);
         }
     }
-
-    const bool packed = (type->ty == Tstruct)
-        ? type->alignsize() == 1
-        : false;
 
     // Build up vector with one-to-one mapping to field indices.
     const size_t n = decl->fields.dim;
@@ -285,7 +288,15 @@ void IrAggr::addFieldInitializers(
         if (data[i].first) continue;
 
         VarDeclaration* vd = decl->fields[i];
-        if (vd->init && vd->init->isVoidInitializer())
+
+        /* Skip void initializers for unions. DMD bug 3991:
+            union X
+            {
+                int   a = void;
+                dchar b = 'a';
+            }
+        */
+        if (decl->isUnionDeclaration() && vd->init && vd->init->isVoidInitializer())
             continue;
 
         unsigned vd_begin = vd->offset;
@@ -338,7 +349,7 @@ void IrAggr::addFieldInitializers(
 
         // get next aligned offset for this field
         size_t alignedoffset = offset;
-        if (!packed)
+        if (!isPacked())
         {
             alignedoffset = realignOffset(alignedoffset, vd->type);
         }
@@ -373,11 +384,30 @@ void IrAggr::addFieldInitializers(
             {
                 constants.push_back(getInterfaceVtbl(*I, newinsts, inter_idx));
                 offset += Target::ptrsize;
-
-                // add to the interface list
-                interfacesWithVtbls.push_back(*I);
                 inter_idx++;
+
+                if (populateInterfacesWithVtbls)
+                    interfacesWithVtbls.push_back(*I);
             }
         }
     }
+}
+
+IrAggr *getIrAggr(AggregateDeclaration *decl, bool create)
+{
+    if (!isIrAggrCreated(decl) && create)
+    {
+        assert(decl->ir.irAggr == NULL);
+        decl->ir.irAggr = new IrAggr(decl);
+        decl->ir.m_type = IrDsymbol::AggrType;
+    }
+    assert(decl->ir.irAggr != NULL);
+    return decl->ir.irAggr;
+}
+
+bool isIrAggrCreated(AggregateDeclaration *decl)
+{
+    int t = decl->ir.type();
+    assert(t == IrDsymbol::AggrType || t == IrDsymbol::NotSet);
+    return t == IrDsymbol::AggrType;
 }

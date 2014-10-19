@@ -23,6 +23,7 @@
 #include "gen/dibuilder.h"
 #include <deque>
 #include <list>
+#include <set>
 #include <sstream>
 #include <vector>
 
@@ -92,7 +93,7 @@ struct IRAsmStmt
     std::vector<LLValue*> in;
 
     // if this is nonzero, it contains the target label
-    Identifier* isBranchToLabel;
+    LabelDsymbol* isBranchToLabel;
 };
 
 struct IRAsmBlock
@@ -142,11 +143,6 @@ struct IRState
     TypeFunction* topfunctype();
     llvm::Instruction* topallocapoint();
 
-    // structs
-    typedef std::vector<IrAggr*> StructVector;
-    StructVector structs;
-    IrAggr* topstruct();
-
     // D main function
     bool emitMain;
     llvm::Function* mainFunc;
@@ -195,7 +191,8 @@ struct IRState
     IRAsmBlock* asmBlock;
     std::ostringstream nakedAsm;
 
-    // 'used' array solely for keeping a reference to globals
+    // Globals to pin in the llvm.used array to make sure they are not
+    // eliminated.
     std::vector<LLConstant*> usedArray;
 
     /// Whether to emit array bounds checking in the current function.
@@ -238,6 +235,7 @@ llvm::CallSite IRState::CreateCallOrInvoke(LLValue* Callee, const T &args, const
     }
 }
 
+void codegenFunction(Statement *s, IRState *irs);
 void Statement_toIR(Statement *s, IRState *irs);
 
 #endif // LDC_GEN_IRSTATE_H

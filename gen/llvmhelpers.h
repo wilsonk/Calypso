@@ -20,14 +20,10 @@
 #include "statement.h"
 #include "gen/dvalue.h"
 #include "gen/llvm.h"
+#include "ir/irfuncty.h"
 
-// this is used for tracking try-finally, synchronized and volatile scopes
-struct EnclosingHandler
-{
-    virtual ~EnclosingHandler() {}
-    virtual void emitCode(IRState* p) = 0;
-};
-struct EnclosingTryFinally : EnclosingHandler
+// this is used for tracking try-finally scopes
+struct EnclosingTryFinally
 {
     TryFinallyStatement* tf;
     llvm::BasicBlock* landingPad;
@@ -35,13 +31,6 @@ struct EnclosingTryFinally : EnclosingHandler
     EnclosingTryFinally(TryFinallyStatement* _tf, llvm::BasicBlock* _pad)
     : tf(_tf), landingPad(_pad) {}
 };
-struct EnclosingSynchro : EnclosingHandler
-{
-    SynchronizedStatement* s;
-    void emitCode(IRState* p);
-    EnclosingSynchro(SynchronizedStatement* _tf) : s(_tf) {}
-};
-
 
 // dynamic memory helpers
 LLValue* DtoNew(Loc& loc, Type* newtype);
@@ -59,12 +48,12 @@ LLValue* DtoGcMalloc(Loc& loc, LLType* lltype, const char* name = "");
 // assertion generator
 void DtoAssert(Module* M, Loc& loc, DValue* msg);
 
-// return the LabelStatement from the current function with the given identifier or NULL if not found
-LabelStatement* DtoLabelStatement(Identifier* ident);
+// returns module file name
+LLValue* DtoModuleFileName(Module* M, const Loc& loc);
 
 /// emits goto to LabelStatement with the target identifier
 /// the sourceFinally is only used for error checking
-void DtoGoto(Loc& loc, Identifier* target, TryFinallyStatement* sourceFinally);
+void DtoGoto(Loc &loc, LabelDsymbol *target, TryFinallyStatement *sourceFinally);
 
 // Generates IR for enclosing handlers between the current state and
 // the scope created by the 'target' statement.
@@ -87,7 +76,7 @@ DValue* DtoSymbolAddress(Loc& loc, Type* type, Declaration* decl);
 llvm::Constant* DtoConstSymbolAddress(Loc& loc,Declaration* decl);
 
 /// Create a null DValue.
-DValue* DtoNullValue(Type* t);
+DValue* DtoNullValue(Type* t, Loc loc = Loc());
 
 // casts
 DValue* DtoCastInt(Loc& loc, DValue* val, Type* to);
@@ -100,7 +89,7 @@ DValue* DtoCast(Loc& loc, DValue* val, Type* to);
 DValue* DtoPaintType(Loc& loc, DValue* val, Type* to);
 
 // is template instance check, returns module where instantiated
-TemplateInstance* DtoIsTemplateInstance(Dsymbol* s, bool checkLiteralOwner = false);
+TemplateInstance* DtoIsTemplateInstance(Dsymbol* s);
 
 /// Makes sure the declarations corresponding to the given D symbol have been
 /// emitted to the currently processed LLVM module.
@@ -144,11 +133,20 @@ void DtoOverloadedIntrinsicName(TemplateInstance* ti, TemplateDeclaration* td, s
 /// Returns true if there is any unaligned type inside the aggregate.
 bool hasUnalignedFields(Type* t);
 
+/// Returns a pointer to the given member field of an aggregate.
+///
+/// 'src' is a pointer to the start of the memory of an 'ad' instance.
+LLValue* DtoIndexAggregate(LLValue* src, AggregateDeclaration* ad, VarDeclaration* vd);
+
+/// Returns the index of a given member variable in the resulting LLVM type of
+/// an aggregate.
+///
+/// This is only a valid operation if the field is known to be non-overlapping,
+/// so that no byte-wise offset is needed.
+unsigned getFieldGEPIndex(AggregateDeclaration* ad, VarDeclaration* vd);
+
 ///
 DValue* DtoInlineAsmExpr(Loc& loc, FuncDeclaration* fd, Expressions* arguments);
-
-/// Create the IrModule if necessary and returns it.
-IrModule* getIrModule(Module* M);
 
 /// Update an offset to make sure it follows both the D and LLVM alignments.
 /// Returns the offset rounded up to the closest safely aligned offset.
@@ -243,5 +241,9 @@ FuncDeclaration* getParentFunc(Dsymbol* sym, bool stopOnStatic);
 
 void Declaration_codegen(Dsymbol *decl);
 void Declaration_codegen(Dsymbol *decl, IRState *irs);
+
+DValue *toElem(Expression *e);
+DValue *toElemDtor(Expression *e);
+LLConstant *toConstElem(Expression *e, IRState *p);
 
 #endif

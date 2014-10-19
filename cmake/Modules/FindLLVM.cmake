@@ -27,7 +27,8 @@
 # We also want an user-specified LLVM_ROOT_DIR to take precedence over the
 # system default locations such as /usr/local/bin. Executing find_program()
 # multiples times is the approach recommended in the docs.
-set(llvm_config_names llvm-config-3.5 llvm-config35
+set(llvm_config_names llvm-config-3.6 llvm-config36
+                      llvm-config-3.5 llvm-config35
                       llvm-config-3.4 llvm-config34
                       llvm-config-3.3 llvm-config33
                       llvm-config-3.2 llvm-config32
@@ -54,13 +55,33 @@ if (WIN32 OR NOT LLVM_CONFIG)
         set(LLVM_LDFLAGS "")
         list(REMOVE_ITEM LLVM_FIND_COMPONENTS "all-targets" index)
         list(APPEND LLVM_FIND_COMPONENTS ${LLVM_TARGETS_TO_BUILD})
+        # Work around LLVM bug 21016
+        list(FIND LLVM_TARGETS_TO_BUILD "X86" TARGET_X86)
+        if(TARGET_X86 GREATER -1)
+            list(APPEND LLVM_FIND_COMPONENTS x86utils)
+        endif()
+        # Similar to the work around above, but for AArch64
+        list(FIND LLVM_TARGETS_TO_BUILD "AArch64" TARGET_AArch64)
+        if(TARGET_AArch64 GREATER -1)
+            list(APPEND LLVM_FIND_COMPONENTS AArch64Utils)
+        endif()
         list(REMOVE_ITEM LLVM_FIND_COMPONENTS "backend" index)
-        if(${LLVM_VERSION_STRING} MATCHES "3.[0-4][A-Za-z]*")
-            # Versions below 3.5 do not supoort component lto
+        if(${LLVM_VERSION_STRING} MATCHES "^3\\.[0-2][\\.0-9A-Za-z]*")
+            # Versions below 3.3 do not support components objcarcopts, option
+            list(REMOVE_ITEM LLVM_FIND_COMPONENTS "objcarcopts" index)
+            list(REMOVE_ITEM LLVM_FIND_COMPONENTS "option" index)
+        endif()
+        if(${LLVM_VERSION_STRING} MATCHES "^3\\.[0-4][\\.0-9A-Za-z]*")
+            # Versions below 3.5 do not support components lto, profiledata
             list(REMOVE_ITEM LLVM_FIND_COMPONENTS "lto" index)
+            list(REMOVE_ITEM LLVM_FIND_COMPONENTS "profiledata" index)
         endif()
 
-        llvm_map_components_to_libraries(tmplibs ${LLVM_FIND_COMPONENTS})
+        if(${LLVM_VERSION_STRING} MATCHES "^3\\.[0-4][\\.0-9A-Za-z]*")
+            llvm_map_components_to_libraries(tmplibs ${LLVM_FIND_COMPONENTS})
+        else()
+            llvm_map_components_to_libnames(tmplibs ${LLVM_FIND_COMPONENTS})
+        endif()
         if(MSVC)
             foreach(lib ${tmplibs})
                 list(APPEND LLVM_LIBRARIES "${LLVM_LIBRARY_DIRS}/${CMAKE_STATIC_LIBRARY_PREFIX}${lib}${CMAKE_STATIC_LIBRARY_SUFFIX}")
@@ -115,23 +136,19 @@ else()
     llvm_set(INCLUDE_DIRS includedir)
     llvm_set(ROOT_DIR prefix)
 
-    if(${LLVM_VERSION_STRING} MATCHES "3.[0-4][A-Za-z]*")
-        # Versions below 3.5 do not supoort component lto
-        list(REMOVE_ITEM LLVM_FIND_COMPONENTS "lto" index)
+    if(${LLVM_VERSION_STRING} MATCHES "^3\\.[0-2][\\.0-9A-Za-z]*")
+        # Versions below 3.3 do not support components objcarcopts, option
+        list(REMOVE_ITEM LLVM_FIND_COMPONENTS "objcarcopts" index)
+        list(REMOVE_ITEM LLVM_FIND_COMPONENTS "option" index)
     endif()
-    if(${LLVM_VERSION_STRING} MATCHES "3.0[A-Za-z]*")
-        # Version 3.0 does not support component all-targets
-        llvm_set(TARGETS_TO_BUILD targets-built)
-        string(REGEX MATCHALL "[^ ]+" LLVM_TARGETS_TO_BUILD ${LLVM_TARGETS_TO_BUILD})
-        list(REMOVE_ITEM LLVM_FIND_COMPONENTS "all-targets" index)
-        list(APPEND LLVM_FIND_COMPONENTS ${LLVM_TARGETS_TO_BUILD})
-    else()
-        # Version 3.1+ does not supoort component backend
-        list(REMOVE_ITEM LLVM_FIND_COMPONENTS "backend" index)
+    if(${LLVM_VERSION_STRING} MATCHES "^3\\.[0-4][\\.0-9A-Za-z]*")
+        # Versions below 3.5 do not support components lto, profiledata
+        list(REMOVE_ITEM LLVM_FIND_COMPONENTS "lto" index)
+        list(REMOVE_ITEM LLVM_FIND_COMPONENTS "profiledata" index)
     endif()
 
     llvm_set(LDFLAGS ldflags)
-    if(NOT ${LLVM_VERSION_STRING} MATCHES "3.[0-4][A-Za-z]*")
+    if(NOT ${LLVM_VERSION_STRING} MATCHES "^3\\.[0-4][\\.0-9A-Za-z]*")
         # In LLVM 3.5+, the system library dependencies (e.g. "-lz") are accessed
         # using the separate "--system-libs" flag.
         llvm_set(SYSTEM_LIBS system-libs)
@@ -143,7 +160,7 @@ endif()
 
 # On CMake builds of LLVM, the output of llvm-config --cxxflags does not
 # include -fno-rtti, leading to linker errors. Be sure to add it.
-if(CMAKE_COMPILER_IS_GNUCXX OR ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang"))
+if(CMAKE_COMPILER_IS_GNUCXX OR (${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang"))
     if(NOT ${LLVM_CXXFLAGS} MATCHES "-fno-rtti")
         set(LLVM_CXXFLAGS "${LLVM_CXXFLAGS} -fno-rtti")
     endif()

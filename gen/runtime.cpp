@@ -88,7 +88,7 @@ static void checkForImplicitGCCall(const Loc &loc, const char *name)
             "_d_newarrayiT",
             "_d_newarraymT",
             "_d_newarraymiT",
-            "_d_newarrayvT",
+            "_d_newarrayU",
             "_d_newclass",
         };
 
@@ -245,17 +245,18 @@ static void LLVM_D_BuildRuntimeModule()
     LLType* wstringTy = DtoType(Type::twchar->arrayOf());
     LLType* dstringTy = DtoType(Type::tdchar->arrayOf());
 
+    // Ensure that the declarations exist before creating llvm types for them.
     ensureDecl(ClassDeclaration::object, "Object");
-    LLType* objectTy = DtoType(ClassDeclaration::object->type);
     ensureDecl(Type::typeinfoclass, "TypeInfo_Class");
-    LLType* classInfoTy = DtoType(Type::typeinfoclass->type);
     ensureDecl(Type::dtypeinfo, "DTypeInfo");
-    LLType* typeInfoTy = DtoType(Type::dtypeinfo->type);
     ensureDecl(Type::typeinfoassociativearray, "TypeInfo_AssociativeArray");
-    LLType* aaTypeInfoTy = DtoType(Type::typeinfoassociativearray->type);
     ensureDecl(Module::moduleinfo, "ModuleInfo");
-    LLType* moduleInfoPtrTy = getPtrToType(DtoType(Module::moduleinfo->type));
 
+    LLType* objectTy = DtoType(ClassDeclaration::object->type);
+    LLType* classInfoTy = DtoType(Type::typeinfoclass->type);
+    LLType* typeInfoTy = DtoType(Type::dtypeinfo->type);
+    LLType* aaTypeInfoTy = DtoType(Type::typeinfoassociativearray->type);
+    LLType* moduleInfoPtrTy = getPtrToType(DtoType(Module::moduleinfo->type));
     LLType* aaTy = rt_ptr(LLStructType::get(gIR->context()));
 
     /////////////////////////////////////////////////////////////////////////////////////
@@ -357,25 +358,25 @@ static void LLVM_D_BuildRuntimeModule()
     /////////////////////////////////////////////////////////////////////////////////////
 
     // void _d_assert( char[] file, uint line )
+    // void _d_arraybounds(ModuleInfo* m, uint line)
     {
         llvm::StringRef fname("_d_assert");
+        llvm::StringRef fname2("_d_arraybounds");
         LLType *types[] = { stringTy, intTy };
         LLFunctionType* fty = llvm::FunctionType::get(voidTy, types, false);
         llvm::Function::Create(fty, llvm::GlobalValue::ExternalLinkage, fname, M);
+        llvm::Function::Create(fty, llvm::GlobalValue::ExternalLinkage, fname2, M);
     }
 
-    // void _d_array_bounds(ModuleInfo* m, uint line)
     // void _d_switch_error(ModuleInfo* m, uint line)
     {
-        llvm::StringRef fname("_d_array_bounds");
-        llvm::StringRef fname2("_d_switch_error");
+        llvm::StringRef fname("_d_switch_error");
         LLType *types[] = {
             moduleInfoPtrTy,
             intTy
         };
         LLFunctionType* fty = llvm::FunctionType::get(voidTy, types, false);
         llvm::Function::Create(fty, llvm::GlobalValue::ExternalLinkage, fname, M);
-        llvm::Function::Create(fty, llvm::GlobalValue::ExternalLinkage, fname2, M);
     }
 
     // void _d_assert_msg(string msg, string file, uint line)
@@ -410,11 +411,11 @@ static void LLVM_D_BuildRuntimeModule()
     }
     // void[] _d_newarrayT(TypeInfo ti, size_t length)
     // void[] _d_newarrayiT(TypeInfo ti, size_t length)
-    // void[] _d_newarrayvT(TypeInfo ti, size_t length)
+    // void[] _d_newarrayU(TypeInfo ti, size_t length)
     {
         llvm::StringRef fname("_d_newarrayT");
         llvm::StringRef fname2("_d_newarrayiT");
-        llvm::StringRef fname3("_d_newarrayvT");
+        llvm::StringRef fname3("_d_newarrayU");
         LLType *types[] = { typeInfoTy, sizeTy };
         LLFunctionType* fty = llvm::FunctionType::get(voidArrayTy, types, false);
         llvm::Function::Create(fty, llvm::GlobalValue::ExternalLinkage, fname, M);
@@ -918,34 +919,6 @@ static void LLVM_D_BuildRuntimeModule()
     /////////////////////////////////////////////////////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////
 
-    // void _d_criticalenter(D_CRITICAL_SECTION *dcs)
-    // void _d_criticalexit(D_CRITICAL_SECTION *dcs)
-    {
-        llvm::StringRef fname("_d_criticalenter");
-        llvm::StringRef fname2("_d_criticalexit");
-        LLType *types[] = { rt_ptr(DtoMutexType()) };
-        LLFunctionType* fty = llvm::FunctionType::get(voidTy, types, false);
-        llvm::Function::Create(fty, llvm::GlobalValue::ExternalLinkage, fname, M);
-        llvm::Function::Create(fty, llvm::GlobalValue::ExternalLinkage, fname2, M);
-    }
-
-    // void _d_monitorenter(Object h)
-    // void _d_monitorexit(Object h)
-    {
-        llvm::StringRef fname("_d_monitorenter");
-        llvm::StringRef fname2("_d_monitorexit");
-        LLType *types[] = { objectTy };
-        LLFunctionType* fty = llvm::FunctionType::get(voidTy, types, false);
-        llvm::Function::Create(fty, llvm::GlobalValue::ExternalLinkage, fname, M)
-            ->setAttributes(Attr_1_NoCapture);
-        llvm::Function::Create(fty, llvm::GlobalValue::ExternalLinkage, fname2, M)
-            ->setAttributes(Attr_1_NoCapture);
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////
-    /////////////////////////////////////////////////////////////////////////////////////
-    /////////////////////////////////////////////////////////////////////////////////////
-
     // int _d_eh_personality(int ver, int actions, ulong eh_class, ptr eh_info, ptr context)
     {
         llvm::StringRef fname("_d_eh_personality");
@@ -988,13 +961,15 @@ static void LLVM_D_BuildRuntimeModule()
             gABI->mangleForLLVM("_D9invariant12_d_invariantFC6ObjectZv", LINKd),
             M
         );
+        assert(dty->ctype);
+        IrFuncTy &irFty = dty->ctype->getIrFuncTy();
         gABI->newFunctionType(dty);
-        gABI->rewriteFunctionType(dty, dty->irFty);
+        gABI->rewriteFunctionType(dty, irFty);
         gABI->doneWithFunctionType();
 #if LDC_LLVM_VER < 303
-        fn->addAttribute(1, dty->irFty.args[0]->attrs);
+        fn->addAttribute(1, irFty.args[0]->attrs);
 #else
-        fn->addAttributes(1, llvm::AttributeSet::get(gIR->context(), 1, dty->irFty.args[0]->attrs));
+        fn->addAttributes(1, llvm::AttributeSet::get(gIR->context(), 1, irFty.args[0]->attrs));
 #endif
         fn->setCallingConv(gABI->callingConv(LINKd));
     }

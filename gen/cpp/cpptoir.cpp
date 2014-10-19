@@ -19,11 +19,11 @@
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Frontend/ASTUnit.h"
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include <memory>
 
 namespace cpp
 {
@@ -232,17 +232,17 @@ llvm::Constant * LangPlugin::createInitializerConstant(IrAggr *irAggr,
 
 void FuncDeclaration::toResolveFunction()
 {
-    if (ir.resolved) return;
-    ir.resolved = true;
-    ir.declared = true;
+    if (ir.isResolved()) return;
+    ir.setResolved();
+    ir.setDeclared();
 
     DtoFunctionType(this);
 
     auto sym = llvm::cast<llvm::Function>
                 (calypso.AB->GetAddrOfGlobal(FD));
 
-    ir.irFunc = new IrFunction(this);
-    ir.irFunc->func = llvm::cast<llvm::Function>
+    auto irFunc = getIrFunc(this, true);
+    irFunc->func = llvm::cast<llvm::Function>
                 (gIR->module->getOrInsertFunction(
                         sym->getName(),
                         sym->getFunctionType(),

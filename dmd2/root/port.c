@@ -1,7 +1,11 @@
-// Copyright (c) 1999-2012 by Digital Mars
-// All Rights Reserved
-// written by Walter Bright
-// http://www.digitalmars.com
+
+/* Copyright (c) 1999-2014 by Digital Mars
+ * All Rights Reserved, written by Walter Bright
+ * http://www.digitalmars.com
+ * Distributed under the Boost Software License, Version 1.0.
+ * (See accompanying file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
+ * https://github.com/D-Programming-Language/dmd/blob/master/src/root/port.c
+ */
 
 #include "port.h"
 
@@ -71,6 +75,11 @@ int Port::isSignallingNan(longdouble r)
 int Port::isInfinity(double r)
 {
     return (::fpclassify(r) == FP_INFINITE);
+}
+
+longdouble Port::sqrt(longdouble x)
+{
+    return ::sqrtl(x);
 }
 
 longdouble Port::fmodl(longdouble x, longdouble y)
@@ -168,16 +177,24 @@ static PortInitializer portinitializer;
 
 PortInitializer::PortInitializer()
 {
+#if IN_LLVM
+    Port::nan = std::numeric_limits<double>::quiet_NaN();
+    Port::ldbl_nan = std::numeric_limits<double>::quiet_NaN();
+    Port::snan = std::numeric_limits<double>::signaling_NaN();
+    Port::infinity = std::numeric_limits<double>::infinity();
+    Port::ldbl_infinity = std::numeric_limits<double>::infinity();
+#else
     union {
         unsigned long ul[2];
         double d;
-    } nan = {{ 0, 0x7FF80000 }};
+    } nan = { { 0, 0x7FF80000 } };
 
     Port::nan = nan.d;
     Port::ldbl_nan = ld_qnan;
     Port::snan = ld_snan;
     Port::infinity = std::numeric_limits<double>::infinity();
     Port::ldbl_infinity = ld_inf;
+#endif
 }
 
 int Port::isNan(double r)
@@ -208,6 +225,11 @@ int Port::isSignallingNan(longdouble r)
 int Port::isInfinity(double r)
 {
     return (::_fpclass(r) & (_FPCLASS_NINF | _FPCLASS_PINF));
+}
+
+longdouble Port::sqrt(longdouble x)
+{
+    return ::sqrtl(x);
 }
 
 longdouble Port::fmodl(longdouble x, longdouble y)
@@ -248,10 +270,16 @@ double Port::strtod(const char *p, char **endp)
     return ::strtod(p, endp);
 }
 
-// See backend/strtold.c.
+// from backend/strtold.c, renamed to avoid clash with decl in stdlib.h
+longdouble strtold_dm(const char *p,char **endp);
+
 longdouble Port::strtold(const char *p, char **endp)
 {
+#if IN_LLVM
     return ::strtold(p, endp);
+#else
+    return ::strtold_dm(p, endp);
+#endif
 }
 
 #endif
@@ -344,6 +372,11 @@ int Port::isSignallingNan(longdouble r)
 int Port::isInfinity(double r)
 {
     return isinf(r);
+}
+
+longdouble Port::sqrt(longdouble x)
+{
+    return ::sqrtl(x);
 }
 
 longdouble Port::fmodl(longdouble x, longdouble y)
@@ -629,6 +662,11 @@ int Port::isInfinity(double r)
 #endif
 }
 
+longdouble Port::sqrt(longdouble x)
+{
+    return ::sqrtl(x);
+}
+
 longdouble Port::fmodl(longdouble x, longdouble y)
 {
 #if __FreeBSD__ && __FreeBSD_version < 800000 || __OpenBSD__
@@ -808,6 +846,11 @@ int Port::isSignallingNan(longdouble r)
 int Port::isInfinity(double r)
 {
     return isinf(r);
+}
+
+longdouble Port::sqrt(longdouble x)
+{
+    return ::sqrtl(x);
 }
 
 longdouble Port::fmodl(longdouble x, longdouble y)

@@ -1,12 +1,13 @@
 
-// Compiler implementation of the D programming language
-// Copyright (c) 1999-2009 by Digital Mars
-// All Rights Reserved
-// written by Walter Bright
-// http://www.digitalmars.com
-// License for redistribution is by either the Artistic License
-// in artistic.txt, or the GNU General Public License in gnu.txt.
-// See the included readme.txt for details.
+/* Compiler implementation of the D programming language
+ * Copyright (c) 1999-2014 by Digital Mars
+ * All Rights Reserved
+ * written by Walter Bright
+ * http://www.digitalmars.com
+ * Distributed under the Boost Software License, Version 1.0.
+ * http://www.boost.org/LICENSE_1_0.txt
+ * https://github.com/D-Programming-Language/dmd/blob/master/src/builtin.c
+ */
 
 #include <stdio.h>
 #include <assert.h>
@@ -72,7 +73,7 @@ Expression *eval_sqrt(Loc loc, FuncDeclaration *fd, Expressions *arguments)
 {
     Expression *arg0 = (*arguments)[0];
     assert(arg0->op == TOKfloat64);
-    return new RealExp(loc, sqrtl(arg0->toReal()), arg0->type);
+    return new RealExp(loc, Port::sqrt(arg0->toReal()), arg0->type);
 }
 
 Expression *eval_fabs(Loc loc, FuncDeclaration *fd, Expressions *arguments)
@@ -124,6 +125,38 @@ static inline int getBitsizeOfType(Loc loc, Type *type)
           break;
     }
     return 32; // in case of error
+}
+
+Expression *eval_llvmsin(Loc loc, FuncDeclaration *fd, Expressions *arguments)
+{
+    Type* type = getTypeOfOverloadedIntrinsic(fd);
+    Expression *arg0 = (*arguments)[0];
+    assert(arg0->op == TOKfloat64);
+    return new RealExp(loc, sinl(arg0->toReal()), type);
+}
+
+Expression *eval_llvmcos(Loc loc, FuncDeclaration *fd, Expressions *arguments)
+{
+    Type* type = getTypeOfOverloadedIntrinsic(fd);
+    Expression *arg0 = (*arguments)[0];
+    assert(arg0->op == TOKfloat64);
+    return new RealExp(loc, cosl(arg0->toReal()), type);
+}
+
+Expression *eval_llvmsqrt(Loc loc, FuncDeclaration *fd, Expressions *arguments)
+{
+    Type* type = getTypeOfOverloadedIntrinsic(fd);
+    Expression *arg0 = (*arguments)[0];
+    assert(arg0->op == TOKfloat64);
+    return new RealExp(loc, sqrtl(arg0->toReal()), type);
+}
+
+Expression *eval_llvmfabs(Loc loc, FuncDeclaration *fd, Expressions *arguments)
+{
+    Type* type = getTypeOfOverloadedIntrinsic(fd);
+    Expression *arg0 = (*arguments)[0];
+    assert(arg0->op == TOKfloat64);
+    return new RealExp(loc, fabsl(arg0->toReal()), type);
 }
 
 Expression *eval_cttz(Loc loc, FuncDeclaration *fd, Expressions *arguments)
@@ -185,7 +218,7 @@ Expression *eval_bswap(Loc loc, FuncDeclaration *fd, Expressions *arguments)
     uinteger_t n = arg0->toInteger();
     #define BYTEMASK  0x00FF00FF00FF00FFLL
     #define SHORTMASK 0x0000FFFF0000FFFFLL
-    #define INTMASK 0x0000FFFF0000FFFFLL
+    #define INTMASK 0x00000000FFFFFFFFLL
     switch (type->toBasetype()->ty)
     {
       case Tint64:
@@ -220,13 +253,13 @@ Expression *eval_ctpop(Loc loc, FuncDeclaration *fd, Expressions *arguments)
     Expression *arg0 = (*arguments)[0];
     assert(arg0->op == TOKint64);
     uinteger_t n = arg0->toInteger();
-    n = n - ((n >> 1) & 0x5555555555555555);
-    n = (n & 0x3333333333333333) + ((n >> 2) & 0x3333333333333333);
-    n = n  + ((n >> 4) & 0x0F0F0F0F0F0F0F0F);
-    n = n + (n >> 8);
-    n = n + (n >> 16);
-    n = n + (n >> 32);
-    return new IntegerExp(loc, n, type);
+    int cnt = 0;
+    while (n)
+    {
+        cnt += (n & 1);
+        n >>= 1;
+    }
+    return new IntegerExp(loc, cnt, type);
 }
 #else
 
@@ -284,83 +317,109 @@ Expression *eval_bswap(Loc loc, FuncDeclaration *fd, Expressions *arguments)
 void builtin_init()
 {
 #if IN_LLVM
-    builtins._init(67); // Prime number like default value
+    builtins._init(89); // Prime number like default value
 #else
     builtins._init(45);
 #endif
 
-    // @safe pure nothrow real function(real)
-    add_builtin("_D4core4math3sinFNaNbNfeZe", &eval_sin);
-    add_builtin("_D4core4math3cosFNaNbNfeZe", &eval_cos);
-    add_builtin("_D4core4math3tanFNaNbNfeZe", &eval_tan);
-    add_builtin("_D4core4math4sqrtFNaNbNfeZe", &eval_sqrt);
-    add_builtin("_D4core4math4fabsFNaNbNfeZe", &eval_fabs);
-    add_builtin("_D4core4math5expm1FNaNbNfeZe", &eval_unimp);
-    add_builtin("_D4core4math4exp21FNaNbNfeZe", &eval_unimp);
+    // @safe @nogc pure nothrow real function(real)
+    add_builtin("_D4core4math3sinFNaNbNiNfeZe", &eval_sin);
+    add_builtin("_D4core4math3cosFNaNbNiNfeZe", &eval_cos);
+    add_builtin("_D4core4math3tanFNaNbNiNfeZe", &eval_tan);
+    add_builtin("_D4core4math4sqrtFNaNbNiNfeZe", &eval_sqrt);
+    add_builtin("_D4core4math4fabsFNaNbNiNfeZe", &eval_fabs);
+    add_builtin("_D4core4math5expm1FNaNbNiNfeZe", &eval_unimp);
+    add_builtin("_D4core4math4exp21FNaNbNiNfeZe", &eval_unimp);
 
-    // @trusted pure nothrow real function(real)
-    add_builtin("_D4core4math3sinFNaNbNeeZe", &eval_sin);
-    add_builtin("_D4core4math3cosFNaNbNeeZe", &eval_cos);
-    add_builtin("_D4core4math3tanFNaNbNeeZe", &eval_tan);
-    add_builtin("_D4core4math4sqrtFNaNbNeeZe", &eval_sqrt);
-    add_builtin("_D4core4math4fabsFNaNbNeeZe", &eval_fabs);
-    add_builtin("_D4core4math5expm1FNaNbNeeZe", &eval_unimp);
-    add_builtin("_D4core4math4exp21FNaNbNeeZe", &eval_unimp);
+    // @trusted @nogc pure nothrow real function(real)
+    add_builtin("_D4core4math3sinFNaNbNiNeeZe", &eval_sin);
+    add_builtin("_D4core4math3cosFNaNbNiNeeZe", &eval_cos);
+    add_builtin("_D4core4math3tanFNaNbNiNeeZe", &eval_tan);
+    add_builtin("_D4core4math4sqrtFNaNbNiNeeZe", &eval_sqrt);
+    add_builtin("_D4core4math4fabsFNaNbNiNeeZe", &eval_fabs);
+    add_builtin("_D4core4math5expm1FNaNbNiNeeZe", &eval_unimp);
+    add_builtin("_D4core4math4exp21FNaNbNiNeeZe", &eval_unimp);
 
-    // @safe pure nothrow double function(double)
-    add_builtin("_D4core4math4sqrtFNaNbNfdZd", &eval_sqrt);
-    // @safe pure nothrow float function(float)
-    add_builtin("_D4core4math4sqrtFNaNbNffZf", &eval_sqrt);
+    // @safe @nogc pure nothrow double function(double)
+    add_builtin("_D4core4math4sqrtFNaNbNiNfdZd", &eval_sqrt);
+    // @safe @nogc pure nothrow float function(float)
+    add_builtin("_D4core4math4sqrtFNaNbNiNffZf", &eval_sqrt);
 
-    // @safe pure nothrow real function(real, real)
-    add_builtin("_D4core4math5atan2FNaNbNfeeZe", &eval_unimp);
-    add_builtin("_D4core4math4yl2xFNaNbNfeeZe", &eval_unimp);
-    add_builtin("_D4core4math6yl2xp1FNaNbNfeeZe", &eval_unimp);
+    // @safe @nogc pure nothrow real function(real, real)
+    add_builtin("_D4core4math5atan2FNaNbNiNfeeZe", &eval_unimp);
+    add_builtin("_D4core4math4yl2xFNaNbNiNfeeZe", &eval_unimp);
+    add_builtin("_D4core4math6yl2xp1FNaNbNiNfeeZe", &eval_unimp);
 
-    // @safe pure nothrow long function(real)
-    add_builtin("_D4core4math6rndtolFNaNbNfeZl", &eval_unimp);
+    // @safe @nogc pure nothrow long function(real)
+    add_builtin("_D4core4math6rndtolFNaNbNiNfeZl", &eval_unimp);
 
-    // @safe pure nothrow real function(real)
-    add_builtin("_D3std4math3sinFNaNbNfeZe", &eval_sin);
-    add_builtin("_D3std4math3cosFNaNbNfeZe", &eval_cos);
-    add_builtin("_D3std4math3tanFNaNbNfeZe", &eval_tan);
-    add_builtin("_D3std4math4sqrtFNaNbNfeZe", &eval_sqrt);
-    add_builtin("_D3std4math4fabsFNaNbNfeZe", &eval_fabs);
-    add_builtin("_D3std4math5expm1FNaNbNfeZe", &eval_unimp);
-    add_builtin("_D3std4math4exp21FNaNbNfeZe", &eval_unimp);
+    // @safe @nogc pure nothrow real function(real)
+    add_builtin("_D3std4math3sinFNaNbNiNfeZe", &eval_sin);
+    add_builtin("_D3std4math3cosFNaNbNiNfeZe", &eval_cos);
+    add_builtin("_D3std4math3tanFNaNbNiNfeZe", &eval_tan);
+    add_builtin("_D3std4math4sqrtFNaNbNiNfeZe", &eval_sqrt);
+    add_builtin("_D3std4math4fabsFNaNbNiNfeZe", &eval_fabs);
+    add_builtin("_D3std4math5expm1FNaNbNiNfeZe", &eval_unimp);
+    add_builtin("_D3std4math4exp21FNaNbNiNfeZe", &eval_unimp);
 
-    // @trusted pure nothrow real function(real)
-    add_builtin("_D3std4math3sinFNaNbNeeZe", &eval_sin);
-    add_builtin("_D3std4math3cosFNaNbNeeZe", &eval_cos);
-    add_builtin("_D3std4math3tanFNaNbNeeZe", &eval_tan);
-    add_builtin("_D3std4math4sqrtFNaNbNeeZe", &eval_sqrt);
-    add_builtin("_D3std4math4fabsFNaNbNeeZe", &eval_fabs);
-    add_builtin("_D3std4math5expm1FNaNbNeeZe", &eval_unimp);
-    add_builtin("_D3std4math4exp21FNaNbNeeZe", &eval_unimp);
+    // @trusted @nogc pure nothrow real function(real)
+    add_builtin("_D3std4math3sinFNaNbNiNeeZe", &eval_sin);
+    add_builtin("_D3std4math3cosFNaNbNiNeeZe", &eval_cos);
+    add_builtin("_D3std4math3tanFNaNbNiNeeZe", &eval_tan);
+    add_builtin("_D3std4math4sqrtFNaNbNiNeeZe", &eval_sqrt);
+    add_builtin("_D3std4math4fabsFNaNbNiNeeZe", &eval_fabs);
+    add_builtin("_D3std4math5expm1FNaNbNiNeeZe", &eval_unimp);
+    add_builtin("_D3std4math4exp21FNaNbNiNeeZe", &eval_unimp);
 
-    // @safe pure nothrow double function(double)
-    add_builtin("_D3std4math4sqrtFNaNbNfdZd", &eval_sqrt);
-    // @safe pure nothrow float function(float)
-    add_builtin("_D3std4math4sqrtFNaNbNffZf", &eval_sqrt);
+    // @safe @nogc pure nothrow double function(double)
+    add_builtin("_D3std4math4sqrtFNaNbNiNfdZd", &eval_sqrt);
+    // @safe @nogc pure nothrow float function(float)
+    add_builtin("_D3std4math4sqrtFNaNbNiNffZf", &eval_sqrt);
 
-    // @safe pure nothrow real function(real, real)
-    add_builtin("_D3std4math5atan2FNaNbNfeeZe", &eval_unimp);
-    add_builtin("_D3std4math4yl2xFNaNbNfeeZe", &eval_unimp);
-    add_builtin("_D3std4math6yl2xp1FNaNbNfeeZe", &eval_unimp);
+    // @safe @nogc pure nothrow real function(real, real)
+    add_builtin("_D3std4math5atan2FNaNbNiNfeeZe", &eval_unimp);
+    add_builtin("_D3std4math4yl2xFNaNbNiNfeeZe", &eval_unimp);
+    add_builtin("_D3std4math6yl2xp1FNaNbNiNfeeZe", &eval_unimp);
 
-    // @safe pure nothrow long function(real)
-    add_builtin("_D3std4math6rndtolFNaNbNfeZl", &eval_unimp);
+    // @safe @nogc pure nothrow long function(real)
+    add_builtin("_D3std4math6rndtolFNaNbNiNfeZl", &eval_unimp);
 
 #if IN_LLVM
+    // intrinsic llvm.sin.f32/f64/f80/f128/ppcf128
+    add_builtin("llvm.sin.f32", &eval_llvmsin);
+    add_builtin("llvm.sin.f64", &eval_llvmsin);
+    add_builtin("llvm.sin.f80", &eval_llvmsin);
+    add_builtin("llvm.sin.f128", &eval_llvmsin);
+    add_builtin("llvm.sin.ppcf128", &eval_llvmsin);
+
+    // intrinsic llvm.cos.f32/f64/f80/f128/ppcf128
+    add_builtin("llvm.cos.f32", &eval_llvmcos);
+    add_builtin("llvm.cos.f64", &eval_llvmcos);
+    add_builtin("llvm.cos.f80", &eval_llvmcos);
+    add_builtin("llvm.cos.f128", &eval_llvmcos);
+    add_builtin("llvm.cos.ppcf128", &eval_llvmcos);
+
+    // intrinsic llvm.sqrt.f32/f64/f80/f128/ppcf128
+    add_builtin("llvm.sqrt.f32", &eval_llvmsqrt);
+    add_builtin("llvm.sqrt.f64", &eval_llvmsqrt);
+    add_builtin("llvm.sqrt.f80", &eval_llvmsqrt);
+    add_builtin("llvm.sqrt.f128", &eval_llvmsqrt);
+    add_builtin("llvm.sqrt.ppcf128", &eval_llvmsqrt);
+
+    // intrinsic llvm.fabs.f32/f64/f80/f128/ppcf128
+    add_builtin("llvm.fabs.f32", &eval_llvmfabs);
+    add_builtin("llvm.fabs.f64", &eval_llvmfabs);
+    add_builtin("llvm.fabs.f80", &eval_llvmfabs);
+    add_builtin("llvm.fabs.f128", &eval_llvmfabs);
+    add_builtin("llvm.fabs.ppcf128", &eval_llvmfabs);
+
     // intrinsic llvm.bswap.i16/i32/i64/i128
-    add_builtin("llvm.bswap.i#", &eval_bswap);
     add_builtin("llvm.bswap.i16", &eval_bswap);
     add_builtin("llvm.bswap.i32", &eval_bswap);
     add_builtin("llvm.bswap.i64", &eval_bswap);
     add_builtin("llvm.bswap.i128", &eval_bswap);
 
     // intrinsic llvm.cttz.i8/i16/i32/i64/i128
-    add_builtin("llvm.cttz.i#", &eval_cttz);
     add_builtin("llvm.cttz.i8", &eval_cttz);
     add_builtin("llvm.cttz.i16", &eval_cttz);
     add_builtin("llvm.cttz.i32", &eval_cttz);
@@ -368,7 +427,6 @@ void builtin_init()
     add_builtin("llvm.cttz.i128", &eval_cttz);
 
     // intrinsic llvm.ctlz.i8/i16/i32/i64/i128
-    add_builtin("llvm.ctlz.i#", &eval_ctlz);
     add_builtin("llvm.ctlz.i8", &eval_ctlz);
     add_builtin("llvm.ctlz.i16", &eval_ctlz);
     add_builtin("llvm.ctlz.i32", &eval_ctlz);
@@ -376,23 +434,23 @@ void builtin_init()
     add_builtin("llvm.ctlz.i128", &eval_ctlz);
 
     // intrinsic llvm.ctpop.i8/i16/i32/i64/i128
-    add_builtin("llvm.ctpop.i#", &eval_ctpop);
     add_builtin("llvm.ctpop.i8", &eval_ctpop);
     add_builtin("llvm.ctpop.i16", &eval_ctpop);
     add_builtin("llvm.ctpop.i32", &eval_ctpop);
     add_builtin("llvm.ctpop.i64", &eval_ctpop);
     add_builtin("llvm.ctpop.i128", &eval_ctpop);
 #else
-    // @safe pure nothrow int function(uint)
-    add_builtin("_D4core5bitop3bsfFNaNbNfkZi", &eval_bsf);
-    add_builtin("_D4core5bitop3bsrFNaNbNfkZi", &eval_bsr);
 
-    // @safe pure nothrow int function(ulong)
-    add_builtin("_D4core5bitop3bsfFNaNbNfmZi", &eval_bsf);
-    add_builtin("_D4core5bitop3bsrFNaNbNfmZi", &eval_bsr);
+    // @safe @nogc pure nothrow int function(uint)
+    add_builtin("_D4core5bitop3bsfFNaNbNiNfkZi", &eval_bsf);
+    add_builtin("_D4core5bitop3bsrFNaNbNiNfkZi", &eval_bsr);
 
-    // @safe pure nothrow uint function(uint)
-    add_builtin("_D4core5bitop5bswapFNaNbNfkZk", &eval_bswap);
+    // @safe @nogc pure nothrow int function(ulong)
+    add_builtin("_D4core5bitop3bsfFNaNbNiNfmZi", &eval_bsf);
+    add_builtin("_D4core5bitop3bsrFNaNbNiNfmZi", &eval_bsr);
+
+    // @safe @nogc pure nothrow uint function(uint)
+    add_builtin("_D4core5bitop5bswapFNaNbNiNfkZk", &eval_bswap);
 #endif
 }
 
@@ -400,20 +458,14 @@ void builtin_init()
  * Determine if function is a builtin one that we can
  * evaluate at compile time.
  */
-BUILTIN FuncDeclaration::isBuiltin()
+BUILTIN isBuiltin(FuncDeclaration *fd)
 {
-    if (builtin == BUILTINunknown)
+    if (fd->builtin == BUILTINunknown)
     {
-#if IN_LLVM
-        const char *name = llvmInternal == LLVMintrinsic ? intrinsicName.c_str()
-                                                         : mangleExact();
-        builtin_fp fp = builtin_lookup(name);
-#else
-        builtin_fp fp = builtin_lookup(mangleExact());
-#endif
-        builtin = fp ? BUILTINyes : BUILTINno;
+        builtin_fp fp = builtin_lookup(mangleExact(fd));
+        fd->builtin = fp ? BUILTINyes : BUILTINno;
     }
-    return builtin;
+    return fd->builtin;
 }
 
 /**************************************
@@ -425,13 +477,7 @@ Expression *eval_builtin(Loc loc, FuncDeclaration *fd, Expressions *arguments)
 {
     if (fd->builtin == BUILTINyes)
     {
-#if IN_LLVM
-        const char *name = fd->llvmInternal == LLVMintrinsic ? fd->intrinsicName.c_str()
-                                                             : fd->mangleExact();
-        builtin_fp fp = builtin_lookup(name);
-#else
-        builtin_fp fp = builtin_lookup(fd->mangleExact());
-#endif
+        builtin_fp fp = builtin_lookup(mangleExact(fd));
         assert(fp);
         return fp(loc, fd, arguments);
     }

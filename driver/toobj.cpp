@@ -65,10 +65,7 @@ static void codegenModule(llvm::TargetMachine &Target, llvm::Module& m,
     PassManager Passes;
 
 #if LDC_LLVM_VER >= 306
-    if (const DataLayout *DL = Target.getSubtargetImpl()->getDataLayout())
-        Passes.add(new DataLayoutPass(*DL));
-    else
-        Passes.add(new DataLayoutPass(&m));
+    Passes.add(new DataLayoutPass());
 #elif LDC_LLVM_VER == 305
     if (const DataLayout *DL = Target.getDataLayout())
         Passes.add(new DataLayoutPass(*DL));
@@ -129,12 +126,13 @@ void writeModule(llvm::Module* m, std::string filename)
     // run optimizer
     ldc_optimize_module(m);
 
+#if LDC_LLVM_VER >= 305
+    // Starting with LLVM 3.5 the integrated assembler can be used with MinGW.
+    bool const assembleExternally = false;
+#else
     // We don't use the integrated assembler with MinGW as it does not support
     // emitting DW2 exception handling tables.
     bool const assembleExternally = global.params.output_o &&
-#if LDC_LLVM_VER >= 305
-        global.params.targetTriple.isWindowsGNUEnvironment();
-#else
         global.params.targetTriple.getOS() == llvm::Triple::MinGW32;
 #endif
 

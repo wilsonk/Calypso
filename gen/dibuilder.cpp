@@ -1,6 +1,6 @@
 //===-- gen/dibuilder.h - Debug information builder -------------*- C++ -*-===//
 //
-//                         LDC – the LLVM D compiler
+//                         LDC â€“ the LLVM D compiler
 //
 // This file is distributed under the BSD-style LDC license. See the LICENSE
 // file for details.
@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "gen/dibuilder.h"
+#include "gen/functions.h"
 #include "gen/irstate.h"
 #include "gen/llvmhelpers.h"
 #include "gen/logger.h"
@@ -26,14 +27,14 @@
 Module *ldc::DIBuilder::getDefinedModule(Dsymbol *s)
 {
     // templates are defined in current module
-    if (DtoIsTemplateInstance(s, true))
+    if (DtoIsTemplateInstance(s))
     {
         return IR->dmodule;
     }
     // array operations as well
     else if (FuncDeclaration* fd = s->isFuncDeclaration())
     {
-        if (fd->isArrayOp == 1)
+        if (fd->isArrayOp && !isDruntimeArrayOp(fd))
             return IR->dmodule;
     }
     // otherwise use the symbol's module
@@ -63,9 +64,17 @@ llvm::DIDescriptor ldc::DIBuilder::GetCurrentScope()
     return fn->diLexicalBlocks.top();
 }
 
-void ldc::DIBuilder::Declare(llvm::Value *var, llvm::DIVariable divar)
+void ldc::DIBuilder::Declare(llvm::Value *var, llvm::DIVariable divar
+#if LDC_LLVM_VER >= 306
+    , llvm::DIExpression diexpr
+#endif
+    )
 {
-    llvm::Instruction *instr = DBuilder.insertDeclare(var, divar, IR->scopebb());
+    llvm::Instruction *instr = DBuilder.insertDeclare(var, divar,
+#if LDC_LLVM_VER >= 306
+        diexpr,
+#endif
+        IR->scopebb());
     instr->setDebugLoc(IR->ir->getCurrentDebugLocation());
 }
 
@@ -282,9 +291,9 @@ llvm::DIType ldc::DIBuilder::CreateCompositeType(Type *type)
     assert(sd);
 
     // Use the actual type associated with the declaration, ignoring any
-    // const/… wrappers.
+    // const/wrappers.
     LLType *T = DtoType(sd->type);
-    IrTypeAggr *ir = sd->type->irtype->isAggr();
+    IrTypeAggr *ir = sd->type->ctype->isAggr();
     assert(ir);
 
     if (static_cast<llvm::MDNode *>(ir->diCompositeType) != 0)
@@ -392,7 +401,7 @@ llvm::DIType ldc::DIBuilder::CreateArrayType(Type *type)
 
     assert(t->ty == Tarray && "Only arrays allowed for debug info in DIBuilder::CreateArrayType");
 
-    Loc loc(IR->dmodule, 0);
+    Loc loc(IR->dmodule, 0, 0);
     llvm::DIFile file = CreateFile(loc);
 
     llvm::Value *elems[] = {
@@ -459,7 +468,7 @@ ldc::DIFunctionType ldc::DIBuilder::CreateFunctionType(Type *type)
     TypeFunction *t = static_cast<TypeFunction*>(type);
     Type *retType = t->next;
 
-    Loc loc(IR->dmodule, 0);
+    Loc loc(IR->dmodule, 0, 0);
     llvm::DIFile file = CreateFile(loc);
 
     // Create "dummy" subroutine type for the return type
@@ -478,7 +487,7 @@ ldc::DIFunctionType ldc::DIBuilder::CreateDelegateType(Type *type)
     // FIXME: Implement
     TypeDelegate *t = static_cast<TypeDelegate*>(type);
 
-    Loc loc(IR->dmodule, 0);
+    Loc loc(IR->dmodule, 0, 0);
     llvm::DIFile file = CreateFile(loc);
 
     // Create "dummy" subroutine type for the return type
@@ -596,7 +605,7 @@ llvm::DISubprogram ldc::DIBuilder::EmitSubProgram(FuncDeclaration *fd)
     return DBuilder.createFunction(
         CU, // context
         fd->toPrettyChars(), // name
-        fd->mangleExact(), // linkage name
+        mangleExact(fd), // linkage name
         file, // file
         fd->loc.linnum, // line no
         DIFnType, // type
@@ -605,7 +614,7 @@ llvm::DISubprogram ldc::DIBuilder::EmitSubProgram(FuncDeclaration *fd)
         fd->loc.linnum, // FIXME: scope line
         0, // Flags
         false, // isOptimized
-        fd->ir.irFunc->func
+        getIrFunc(fd)->func
     );
 }
 
@@ -618,7 +627,7 @@ llvm::DISubprogram ldc::DIBuilder::EmitSubProgramInternal(llvm::StringRef pretty
     Logger::println("D to dwarf subprogram");
     LOG_SCOPE;
 
-    Loc loc(IR->dmodule, 0);
+    Loc loc(IR->dmodule, 0, 0);
     llvm::DIFile file(CreateFile(loc));
 
     // Create "dummy" subroutine type for the return type
@@ -657,7 +666,7 @@ void ldc::DIBuilder::EmitFuncStart(FuncDeclaration *fd)
     Logger::println("D to dwarf funcstart");
     LOG_SCOPE;
 
-    assert(static_cast<llvm::MDNode *>(fd->ir.irFunc->diSubprogram) != 0);
+    assert(static_cast<llvm::MDNode *>(getIrFunc(fd)->diSubprogram) != 0);
     EmitStopPoint(fd->loc.linnum);
 }
 
@@ -669,7 +678,7 @@ void ldc::DIBuilder::EmitFuncEnd(FuncDeclaration *fd)
     Logger::println("D to dwarf funcend");
     LOG_SCOPE;
 
-    assert(static_cast<llvm::MDNode *>(fd->ir.irFunc->diSubprogram) != 0);
+    assert(static_cast<llvm::MDNode *>(getIrFunc(fd)->diSubprogram) != 0);
 }
 
 void ldc::DIBuilder::EmitBlockStart(Loc& loc)
@@ -719,15 +728,25 @@ void ldc::DIBuilder::EmitStopPoint(unsigned ln)
 
 void ldc::DIBuilder::EmitValue(llvm::Value *val, VarDeclaration *vd)
 {
-    if (!global.params.symdebug || !vd->debugVariable)
+    llvm::DIVariable debugVariable = getIrVar(vd)->debugVariable;
+    if (!global.params.symdebug || !debugVariable)
         return;
 
-    llvm::Instruction *instr = DBuilder.insertDbgValueIntrinsic(val, 0, vd->debugVariable, IR->scopebb());
+    llvm::Instruction *instr = DBuilder.insertDbgValueIntrinsic(val, 0, debugVariable,
+#if LDC_LLVM_VER >= 306
+        DBuilder.createExpression(),
+#endif
+        IR->scopebb());
     instr->setDebugLoc(IR->ir->getCurrentDebugLocation());
 }
 
 void ldc::DIBuilder::EmitLocalVariable(llvm::Value *ll, VarDeclaration *vd,
-                           llvm::ArrayRef<llvm::Value *> addr)
+#if LDC_LLVM_VER >= 306
+                           llvm::ArrayRef<int64_t> addr
+#else
+                           llvm::ArrayRef<llvm::Value *> addr
+#endif
+                           )
 {
     if (!global.params.symdebug)
         return;
@@ -735,7 +754,8 @@ void ldc::DIBuilder::EmitLocalVariable(llvm::Value *ll, VarDeclaration *vd,
     Logger::println("D to dwarf local variable");
     LOG_SCOPE;
 
-    if (IR->func()->diSubprogram == vd->debugFunc) // ensure that the debug variable is created only once
+    IrVar *irVar = getIrVar(vd);
+    if (IR->func()->diSubprogram == irVar->debugFunc) // ensure that the debug variable is created only once
         return;
 
     // get type description
@@ -752,8 +772,10 @@ void ldc::DIBuilder::EmitLocalVariable(llvm::Value *ll, VarDeclaration *vd,
     else
         tag = llvm::dwarf::DW_TAG_auto_variable;
 
+#if LDC_LLVM_VER < 306
     if (addr.empty()) {
-        vd->debugVariable = DBuilder.createLocalVariable(
+#endif
+        irVar->debugVariable = DBuilder.createLocalVariable(
             tag, // tag
             GetCurrentScope(), // scope
             vd->toChars(), // name
@@ -762,8 +784,10 @@ void ldc::DIBuilder::EmitLocalVariable(llvm::Value *ll, VarDeclaration *vd,
             TD, // type
             true // preserve
         );
-    } else {
-        vd->debugVariable = DBuilder.createComplexVariable(
+#if LDC_LLVM_VER < 306
+    }
+    else {
+        irVar->debugVariable = DBuilder.createComplexVariable(
             tag, // tag
             GetCurrentScope(), // scope
             vd->toChars(), // name
@@ -773,10 +797,15 @@ void ldc::DIBuilder::EmitLocalVariable(llvm::Value *ll, VarDeclaration *vd,
             addr
         );
     }
-    vd->debugFunc = IR->func()->diSubprogram;
+    irVar->debugFunc = IR->func()->diSubprogram;
+#endif
 
     // declare
-    Declare(ll, vd->debugVariable);
+#if LDC_LLVM_VER >= 306
+    Declare(ll, irVar->debugVariable, addr.empty() ? DBuilder.createExpression() : DBuilder.createExpression(addr));
+#else
+    Declare(ll, irVar->debugVariable);
+#endif
 }
 
 llvm::DIGlobalVariable ldc::DIBuilder::EmitGlobalVariable(llvm::GlobalVariable *ll, VarDeclaration *vd)
@@ -790,9 +819,12 @@ llvm::DIGlobalVariable ldc::DIBuilder::EmitGlobalVariable(llvm::GlobalVariable *
     assert(vd->isDataseg() || (vd->storage_class & (STCconst | STCimmutable) && vd->init));
 
     return DBuilder.createGlobalVariable(
+#if LDC_LLVM_VER >= 306
+        llvm::DICompileUnit(GetCU()), // context
+#endif
         vd->toChars(), // name
 #if LDC_LLVM_VER >= 303
-        vd->mangle(), // linkage name
+        mangle(vd), // linkage name
 #endif
         CreateFile(vd->loc), // file
         vd->loc.linnum, // line num

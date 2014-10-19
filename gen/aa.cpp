@@ -93,18 +93,15 @@ DValue* DtoAAIndex(Loc& loc, Type* type, DValue* aa, DValue* key, bool lvalue)
 
         gIR->scope() = IRScope(failbb, okbb);
 
-        LLValue *moduleInfoSymbol = gIR->func()->decl->getModule()->moduleInfoSymbol();
-        LLType *moduleInfoType = DtoType(Module::moduleinfo->type);
-
         LLValue* args[] = {
-            // module param
-            DtoBitCast(moduleInfoSymbol, getPtrToType(moduleInfoType)),
+            // file param
+            DtoModuleFileName(gIR->func()->decl->getModule(), loc),
             // line param
             DtoConstUint(loc.linnum)
         };
 
         // call
-        llvm::Function* errorfn = LLVM_D_GetRuntimeFunction(loc, gIR->module, "_d_array_bounds");
+        llvm::Function* errorfn = LLVM_D_GetRuntimeFunction(loc, gIR->module, "_d_arraybounds");
         gIR->CreateCallOrInvoke(errorfn, args);
 
         // the function does not return
@@ -217,9 +214,9 @@ LLValue* DtoAAEquals(Loc& loc, TOK op, DValue* l, DValue* r)
     LLValue* abval = DtoBitCast(r->getRVal(), funcTy->getParamType(2));
     LLValue* aaTypeInfo = DtoTypeInfoOf(t);
     LLValue* res = gIR->CreateCallOrInvoke3(func, aaTypeInfo, aaval, abval, "aaEqRes").getInstruction();
-    res = gIR->ir->CreateICmpNE(res, DtoConstInt(0), "tmp");
+    res = gIR->ir->CreateICmpNE(res, DtoConstInt(0));
     if (op == TOKnotequal)
-        res = gIR->ir->CreateNot(res, "tmp");
+        res = gIR->ir->CreateNot(res);
     return res;
 }
 

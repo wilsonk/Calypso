@@ -132,7 +132,7 @@ public:
         IF_LOG Logger::println("LabelStatement::toNakedIR(): %s", stmt->loc.toChars());
         LOG_SCOPE;
 
-        printLabelName(irs->nakedAsm, irs->func()->decl->mangleExact(), stmt->ident->toChars());
+        printLabelName(irs->nakedAsm, mangleExact(irs->func()->decl), stmt->ident->toChars());
         irs->nakedAsm << ":";
 
         if (stmt->statement)
@@ -144,11 +144,10 @@ public:
 
 void DtoDefineNakedFunction(FuncDeclaration* fd)
 {
-    IF_LOG Logger::println("DtoDefineNakedFunction(%s)", fd->mangleExact());
+    IF_LOG Logger::println("DtoDefineNakedFunction(%s)", mangleExact(fd));
     LOG_SCOPE;
 
-    assert(fd->ir.irFunc);
-    gIR->functions.push_back(fd->ir.irFunc);
+    gIR->functions.push_back(getIrFunc(fd));
 
     // we need to do special processing on the body, since we only want
     // to allow actual inline asm blocks to reach the final asm output
@@ -159,7 +158,7 @@ void DtoDefineNakedFunction(FuncDeclaration* fd)
 
     // FIXME: could we perhaps use llvm asmwriter to give us these details ?
 
-    const char* mangle = fd->mangleExact();
+    const char* mangle = mangleExact(fd);
     std::ostringstream tmpstr;
 
     bool const isWin = global.params.targetTriple.isOSWindows();
@@ -263,7 +262,7 @@ void DtoDefineNakedFunction(FuncDeclaration* fd)
 
 void emitABIReturnAsmStmt(IRAsmBlock* asmblock, Loc& loc, FuncDeclaration* fdecl)
 {
-    IF_LOG Logger::println("emitABIReturnAsmStmt(%s)", fdecl->mangleExact());
+    IF_LOG Logger::println("emitABIReturnAsmStmt(%s)", mangleExact(fdecl));
     LOG_SCOPE;
 
     IRAsmStmt* as = new IRAsmStmt;
@@ -461,7 +460,7 @@ DValue * DtoInlineAsmExpr(Loc& loc, FuncDeclaration * fd, Expressions * argument
     for (size_t i = 2; i < n; i++)
     {
         e = static_cast<Expression*>(arguments->data[i]);
-        args.push_back(e->toElem(gIR)->getRVal());
+        args.push_back(toElem(e)->getRVal());
         argtypes.push_back(args.back()->getType());
     }
 

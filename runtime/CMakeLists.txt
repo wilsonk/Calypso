@@ -10,9 +10,8 @@ set(DMDFE_VERSION         ${D_VERSION}.${DMDFE_MINOR_VERSION}.${DMDFE_PATCH_VERS
 
 set(MULTILIB              OFF                                       CACHE BOOL    "Build both 32/64 bit runtime libraries")
 set(BUILD_BC_LIBS         OFF                                       CACHE BOOL    "Build the runtime as LLVM bitcode libraries")
-set(LIB_SUFFIX            ""                                        CACHE STRING  "'64' to install libraries into ${PREFIX}/lib64")
 set(INCLUDE_INSTALL_DIR   ${CMAKE_INSTALL_PREFIX}/include/d         CACHE PATH    "Path to install D modules to")
-set(BUILD_SHARED_LIBS     OFF                                       CACHE BOOL    "Whether to build the runtime as a shared library (*UNSUPPORTED*)")
+set(BUILD_SHARED_LIBS     OFF                                       CACHE BOOL    "Whether to build the runtime as a shared library")
 set(D_FLAGS               -w;-d                                     CACHE STRING  "Runtime build flags, separated by ;")
 set(D_FLAGS_DEBUG         -g                                        CACHE STRING  "Runtime build flags (debug libraries), separated by ;")
 set(D_FLAGS_RELEASE       -O3;-release                              CACHE STRING  "Runtime build flags (release libraries), separated by ;")
@@ -20,6 +19,10 @@ if(MSVC)
     set(LINK_WITH_MSVCRT  OFF                                       CACHE BOOL    "Link with MSVCRT.LIB instead of LIBCMT.LIB")
 endif()
 
+# Note: In the below building helpers, this is more fittingly called
+# ${path_suffix}. ${lib_suffix} refers to the library file suffix there
+# (e.g. -debug).
+set(LIB_SUFFIX "" CACHE STRING "'64' to install libraries into ${PREFIX}/lib64")
 
 set(CMAKE_INSTALL_LIBDIR ${CMAKE_INSTALL_PREFIX}/lib${LIB_SUFFIX})
 
@@ -34,6 +37,10 @@ else()
 endif()
 
 if(BUILD_SHARED_LIBS)
+    if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+        message(FATAL_ERROR "Shared libraries (BUILD_SHARED_LIBS) are only supported on Linux for the time being.")
+    endif()
+
     list(APPEND D_FLAGS -relocation-model=pic)
     set(D_LIBRARY_TYPE SHARED)
 else()
@@ -126,7 +133,9 @@ if(PHOBOS2_DIR)
     endif()
 
     file(GLOB PHOBOS2_D ${PHOBOS2_DIR}/std/*.d)
+    file(GLOB PHOBOS2_D_CONTAINER ${PHOBOS2_DIR}/std/container/*.d)
     file(GLOB PHOBOS2_D_DIGEST ${PHOBOS2_DIR}/std/digest/*.d)
+    file(GLOB PHOBOS2_D_EXPERIMENTAL ${PHOBOS2_DIR}/std/experimental/*.d)
     file(GLOB PHOBOS2_D_NET ${PHOBOS2_DIR}/std/net/*.d)
     file(GLOB_RECURSE PHOBOS2_D_INTERNAL ${PHOBOS2_DIR}/std/internal/*.d)
     file(GLOB PHOBOS2_D_C ${PHOBOS2_DIR}/std/c/*.d)
@@ -150,7 +159,9 @@ if(PHOBOS2_DIR)
         file(GLOB PHOBOS2_D_WIN ${PHOBOS2_DIR}/std/windows/*.d)
     endif()
     list(APPEND PHOBOS2_D
+            ${PHOBOS2_D_CONTAINER}
             ${PHOBOS2_D_DIGEST}
+            ${PHOBOS2_D_EXPERIMENTAL}
             ${PHOBOS2_D_NET}
             ${PHOBOS2_D_INTERNAL}
             ${PHOBOS2_D_WIN}
@@ -231,7 +242,7 @@ macro(dc input_d d_flags output_dir output_suffix outlist_o outlist_bc)
         set(output_root ${path}/${name})
     endif()
 
-    set(output_o ${PROJECT_BINARY_DIR}/${output_root}${output_suffix}${CMAKE_C_OUTPUT_EXTENSION})
+    set(output_o  ${PROJECT_BINARY_DIR}/${output_root}${output_suffix}${CMAKE_C_OUTPUT_EXTENSION})
     set(output_bc ${PROJECT_BINARY_DIR}/${output_root}${output_suffix}.bc)
     list(APPEND ${outlist_o} ${output_o})
     if(BUILD_BC_LIBS)
@@ -253,8 +264,8 @@ macro(dc input_d d_flags output_dir output_suffix outlist_o outlist_bc)
             # Building the std.range tests triggers an assertion error on
             # every LLVM release before 3.3. See PR15608.
             string(REPLACE "-O3" "-O1" cur_d_flags "${cur_d_flags}")
-        elseif(${LDC_LLVM_VER} LESS 304 AND "${input_d}" MATCHES "rt/util/container.d")
-            # Building the rt.util.container tests triggers a bug in the
+        elseif(${LDC_LLVM_VER} LESS 304 AND "${input_d}" MATCHES "rt/util/container/array.d")
+            # Building the rt.util.container.array tests triggers a bug in the
             # jump threading pass on every LLVM release before 3.4.
             # See PR17621.
             string(REPLACE "-O3" "-O1" cur_d_flags "${cur_d_flags}")
@@ -269,12 +280,14 @@ macro(dc input_d d_flags output_dir output_suffix outlist_o outlist_bc)
         set(outfiles ${output_o})
         set(dc_flags --output-o)
     endif()
+
     add_custom_command(
         OUTPUT
             ${outfiles}
         COMMAND ${LDC_EXE} ${dc_flags} -c -I${RUNTIME_DIR}/src -I${RUNTIME_DIR}/src/gc ${input_d} -of${output_o} ${cur_d_flags}
         WORKING_DIRECTORY ${PROJECT_PARENT_DIR}
         DEPENDS ${input_d}
+                ${LDC_EXE}
                 ${GCCBUILTINS}
                 ${PROJECT_BINARY_DIR}/../bin/${LDC_EXE}.conf
     )
@@ -288,7 +301,9 @@ macro(get_target_suffix lib_suffix path_suffix target_suffix)
     if(NOT "${lib_suffix}" STREQUAL "")
         set(${target_suffix} "${lib_suffix}")
     endif()
-    if(NOT "${path_suffix}" STREQUAL "")
+
+    # If LIB_SUFFIX is set there is always a suffix; leave it off for simplicity.
+    if(NOT "${path_suffix}" STREQUAL "" AND NOT "${path_suffix}" STREQUAL "${LIB_SUFFIX}")
         set(${target_suffix} "${${target_suffix}}_${path_suffix}")
     endif()
 endmacro()
@@ -588,8 +603,6 @@ endforeach()
 # to the linking command instead so that all tests are pulled in.
 
 macro(build_test_runner name_suffix d_flags c_flags)
-    # TODO: Implement weaker optimization flags for older LLVM versions.
-
     set(flags "${D_FLAGS};${d_flags};-unittest")
     if(BUILD_SHARED_LIBS)
         set(unittest_libs "")
@@ -605,7 +618,7 @@ macro(build_test_runner name_suffix d_flags c_flags)
         # Only build the unittest libraries when running the tests. Unfortunately,
         # I couldn't find an easier way to make a test depend on a CMake target than
         # just invoking the build command through the CMake executable.
-        set_target_properties(${unittest_libs} PROPERTIES EXCLUDE_FROM_ALL ON)
+        set_target_properties(${unittest_libs} PROPERTIES EXCLUDE_FROM_ALL ON EXCLUDE_FROM_DEFAULT_BUILD ON)
         foreach(l ${unittest_libs})
             add_test(build-${l} "${CMAKE_COMMAND}" --build ${CMAKE_BINARY_DIR} --target ${l})
         endforeach()
@@ -653,7 +666,7 @@ macro(build_test_runner name_suffix d_flags c_flags)
         )
 
         # See shared library case for explanation.
-        set_target_properties(${druntime-casm} PROPERTIES EXCLUDE_FROM_ALL ON)
+        set_target_properties(${druntime-casm} PROPERTIES EXCLUDE_FROM_ALL ON EXCLUDE_FROM_DEFAULT_BUILD ON)
         add_custom_target(druntime-ldc-unittest${name_suffix} DEPENDS ${druntime_o} ${druntime-casm})
         add_test(build-druntime-ldc-unittest${name_suffix} "${CMAKE_COMMAND}"
             --build ${CMAKE_BINARY_DIR} --target druntime-ldc-unittest${name_suffix})
@@ -684,7 +697,7 @@ macro(build_test_runner name_suffix d_flags c_flags)
                 ARCHIVE_OUTPUT_DIRECTORY    ${output_path}
             )
 
-            set_target_properties(${phobos2-casm} PROPERTIES EXCLUDE_FROM_ALL ON)
+            set_target_properties(${phobos2-casm} PROPERTIES EXCLUDE_FROM_ALL ON EXCLUDE_FROM_DEFAULT_BUILD ON)
             add_custom_target(phobos2-ldc-unittest${name_suffix} DEPENDS ${phobos2_o} ${phobos2-casm})
             add_test(build-phobos2-ldc-unittest${name_suffix} "${CMAKE_COMMAND}"
                 --build ${CMAKE_BINARY_DIR} --target phobos2-ldc-unittest${name_suffix})

@@ -48,10 +48,10 @@ LLGlobalVariable * IrAggr::getVtblSymbol()
 
     // create the initZ symbol
     std::string initname("_D");
-    initname.append(aggrdecl->mangle());
+    initname.append(mangle(aggrdecl));
     initname.append("6__vtblZ");
 
-    LLType* vtblTy = stripModifiers(type)->irtype->isClass()->getVtbl();
+    LLType* vtblTy = stripModifiers(type)->ctype->isClass()->getVtbl();
 
     vtbl = getOrCreateGlobal(aggrdecl->loc,
         *gIR->module, vtblTy, true, llvm::GlobalValue::ExternalLinkage, NULL, initname);
@@ -68,7 +68,7 @@ LLGlobalVariable * IrAggr::getClassInfoSymbol()
 
     // create the initZ symbol
     std::string initname("_D");
-    initname.append(aggrdecl->mangle());
+    initname.append(mangle(aggrdecl));
 
     if (aggrdecl->isInterfaceDeclaration())
         initname.append("11__InterfaceZ");
@@ -80,7 +80,7 @@ LLGlobalVariable * IrAggr::getClassInfoSymbol()
     // member.
     ClassDeclaration* cinfo = Type::typeinfoclass;
     DtoType(cinfo->type);
-    IrTypeClass* tc = stripModifiers(cinfo->type)->irtype->isClass();
+    IrTypeClass* tc = stripModifiers(cinfo->type)->ctype->isClass();
     assert(tc && "invalid ClassInfo type");
 
     // classinfos cannot be constants since they're used as locks for synchronized
@@ -121,7 +121,7 @@ LLGlobalVariable * IrAggr::getInterfaceArraySymbol()
 
     ClassDeclaration* cd = aggrdecl->isClassDeclaration();
 
-    size_t n = stripModifiers(type)->irtype->isClass()->getNumInterfaceVtbls();
+    size_t n = stripModifiers(type)->ctype->isClass()->getNumInterfaceVtbls();
     assert(n > 0 && "getting ClassInfo.interfaces storage symbol, but we "
                     "don't implement any interfaces");
 
@@ -132,7 +132,7 @@ LLGlobalVariable * IrAggr::getInterfaceArraySymbol()
 
     // put it in a global
     std::string name("_D");
-    name.append(cd->mangle());
+    name.append(mangle(cd));
     name.append("16__interfaceInfosZ");
 
     // We keep this as external for now and only consider template linkage if
@@ -185,8 +185,8 @@ LLConstant * IrAggr::getVtblInit()
         else
         {
             DtoResolveFunction(fd);
-            assert(fd->ir.irFunc && "invalid vtbl function");
-            c = fd->ir.irFunc->func;
+            assert(isIrFuncCreated(fd) && "invalid vtbl function");
+            c = getIrFunc(fd)->func;
             if (cd->isFuncHidden(fd))
             {   /* fd is hidden from the view of this class.
                  * If fd overlaps with any function in the vtbl[], then
@@ -202,15 +202,14 @@ LLConstant * IrAggr::getVtblInit()
                     {
                         TypeFunction *tf = static_cast<TypeFunction *>(fd->type);
                         if (tf->ty == Tfunction)
-                            cd->deprecation(
-                                "use of %s%s hidden by %s is deprecated. Use 'alias %s.%s %s;' to introduce base class overload set.",
-                                fd->toPrettyChars(),
-                                Parameter::argsTypesToChars(tf->parameters, tf->varargs),
-                                cd->toChars(),
-                                fd->parent->toChars(),
-                                fd->toChars(),
-                                fd->toChars()
-                           );
+                            cd->deprecation("use of %s%s hidden by %s is deprecated; use 'alias %s = %s.%s;' to introduce base class overload set",
+                                            fd->toPrettyChars(),
+                                            Parameter::argsTypesToChars(tf->parameters, tf->varargs),
+                                            cd->toChars(),
+
+                                            fd->toChars(),
+                                            fd->parent->toChars(),
+                                            fd->toChars());
                         else
                             cd->deprecation("use of %s hidden by %s is deprecated", fd->toPrettyChars(), cd->toChars());
 
@@ -224,12 +223,12 @@ LLConstant * IrAggr::getVtblInit()
     }
 
     // build the constant struct
-    LLType* vtblTy = stripModifiers(type)->irtype->isClass()->getVtbl();
+    LLType* vtblTy = stripModifiers(type)->ctype->isClass()->getVtbl();
     constVtbl = LLConstantStruct::get(isaStruct(vtblTy), constants);
 
 #if 0
    IF_LOG Logger::cout() << "constVtbl type: " << *constVtbl->getType() << std::endl;
-   IF_LOG Logger::cout() << "vtbl type: " << *stripModifiers(type)->irtype->isClass()->getVtbl() << std::endl;
+   IF_LOG Logger::cout() << "vtbl type: " << *stripModifiers(type)->ctype->isClass()->getVtbl() << std::endl;
 #endif
 
 #if 0
@@ -249,7 +248,7 @@ LLConstant * IrAggr::getVtblInit()
 
 #endif
 
-    assert(constVtbl->getType() == stripModifiers(type)->irtype->isClass()->getVtbl() &&
+    assert(constVtbl->getType() == stripModifiers(type)->ctype->isClass()->getVtbl() &&
         "vtbl initializer type mismatch");
 
     return constVtbl;
@@ -321,24 +320,25 @@ llvm::GlobalVariable * IrAggr::getInterfaceVtbl(BaseClass * b, bool new_instance
             "null symbol in interface implementation vtable");
 
         DtoResolveFunction(fd);
-        assert(fd->ir.irFunc && "invalid vtbl function");
+        assert(isIrFuncCreated(fd) && "invalid vtbl function");
 
-        LLFunction *fn = fd->ir.irFunc->func;
+        IrFunction *irFunc = getIrFunc(fd);
+        LLFunction *fn = getIrFunc(fd)->func;
 
         // If the base is a cpp interface, 'this' parameter is a pointer to
         // the interface not the underlying object as expected. Instead of
         // the function, we place into the vtable a small wrapper, called thunk,
         // that casts 'this' to the object and then pass it to the real function.
         if (b->base->isCPPinterface()) {
-            assert(fd->irFty.arg_this);
+            assert(irFunc->irFty.arg_this);
 
             // create the thunk function
             OutBuffer name;
             name.writestring("Th");
             name.printf("%i", b->offset);
-            name.writestring(fd->mangleExact());
+            name.writestring(mangleExact(fd));
             LLFunction *thunk = LLFunction::Create(isaFunction(fn->getType()->getContainedType(0)),
-                                                 DtoLinkage(fd), name.toChars(), gIR->module);
+                DtoLinkage(fd), name.extractString(), gIR->module);
 
             // create entry and end blocks
             llvm::BasicBlock* beginbb = llvm::BasicBlock::Create(gIR->context(), "", thunk);
@@ -352,7 +352,7 @@ llvm::GlobalVariable * IrAggr::getInterfaceVtbl(BaseClass * b, bool new_instance
                 args.push_back(iarg);
 
             // cast 'this' to Object
-            LLValue* &thisArg = args[(fd->irFty.arg_sret == 0) ? 0 : 1];
+            LLValue* &thisArg = args[(irFunc->irFty.arg_sret == 0) ? 0 : 1];
             LLType* thisType = thisArg->getType();
             thisArg = DtoBitCast(thisArg, getVoidPtrType());
             thisArg = DtoGEP1(thisArg, DtoConstInt(-b->offset));
@@ -380,25 +380,30 @@ llvm::GlobalVariable * IrAggr::getInterfaceVtbl(BaseClass * b, bool new_instance
     // build the vtbl constant
     llvm::Constant* vtbl_constant = LLConstantStruct::getAnon(gIR->context(), constants, false);
 
-    std::string mangle("_D");
-    mangle.append(cd->mangle());
-    mangle.append("11__interface");
-    mangle.append(b->base->mangle());
-    mangle.append("6__vtblZ");
+    std::string mangledName("_D");
+    mangledName.append(mangle(cd));
+    mangledName.append("11__interface");
+    mangledName.append(mangle(b->base));
+    mangledName.append("6__vtblZ");
 
     llvm::GlobalVariable* GV = getOrCreateGlobal(cd->loc,
         *gIR->module,
         vtbl_constant->getType(),
         true,
-        DtoExternalLinkage(cd, false),
+        DtoLinkage(cd),
         vtbl_constant,
-        mangle
+        mangledName
     );
 
     // insert into the vtbl map
     interfaceVtblMap.insert(std::make_pair(b->base, GV));
 
     return GV;
+}
+
+bool IrAggr::isPacked() const
+{
+    return static_cast<IrTypeAggr*>(type->ctype)->packed;
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -412,7 +417,7 @@ LLConstant * IrAggr::getClassInfoInterfaces()
     assert(cd);
 
     size_t n = interfacesWithVtbls.size();
-    assert(stripModifiers(type)->irtype->isClass()->getNumInterfaceVtbls() == n &&
+    assert(stripModifiers(type)->ctype->isClass()->getNumInterfaceVtbls() == n &&
         "inconsistent number of interface vtables in this class");
 
     VarDeclaration *interfaces_idx = Type::typeinfoclass->fields[3];
@@ -420,14 +425,14 @@ LLConstant * IrAggr::getClassInfoInterfaces()
     if (n == 0)
         return getNullValue(DtoType(interfaces_idx->type));
 
-// Build array of:
-//
-//     struct Interface
-//     {
-//         ClassInfo   classinfo;
-//         void*[]     vtbl;
-//         ptrdiff_t   offset;
-//     }
+    // Build array of:
+    //
+    // struct Interface
+    // {
+    //     ClassInfo   classinfo;
+    //     void*[]     vtbl;
+    //     ptrdiff_t   offset;
+    // }
 
     LLSmallVector<LLConstant*, 6> constants;
     constants.reserve(cd->vtblInterfaces->dim);
@@ -445,9 +450,9 @@ LLConstant * IrAggr::getClassInfoInterfaces()
 
         IF_LOG Logger::println("Adding interface %s", it->base->toPrettyChars());
 
-        IrAggr* irinter = it->base->ir.irAggr;
+        IrAggr* irinter = getIrAggr(it->base);
         assert(irinter && "interface has null IrStruct");
-        IrTypeClass* itc = stripModifiers(irinter->type)->irtype->isClass();
+        IrTypeClass* itc = stripModifiers(irinter->type)->ctype->isClass();
         assert(itc && "null interface IrTypeClass");
 
         // classinfo
@@ -485,7 +490,7 @@ LLConstant * IrAggr::getClassInfoInterfaces()
     // create and apply initializer
     LLConstant* arr = LLConstantArray::get(array_type, constants);
     classInterfacesArray->setInitializer(arr);
-    classInterfacesArray->setLinkage(DtoExternalLinkage(cd, false));
+    classInterfacesArray->setLinkage(DtoLinkage(cd));
 
     // return null, only baseclass provide interfaces
     if (cd->vtblInterfaces->dim == 0)

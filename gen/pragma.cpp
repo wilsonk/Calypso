@@ -38,7 +38,7 @@ static bool parseIntExp(Expression* e, dinteger_t& res)
     e = e->optimize(WANTvalue);
     if (e->op == TOKint64 && (i = static_cast<IntegerExp *>(e)))
     {
-        res = i->value;
+        res = i->getInteger();
         return true;
     }
     return false;
@@ -324,6 +324,7 @@ void DtoCheckPragma(PragmaDeclaration *decl, Dsymbol *s,
         {
             fd->llvmInternal = llvm_internal;
             fd->intrinsicName = arg1str;
+            fd->mangleOverride = strdup(fd->intrinsicName.c_str());
         }
         else if (TemplateDeclaration* td = s->isTemplateDeclaration())
         {
@@ -558,4 +559,16 @@ void DtoCheckPragma(PragmaDeclaration *decl, Dsymbol *s,
                 "the LDC specific pragma '%s' is not yet implemented, ignoring",
                 ident->toChars());
     }
+}
+
+bool DtoIsIntrinsic(FuncDeclaration *fd)
+{
+    return (fd->llvmInternal == LLVMintrinsic || DtoIsVaIntrinsic(fd));
+}
+
+bool DtoIsVaIntrinsic(FuncDeclaration *fd)
+{
+    return (fd->llvmInternal == LLVMva_start ||
+            fd->llvmInternal == LLVMva_copy ||
+            fd->llvmInternal == LLVMva_end);
 }

@@ -21,6 +21,7 @@
 #include "gen/logger.h"
 #include "gen/nested.h"
 #include "gen/tollvm.h"
+#include "ir/irtype.h"
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
@@ -29,16 +30,13 @@ IrFuncTy &DtoIrTypeFunction(DValue* fnval)
     if (DFuncValue* dfnval = fnval->isFunc())
     {
         if (dfnval->func)
-            return dfnval->func->irFty;
+            return getIrFunc(dfnval->func)->irFty;
     }
 
     Type* type = stripModifiers(fnval->getType()->toBasetype());
-    if (type->ty == Tfunction)
-        return static_cast<TypeFunction*>(type)->irFty;
-    else if (type->ty == Tdelegate)
-        return static_cast<TypeDelegate*>(type)->irFty;
-
-    llvm_unreachable("Cannot get IrFuncTy from non lazy/function/delegate");
+    DtoType(type);
+    assert(type->ctype);
+    return type->ctype->getIrFuncTy();
 }
 
 TypeFunction* DtoTypeFunction(DValue* fnval)
@@ -75,16 +73,20 @@ TypeFunction* DtoTypeFunction(DValue* fnval)
 
 DValue* DtoVaArg(Loc& loc, Type* type, Expression* valistArg)
 {
-    DValue* expelem = valistArg->toElem(gIR);
+    DValue* expelem = toElem(valistArg);
     LLType* llt = DtoType(type);
     if (DtoIsPassedByRef(type))
         llt = getPtrToType(llt);
     // issue a warning for broken va_arg instruction.
     if (global.params.targetTriple.getArch() != llvm::Triple::x86
-        && global.params.targetTriple.getArch() != llvm::Triple::ppc64)
+        && global.params.targetTriple.getArch() != llvm::Triple::ppc64
+#if LDC_LLVM_VER >= 305
+        && global.params.targetTriple.getArch() != llvm::Triple::ppc64le
+#endif
+        )
         warning(loc, "va_arg for C variadic functions is probably broken for anything but x86 and ppc64");
     // done
-    return new DImValue(type, gIR->ir->CreateVAArg(expelem->getLVal(), llt, "tmp"));
+    return new DImValue(type, gIR->ir->CreateVAArg(expelem->getLVal(), llt));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -102,7 +104,7 @@ LLValue* DtoCallableValue(DValue* fn)
         {
             LLValue* dg = fn->getLVal();
             LLValue* funcptr = DtoGEPi(dg, 0, 1);
-            return DtoLoad(funcptr);
+            return DtoLoad(funcptr, ".funcptr");
         }
         else
         {
@@ -304,7 +306,7 @@ void DtoBuildDVarArgList(std::vector<LLValue*>& args,
     }
     ++argidx;
 
-    args.push_back(gIR->ir->CreateBitCast(mem, getPtrToType(LLType::getInt8Ty(gIR->context())), "tmp"));
+    args.push_back(gIR->ir->CreateBitCast(mem, getPtrToType(LLType::getInt8Ty(gIR->context()))));
     if (HAS_ATTRIBUTES(irFty.arg_argptr->attrs)) {
         addToAttributes(attrs, argidx, irFty.arg_argptr->attrs);
     }
@@ -345,7 +347,7 @@ DValue* DtoCallFunction(Loc& loc, Type* resulttype, DValue* fnval, Expressions* 
     bool intrinsic = (dfnval && dfnval->func && dfnval->func->llvmInternal == LLVMintrinsic);
 
     // handle special vararg intrinsics
-    bool va_intrinsic = (dfnval && dfnval->func && dfnval->func->isVaIntrinsic());
+    bool va_intrinsic = (dfnval && dfnval->func && DtoIsVaIntrinsic(dfnval->func));
 
     // get function type info
     IrFuncTy &irFty = DtoIrTypeFunction(fnval);
@@ -449,7 +451,7 @@ DValue* DtoCallFunction(Loc& loc, Type* resulttype, DValue* fnval, Expressions* 
             LLValue* ctxarg;
             if (fnval->isLVal())
             {
-                ctxarg = DtoLoad(DtoGEPi(fnval->getLVal(), 0,0));
+                ctxarg = DtoLoad(DtoGEPi(fnval->getLVal(), 0, 0), ".ptr");
             }
             else
             {
@@ -496,7 +498,7 @@ DValue* DtoCallFunction(Loc& loc, Type* resulttype, DValue* fnval, Expressions* 
         for (size_t i=0; i<n_arguments; i++)
         {
             Expression* exp = static_cast<Expression*>(arguments->data[i]);
-            DValue* expelem = exp->toElem(gIR);
+            DValue* expelem = toElem(exp);
             // cast to va_list*
             LLValue* val = DtoBitCast(expelem->getLVal(), getVoidPtrType());
             ++argiter;

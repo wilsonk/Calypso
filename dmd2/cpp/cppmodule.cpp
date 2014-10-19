@@ -362,15 +362,15 @@ Type *Mapper::toTypeRecord(const clang::RecordType *T)
 TypeFunction *Mapper::toTypeFunction(const clang::FunctionProtoType* T)
 {
     auto params = new Parameters;
-    params->reserve(T->getNumArgs());
+    params->reserve(T->getNumParams());
 
-    for (auto I = T->arg_type_begin(), E = T->arg_type_end();
+    for (auto I = T->param_type_begin(), E = T->param_type_end();
                 I != E; I++)
     {
         params->push(new Parameter(STCundefined, toType(*I), NULL, NULL));
     }
 
-    return new TypeFunction(params, toType(T->getResultType()), 0, LINKcpp);  // does LINK matter?
+    return new TypeFunction(params, toType(T->getReturnType()), 0, LINKcpp);  // does LINK matter?
 }
 
 // assume that the decl was visited
