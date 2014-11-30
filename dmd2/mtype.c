@@ -8421,6 +8421,12 @@ Type *TypeStruct::toHeadMutable()
 
 /***************************** TypeClass *****************************/
 
+//CALYPSO
+LangPlugin* TypeClass::langPlugin()
+{
+    return sym->langPlugin();
+}
+
 TypeClass::TypeClass(ClassDeclaration *sym)
         : Type(Tclass)
 {

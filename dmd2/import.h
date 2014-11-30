@@ -100,6 +100,13 @@ public:
         Loc loc, Identifiers *packages, Identifier *id,
         Identifier *aliasId, int isstatic) = 0;
 
+    // ===== - - - - - ===== //
+
+    virtual FuncDeclaration *buildDtor(AggregateDeclaration *ad, Scope *sc) = 0;
+    virtual FuncDeclaration *buildCpCtor(StructDeclaration *sd, Scope *sc) = 0;
+
+    // ===== - - - - - ===== //
+
      virtual CodeGen *codegen() = 0;
 };
 

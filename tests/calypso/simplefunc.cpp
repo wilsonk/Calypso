@@ -12,4 +12,34 @@ int testFunc(char c) {
         return 8;
 }
 
+int testClass::echo(int a, int b)
+{
+    return 0;
+}
+
+float testClass::echo2(float f)
+{
+    return 0;
+}
+
+int testInherit::echo(int a, int b)
+{
+    return 42 * (a-b) * n;
+}
+
+float testInherit::echo2(float f)
+{
+    return 0.5 * f;
+}
+
+bool anotherClass::hello(bool who)
+{
+    return !who;
+}
+
+bool testMultipleInherit::hello(bool who)
+{
+    return anotherClass::hello(who);
+}
+
 }

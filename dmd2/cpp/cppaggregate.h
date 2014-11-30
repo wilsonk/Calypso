@@ -15,32 +15,44 @@ namespace clang
 {
 class RecordDecl;
 class CXXRecordDecl; // NOTE: will disappear in a future version of Clang
+class ThunkInfo;
 }
 
 namespace cpp
 {
+class FuncDeclaration;
 
 // All POD C++ aggregate types, it doesn't matter whether "struct" or "class"
 // was used and whether another aggregate inherit from it
-struct StructDeclaration : ::StructDeclaration
+class StructDeclaration : public ::StructDeclaration
 {
+public:
     CALYPSO_LANGPLUGIN
 
     const clang::RecordDecl *RD;
 
-    StructDeclaration(Loc loc, Identifier *id,
-                      const clang::RecordDecl *RD);
+    StructDeclaration(Loc loc, Identifier* id, const clang::RecordDecl* RD);
 };
 
 // The rest, i.e anything involving inheritance, virtual functions.
-struct ClassDeclaration : ::ClassDeclaration
+class ClassDeclaration : public ::ClassDeclaration
 {
+public:
     CALYPSO_LANGPLUGIN
 
     const clang::CXXRecordDecl *RD;
 
     ClassDeclaration(Loc loc, Identifier *id, BaseClasses *baseclasses,
                      const clang::CXXRecordDecl *RD);
+    
+    bool isBaseOf(::ClassDeclaration* cd, int* poffset) override;
+    void interfaceSemantic(Scope *sc) override;
+    
+    bool allowMultipleInheritance() override { return true; }
+    void initVtbl() override;
+    void buildLayout() override; // determine the agg size and field offsets
+
+    inline FuncDeclaration *findMethod(const clang::CXXMethodDecl *MD);
 };
 
 }

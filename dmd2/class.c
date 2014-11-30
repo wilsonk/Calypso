@@ -55,7 +55,7 @@ ClassDeclaration::ClassDeclaration(Loc loc, Identifier *id, BaseClasses *basecla
     interfaces_dim = 0;
     interfaces = NULL;
 
-    vtblInterfaces = NULL;
+    vtblInterfaces = new BaseClasses(); // CALYPSO
 
     //printf("ClassDeclaration(%s), dim = %d\n", id->toChars(), this->baseclasses->dim);
 
@@ -452,7 +452,8 @@ void ClassDeclaration::semantic(Scope *sc)
             BaseClass *b = (*baseclasses)[i];
             Type *tb = b->type->toBasetype();
             TypeClass *tc = (tb->ty == Tclass) ? (TypeClass *)tb : NULL;
-            if (!tc || !tc->sym->isInterfaceDeclaration())
+            if ((!tc || !tc->sym->isInterfaceDeclaration())
+                    && !allowMultipleInheritance()) // CALYPSO
             {
                 if (b->type != Type::terror)
                     error("base type must be interface, not %s", b->type->toChars());
@@ -508,7 +509,8 @@ void ClassDeclaration::semantic(Scope *sc)
         doAncestorsSemantic = SemanticDone;
 
         // If no base class, and this is not an Object, use Object as base class
-        if (!baseClass && ident != Id::Object && !cpp)
+        if (!baseClass && ident != Id::Object && !cpp
+               && !langPlugin()) // CALYPSO
         {
             if (!object)
             {
@@ -588,22 +590,7 @@ Lancestorsdone:
 
     if (sizeok == SIZEOKnone)
     {
-        // initialize vtbl
-        if (baseClass)
-        {
-            // Copy vtbl[] from base class
-            vtbl.setDim(baseClass->vtbl.dim);
-            memcpy(vtbl.tdata(), baseClass->vtbl.tdata(), sizeof(void *) * vtbl.dim);
-
-            vthis = baseClass->vthis;
-        }
-        else
-        {
-            // No base class, so this is the root of the class hierarchy
-            vtbl.setDim(0);
-            if (vtblOffset())
-                vtbl.push(this);            // leave room for classinfo as first member
-        }
+        initVtbl();
         interfaceSemantic(sc);
 
         for (size_t i = 0; i < members->dim; i++)
@@ -668,28 +655,14 @@ Lancestorsdone:
     sc2->structalign = STRUCTALIGN_DEFAULT;
     sc2->userAttribDecl = NULL;
 
-    if (baseClass)
-    {
-        alignsize = baseClass->alignsize;
-        structsize = baseClass->structsize;
-        if (cpp && global.params.isWindows)
-            structsize = (structsize + alignsize - 1) & ~(alignsize - 1);
-    }
-    else
-    {
-        alignsize = Target::ptrsize;
-        if (cpp)
-            structsize = Target::ptrsize;       // allow room for __vptr
-        else
-            structsize = Target::ptrsize * 2;   // allow room for __vptr and __monitor
-    }
-    size_t members_dim = members->dim;
     sizeok = SIZEOKnone;
+    
+    // CALYPSO moved to buildLayout
 
     /* Set scope so if there are forward references, we still might be able to
      * resolve individual members like enums.
      */
-    for (size_t i = 0; i < members_dim; i++)
+    for (size_t i = 0; i < members->dim; i++)
     {
         Dsymbol *s = (*members)[i];
         //printf("[%d] setScope %s %s, sc2 = %p\n", i, s->kind(), s->toChars(), sc2);
@@ -702,20 +675,15 @@ Lancestorsdone:
         s->importAll(sc2);
     }
 
-    for (size_t i = 0; i < members_dim; i++)
+    for (size_t i = 0; i < members->dim; i++)
     {
         Dsymbol *s = (*members)[i];
         s->semantic(sc2);
     }
 
-    // Set the offsets of the fields and determine the size of the class
-
-    unsigned offset = structsize;
-    for (size_t i = 0; i < members->dim; i++)
-    {
-        Dsymbol *s = (*members)[i];
-        s->setFieldOffset(this, &offset, false);
-    }
+    // CALYPSO moved to buildLayout
+    
+    buildLayout();
 
     if (global.errors != errors)
     {
@@ -807,8 +775,8 @@ Lancestorsdone:
         }
     }
 
-    // Allocate instance of each new interface
-    offset = structsize;
+    // Allocate instance of each new interface // CALYPSO FIXME
+    unsigned offset = structsize;
     for (size_t i = 0; i < vtblInterfaces->dim; i++)
     {
         BaseClass *b = (*vtblInterfaces)[i];
@@ -1159,7 +1127,6 @@ FuncDeclaration *ClassDeclaration::findFunc(Identifier *ident, TypeFunction *tf)
 
 void ClassDeclaration::interfaceSemantic(Scope *sc)
 {
-    vtblInterfaces = new BaseClasses();
     vtblInterfaces->reserve(interfaces_dim);
 
     for (size_t i = 0; i < interfaces_dim; i++)
@@ -1245,6 +1212,76 @@ const char *ClassDeclaration::kind()
 void ClassDeclaration::addLocalClass(ClassDeclarations *aclasses)
 {
     aclasses->push(this);
+}
+
+/****************************************
+ */
+
+// CALYPSO
+void ClassDeclaration::initVtbl()
+{
+    // initialize vtbl
+    if (baseClass)
+    {
+        // Copy vtbl[] from base class
+        vtbl.setDim(baseClass->vtbl.dim);
+        memcpy(vtbl.tdata(), baseClass->vtbl.tdata(), sizeof(void *) * vtbl.dim);
+
+        vthis = baseClass->vthis;
+    }
+    else
+    {
+        // No base class, so this is the root of the class hierarchy
+        vtbl.setDim(0);
+        if (vtblOffset())
+            vtbl.push(this);            // leave room for classinfo as first member
+    }
+}
+
+void ClassDeclaration::buildLayout()
+{
+    if (!baseClass || foreignBase())  // if we're inheriting from a class written in a foreign language, add the D header
+    {
+        alignsize = Target::ptrsize;
+        if (cpp)
+            structsize = Target::ptrsize;       // allow room for __vptr
+        else
+            structsize = Target::ptrsize * 2;   // allow room for __vptr and __monitor
+    }
+
+    if (baseClass)
+    {
+        alignsize += baseClass->alignsize;
+        structsize += baseClass->structsize;
+        if (cpp && global.params.isWindows)
+            structsize = (structsize + alignsize - 1) & ~(alignsize - 1);
+    }
+
+    
+    // NOTE: initially the importAll and semantic calls were done here,
+    // between the structsize init and the setFieldOffsets.
+    // Does this have any significance?
+
+    // Set the offsets of the fields and determine the size of the class
+
+    unsigned offset = structsize;
+    for (size_t i = 0; i < members->dim; i++)
+    {
+        Dsymbol *s = (*members)[i];
+        s->setFieldOffset(this, &offset, false);
+    }
+}
+
+ClassDeclaration *ClassDeclaration::foreignBase()
+{
+    ClassDeclaration *b = this;
+    while (b = b->baseClass)
+    {
+        if (b->langPlugin())
+            return b;
+    }
+
+    return NULL;
 }
 
 /********************************* InterfaceDeclaration ****************************/

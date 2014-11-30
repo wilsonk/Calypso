@@ -21,6 +21,7 @@
 #include "statement.h"
 #include "target.h"
 #include "template.h"
+#include "driver/cl_options.h"
 #include "gen/abi.h"
 #include "gen/arrays.h"
 #include "gen/classes.h"
@@ -599,7 +600,8 @@ static void codegenModule(Module* m)
     }
 
     //TEMP CALYPSO
-    gIR->module->dump();
+    if (opts::cppDebug)
+        gIR->module->dump();
 
     // verify the llvm
     verifyModule(*gIR->module);
@@ -646,11 +648,10 @@ llvm::Module* Module::genLLVMModule(llvm::LLVMContext& context)
     gIR = &ir;
     ir.dmodule = this;
 
-    for (unsigned pi = 0; pi < global.langPlugins.dim; pi++)
-    {
-        auto& lp = global.langPlugins[pi];
-        lp->codegen()->enterModule(mod);
-    }
+    // CALYPSO
+    for (auto I = global.langPlugins.begin(), E = global.langPlugins.end();
+            I != E; I++)
+        (*I)->codegen()->enterModule(mod);
 
     // reset all IR data stored in Dsymbols
     IrDsymbol::resetAll();
@@ -671,6 +672,11 @@ llvm::Module* Module::genLLVMModule(llvm::LLVMContext& context)
     LLVM_D_InitRuntime();
 
     codegenModule(this); 
+
+    // CALYPSO
+    for (auto I = global.langPlugins.begin(), E = global.langPlugins.end();
+            I != E; I++)
+        (*I)->codegen()->leaveModule();
 
     gIR = NULL;
 
@@ -791,6 +797,11 @@ void Module::genmoduleinfo()
             continue;
         }
         IF_LOG Logger::println("class: %s", cd->toPrettyChars());
+        
+            // CALYPSO TODO
+        if (cd->langPlugin())
+            continue;
+        
         LLConstant *c = DtoBitCast(getIrAggr(cd)->getClassInfoSymbol(), classinfoTy);
         classInits.push_back(c);
     }

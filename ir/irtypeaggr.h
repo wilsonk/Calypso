@@ -30,6 +30,11 @@ namespace llvm {
 class AggregateDeclaration;
 class VarDeclaration;
 
+namespace cpp
+{
+    class LangPlugin;
+}
+
 typedef std::map<VarDeclaration*, unsigned> VarGEPIndices;
 
 class AggrTypeBuilder
@@ -49,6 +54,9 @@ protected:
     unsigned m_offset;
     unsigned m_fieldIndex;
     bool m_packed;
+
+    // CALYPSO HACK
+    friend class cpp::LangPlugin;
 };
 
 /// Base class of IrTypes for aggregate types.

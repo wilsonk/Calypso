@@ -614,6 +614,10 @@ Dsymbol *AggregateDeclaration::searchCtor()
     return s;
 }
 
+void AggregateDeclaration::buildLayout()
+{
+}
+
 /********************************* StructDeclaration ****************************/
 
 StructDeclaration::StructDeclaration(Loc loc, Identifier *id)

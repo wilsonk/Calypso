@@ -16,10 +16,12 @@
 #include "aggregate.h"
 #include "declaration.h"
 #include "dsymbol.h"
+#include "import.h"
 #include "mtype.h"
 #include "target.h"
 #include "template.h"
 
+#include "gen/cgforeign.h"
 #include "gen/irstate.h"
 #include "gen/logger.h"
 #include "gen/tollvm.h"
@@ -45,6 +47,13 @@ IrTypeClass::IrTypeClass(ClassDeclaration* cd)
 
 void IrTypeClass::addBaseClassData(AggrTypeBuilder &builder, ClassDeclaration *base)
 {
+    // CALYPSO
+    if (auto lp = base->langPlugin())
+    {
+        lp->codegen()->addBaseClassData(builder, base);
+        return;
+    }
+
     if (base->baseClass)
     {
         addBaseClassData(builder, base->baseClass);
@@ -101,6 +110,14 @@ IrTypeClass* IrTypeClass::get(ClassDeclaration* cd)
     for (ClassDeclaration *base = cd; base != 0 && !t->packed; base = base->baseClass)
     {
         t->packed = isPacked(base);
+    }
+
+    // CALYPSO
+    if (auto lp = cd->langPlugin())
+    {
+        t->type = lp->codegen()->toType(cd->type);
+        lp->codegen()->buildGEPIndices(t, t->varGEPIndices);
+        return t;
     }
 
     AggrTypeBuilder builder(t->packed);

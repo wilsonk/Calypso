@@ -9,10 +9,12 @@
 
 #include "declaration.h"
 #include "id.h"
+#include "import.h"
 #include "mtype.h"
 #include "target.h"
 #include "pragma.h"
 #include "gen/abi.h"
+#include "gen/cgforeign.h"
 #include "gen/dvalue.h"
 #include "gen/functions.h"
 #include "gen/irstate.h"
@@ -342,6 +344,11 @@ DValue* DtoCallFunction(Loc& loc, Type* resulttype, DValue* fnval, Expressions* 
 
     // get func value if any
     DFuncValue* dfnval = fnval->isFunc();
+
+    // CALYPSO
+    if (dfnval)
+        if (auto lp = dfnval->func->langPlugin())
+            return lp->codegen()->toCallFunction(loc, resulttype, fnval, arguments, retvar);
 
     // handle intrinsics
     bool intrinsic = (dfnval && dfnval->func && dfnval->func->llvmInternal == LLVMintrinsic);

@@ -11,9 +11,11 @@
 #include "declaration.h"
 #include "enum.h"
 #include "id.h"
+#include "import.h"
 #include "init.h"
 #include "rmem.h"
 #include "template.h"
+#include "gen/cgforeign.h"
 #include "gen/classes.h"
 #include "gen/functions.h"
 #include "gen/irstate.h"
@@ -172,13 +174,22 @@ public:
             initZ->setInitializer(ir->getDefaultInit());
             initZ->setLinkage(linkage);
 
-            llvm::GlobalVariable *vtbl = ir->getVtblSymbol();
-            vtbl->setInitializer(ir->getVtblInit());
-            vtbl->setLinkage(linkage);
+            // CALYPSO TODO
+            if (!decl->langPlugin())
+            {
+                llvm::GlobalVariable *vtbl = ir->getVtblSymbol();
+                vtbl->setInitializer(ir->getVtblInit());
+                vtbl->setLinkage(linkage);
+            }
 
             llvm::GlobalVariable *classZ = ir->getClassInfoSymbol();
             classZ->setInitializer(ir->getClassInfoInit());
             classZ->setLinkage(linkage);
+
+            // CALYPSO
+            for (auto L = global.langPlugins.begin(), LE = global.langPlugins.end();
+                    L != LE; L++)
+                (*L)->codegen()->emitAdditionalClassSymbols(decl);
 
             // No need to do TypeInfo here, it is <name>__classZ for classes in D2.
         }

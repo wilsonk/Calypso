@@ -19,6 +19,7 @@
 #include "declaration.h"
 #include "module.h"
 #include "id.h"
+#include "import.h"
 #include "expression.h"
 #include "statement.h"
 #include "init.h"
@@ -797,6 +798,10 @@ FuncDeclaration *buildXtoHash(StructDeclaration *sd, Scope *sc)
 
 FuncDeclaration *buildCpCtor(StructDeclaration *sd, Scope *sc)
 {
+//     // CALYPSO
+//     if (auto lp = sd->langPlugin())
+//         return lp->buildCpCtor(sd, sc);
+
     /* Copy constructor is only necessary if there is a postblit function,
      * otherwise the code generator will just do a bit copy.
      */
@@ -972,6 +977,15 @@ FuncDeclaration *buildPostBlit(StructDeclaration *sd, Scope *sc)
 
 FuncDeclaration *buildDtor(AggregateDeclaration *ad, Scope *sc)
 {
+    // CALYPSO
+    if (auto lp = ad->langPlugin())
+    {
+        auto dtor = lp->buildDtor(ad, sc);
+
+        if (dtor)
+            return dtor;
+    }
+
     //printf("AggregateDeclaration::buildDtor() %s\n", ad->toChars());
     StorageClass stc = STCsafe | STCnothrow | STCpure | STCnogc;
     Loc declLoc = ad->dtors.dim ? ad->dtors[0]->loc : ad->loc;

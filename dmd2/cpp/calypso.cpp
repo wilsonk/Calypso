@@ -4,6 +4,8 @@
 #include "cppimport.h"
 #include "cppmodule.h"
 
+#include "../aggregate.h"
+#include "../declaration.h"
 #include "../lexer.h"
 #include "../expression.h"
 
@@ -42,12 +44,6 @@ Loc toLoc(clang::SourceLocation L)
     return loc;
 }
 
-PCH::PCH()
-{
-    needEmit = false;
-    AST = NULL;
-}
-
 #define MAX_FILENAME_SIZE 4096
 
 #define CACHE_SUFFIXED_FILENAME(fn_var, suffix) \
@@ -61,11 +57,12 @@ void PCH::init()
     auto fheaderList = fopen(headerList.c_str(), "r"); // ordered list of headers
         // currently cached as one big PCH (neither modules nor chained PCH can be
         // used without modifying Clang).
-    if (fheaderList == NULL)
-    {
-        ::error(Loc(), "C/C++ header list cache file couldn't be opened/created");
-        fatal();
-    }
+    if (!fheaderList)
+        return;
+//     {
+//         ::error(Loc(), "C/C++ header list cache file couldn't be opened/created");
+//         fatal();
+//     }
 
     char linebuf[MAX_FILENAME_SIZE];
     while (fgets(linebuf, MAX_FILENAME_SIZE, fheaderList) != NULL)
@@ -106,6 +103,12 @@ void PCH::update()
 
     if (headers.empty())
         return;
+
+    if (!needEmit && AST)
+        return;
+
+    // FIXME
+    assert(!(needEmit && AST) && "Need AST merging FIXME");
 
 #define ADD_SUFFIX_THEN_CHECK(fn_var, suffix) \
     CACHE_SUFFIXED_FILENAME(fn_var, suffix); \
@@ -155,9 +158,9 @@ void PCH::update()
         Argv.reserve(opts::cppArgs.size() + 7);
         unsigned i = 0;
 #define ARGV_ADD(a) { Argv.emplace_back(a); i++; }
+        ARGV_ADD("-cc1");
         for (unsigned j = 0; j < opts::cppArgs.size(); ++j)
             ARGV_ADD(opts::cppArgs[j]);
-        ARGV_ADD("-cc1");
         ARGV_ADD("-x");
         ARGV_ADD("c++-header");
         ARGV_ADD("-emit-pch");
@@ -166,7 +169,8 @@ void PCH::update()
         ARGV_ADD(pchHeader);
 #undef ARGV_ADD
 
-        if (executeToolAndWait(compiler, Argv, global.params.verbose) == -1) // NOTE: I also have a compiler-agnostic version in my backups with fork(), which was deemed useless since Calypso is tied to LDC and LLVM
+        if (executeToolAndWait(compiler, Argv,
+                global.params.verbose) == -1) // NOTE: I also have a compiler-agnostic version in my backups with fork(), which was deemed useless since Calypso is tied to LDC and LLVM
         {
             ::error(Loc(), "execv Error!");
             fatal();
@@ -193,12 +197,17 @@ void PCH::update()
 
     clang::FileSystemOptions FileSystemOpts;
 
-    clang::IntrusiveRefCntPtr<clang::DiagnosticOptions> DiagOpts(new clang::DiagnosticOptions());
+    clang::IntrusiveRefCntPtr<clang::DiagnosticOptions> DiagOpts(new clang::DiagnosticOptions);
     auto DiagClient = new clang::TextDiagnosticPrinter(llvm::errs(), &*DiagOpts);
-    clang::IntrusiveRefCntPtr<clang::DiagnosticIDs> DiagID(new clang::DiagnosticIDs());
-    Diags = new clang::DiagnosticsEngine(DiagID, &*DiagOpts, DiagClient);
+    clang::IntrusiveRefCntPtr<clang::DiagnosticIDs> DiagID(new clang::DiagnosticIDs);
+    Diags = new clang::DiagnosticsEngine(DiagID,
+                                         &*DiagOpts, DiagClient);
 
-    AST = clang::ASTUnit::LoadFromASTFile(pchFilename, Diags, FileSystemOpts);
+    AST = clang::ASTUnit::LoadFromASTFile(pchFilename,
+                                          Diags, FileSystemOpts);
+
+    // Build the builtin type map
+    calypso.builtinTypes.build(AST->getASTContext());
 }
 
 #undef CACHE_SUFFIXED_FILENAME
@@ -216,7 +225,8 @@ int LangPlugin::doesHandleImport(const utf8_t* tree)
 ::Import* LangPlugin::createImport(int treeId, Loc loc, Identifiers* packages,
                                    Identifier* id, Identifier* aliasId, int isstatic)
 {
-    return new Import(loc, packages, id, aliasId, isstatic);
+    return new Import(loc,
+                packages, id, aliasId, isstatic);
 }
 
 int LangPlugin::doesHandleModmap(const utf8_t* lang)
@@ -230,12 +240,29 @@ int LangPlugin::doesHandleModmap(const utf8_t* lang)
 
 ::Modmap* LangPlugin::createModmap(int langId, Loc loc, Expression* arg)
 {
-    return new Modmap(loc, static_cast<StringExp*>(arg));
+    return new Modmap(loc,
+                static_cast<StringExp*>(arg));
 }
 
 void LangPlugin::init()
 {
     Module::init();
+    pch.init();
+}
+
+clang::ASTContext& LangPlugin::getASTContext()
+{
+    return getASTUnit()->getASTContext();
+}
+
+bool isCPP(Dsymbol* s)
+{
+    ::LangPlugin *lp = nullptr;
+
+    if (auto cd = s->isClassDeclaration())
+        lp = cd->langPlugin();
+
+    return lp == &calypso;
 }
 
 }

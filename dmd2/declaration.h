@@ -582,6 +582,9 @@ void buildClosure(FuncDeclaration *fd, IRState *irs);
 class FuncDeclaration : public Declaration
 {
 public:
+    // CALYPSO
+    virtual LangPlugin *langPlugin() { return NULL; }
+    
     Types *fthrows;                     // Array of Type's of exceptions (not used)
     Statement *frequire;
     Statement *fensure;
@@ -754,9 +757,6 @@ public:
 
     // true if set with the pragma(LDC_never_inline); stmt
     bool neverInline;
-
-    // CALYPSO
-    virtual void toResolveFunction();
 #endif
 
     void accept(Visitor *v) { v->visit(this); }

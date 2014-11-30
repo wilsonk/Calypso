@@ -10,10 +10,12 @@
 #include "gen/llvm.h"
 #include "aggregate.h"
 #include "declaration.h"
+#include "import.h"
 #include "init.h"
 #include "mtype.h"
 #include "target.h"
 #include "gen/arrays.h"
+#include "gen/cgforeign.h"
 #include "gen/classes.h"
 #include "gen/dvalue.h"
 #include "gen/functions.h"
@@ -137,8 +139,11 @@ DValue* DtoNewClass(Loc& loc, TypeClass* tc, NewExp* newexp)
         assert(newexp->arguments != NULL);
         DtoResolveFunction(newexp->member);
         DFuncValue dfn(newexp->member, getIrFunc(newexp->member)->func, mem);
-        return DtoCallFunction(newexp->loc, tc, &dfn, newexp->arguments);
+        /*return */DtoCallFunction(newexp->loc, tc, &dfn, newexp->arguments); // CALYPSO WARNING: was the return really needed? The return value is expected to be "this" but Clang doesn't return it
     }
+
+    // CALYPSO NOTE: while LDC set the vptr inside DtoInitClass, Clang makes the ctor sets it
+    // So to make the C++ vptr "mature" to the derived class vptr (as ctor prologues from derived classes do),
 
     // return default constructed class
     return new DImValue(tc, mem);
@@ -149,6 +154,14 @@ DValue* DtoNewClass(Loc& loc, TypeClass* tc, NewExp* newexp)
 void DtoInitClass(TypeClass* tc, LLValue* dst)
 {
     DtoResolveClass(tc->sym);
+    
+    // CALYPSO
+    if (auto lp = tc->langPlugin())
+    {
+        auto cg = lp->codegen();
+        cg->toInitClass(tc, dst);
+        return;
+    }
 
     // Set vtable field. Doing this seperately might be optimized better.
     LLValue* tmp = DtoGEPi(dst, 0, 0, "vtbl");
@@ -291,16 +304,25 @@ DValue* DtoCastClass(Loc& loc, DValue* val, Type* _to)
     // x -> class
     else {
         Logger::println("to class");
+        int offset;
         // interface -> class
         if (fc->sym->isInterfaceDeclaration()) {
             Logger::println("interface cast");
             return DtoDynamicCastInterface(loc, val, _to);
         }
         // class -> class - static down cast
-        else if (tc->sym->isBaseOf(fc->sym,NULL)) {
+        else if (tc->sym->isBaseOf(fc->sym, &offset)) {
             Logger::println("static down cast");
             LLType* tolltype = DtoType(_to);
             LLValue* rval = DtoBitCast(val->getRVal(), tolltype);
+            // CALYPSO
+            if (offset)
+            {
+                auto baseOffset =
+                    llvm::ConstantInt::get(DtoType(Type::tptrdiff_t), offset);
+                rval =
+                    gIR->ir->CreateInBoundsGEP(rval, baseOffset, "add.ptr");
+            }
             return new DImValue(_to, rval);
         }
         // class -> class - dynamic up cast
@@ -416,12 +438,17 @@ LLValue* DtoVirtualFunctionPointer(DValue* inst, FuncDeclaration* fdecl, char* n
     assert(fdecl->isVirtual());
     assert(!fdecl->isFinalFunc());
     assert(inst->getType()->toBasetype()->ty == Tclass);
-    // 0 is always ClassInfo/Interface* unless it is a CPP interface
-    assert(fdecl->vtblIndex > 0 || (fdecl->vtblIndex == 0 && fdecl->linkage == LINKcpp));
 
     // get instance
     LLValue* vthis = inst->getRVal();
     IF_LOG Logger::cout() << "vthis: " << *vthis << '\n';
+    
+    // CALYPSO
+    if (auto lp = fdecl->langPlugin())
+        return lp->codegen()->toVirtualFunctionPointer(inst, fdecl, name);
+    
+    // 0 is always ClassInfo/Interface* unless it is a CPP interface
+    assert(fdecl->vtblIndex > 0 || (fdecl->vtblIndex == 0 && fdecl->linkage == LINKcpp));
 
     LLValue* funcval = vthis;
     // get the vtbl for objects
@@ -532,7 +559,7 @@ static unsigned build_classinfo_flags(ClassDeclaration* cd)
         flags |= 8;
     if (cd->isabstract)
         flags |= 64;
-    if (cd->isCPPclass())
+    if (cd->isCPPclass() || cd->langPlugin()) // CALYPSO FIXME! This is checked by the GC, which expects the first member in the vtbl to point to ClassInfo and thus segfaults during destruction, we need to implement a c++ specific destruction
         flags |= 128;
     for (ClassDeclaration *cd2 = cd; cd2; cd2 = cd2->baseClass)
     {
@@ -629,7 +656,7 @@ LLConstant* DtoDefineClassInfo(ClassDeclaration* cd)
     b.push_string(name);
 
     // vtbl array
-    if (cd->isInterfaceDeclaration())
+    if (cd->isInterfaceDeclaration() || cd->langPlugin()) // CALYPSO FIXME TEMP
     {
         b.push_array(0, getNullValue(voidPtrPtr));
     }

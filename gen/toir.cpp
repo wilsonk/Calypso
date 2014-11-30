@@ -11,6 +11,7 @@
 #include "enum.h"
 #include "hdrgen.h"
 #include "id.h"
+#include "import.h"
 #include "init.h"
 #include "mtype.h"
 #include "module.h"
@@ -21,6 +22,7 @@
 #include "gen/abi.h"
 #include "gen/arrays.h"
 #include "gen/classes.h"
+#include "gen/cgforeign.h"
 #include "gen/complex.h"
 #include "gen/dvalue.h"
 #include "gen/functions.h"
@@ -1392,8 +1394,23 @@ public:
         // special cases: `this(int) { this(); }` and `this(int) { super(); }`
         if (!e->var) {
             Logger::println("this exp without var declaration");
-            LLValue* v = p->func()->thisArg;
-            result = new DVarValue(e->type, v);
+
+            auto v = p->func()->thisArg;
+
+            // CALYPSO
+            if (e->op == TOKsuper)
+            {
+                auto ad = p->func()->decl->isThis();
+                assert(ad);
+                auto cd = ad->isClassDeclaration();
+                assert(cd && cd->baseClass);
+
+                auto im = new DImValue(cd->getType(), v);
+                result = DtoCastClass(e->loc, im,
+                                      cd->baseClass->getType());
+            }
+            else
+                result = new DVarValue(e->type, v);
             return;
         }
         // regular this expr

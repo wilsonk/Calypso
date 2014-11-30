@@ -15,12 +15,25 @@ VarDeclaration::VarDeclaration(Loc loc, Identifier *id,
     this->VD = VD;
 }
 
-FuncDeclaration::FuncDeclaration(Loc loc, Identifier *id,
-                                 const clang::FunctionDecl *FD, TypeFunction *ft)
-    : ::FuncDeclaration(loc, loc, id, STCundefined, ft)
+FuncDeclaration::FuncDeclaration(Loc loc, Identifier *id, StorageClass storage_class,
+                    Type* type, const clang::FunctionDecl *FD)
+    : ::FuncDeclaration(loc, loc, id, storage_class, type)
 {
     this->FD = FD;
 }
 
+CtorDeclaration::CtorDeclaration(Loc loc, StorageClass storage_class,
+                                 Type* type, const clang::CXXConstructorDecl* CCD)
+    : ::CtorDeclaration(loc, loc, storage_class, type)
+{
+    this->CCD = CCD;
+}
+
+DtorDeclaration::DtorDeclaration(Loc loc, StorageClass storage_class,
+                                 Identifier* id, const clang::CXXDestructorDecl* CDD)
+    : ::DtorDeclaration(loc, loc, storage_class, id)
+{
+    this->CDD = CDD;
+}
 
 }

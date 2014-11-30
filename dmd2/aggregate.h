@@ -131,6 +131,9 @@ public:
     Symbol *sinit;
     Symbol *toInitializer();
 #endif
+    
+    // CALYPSO
+    virtual void buildLayout(); // determine the agg size and field offsets
 
     AggregateDeclaration *isAggregateDeclaration() { return this; }
     void accept(Visitor *v) { v->visit(this); }
@@ -288,7 +291,7 @@ public:
     ClassDeclaration *searchBase(Loc, Identifier *ident);
     bool isFuncHidden(FuncDeclaration *fd);
     FuncDeclaration *findFunc(Identifier *ident, TypeFunction *tf);
-    void interfaceSemantic(Scope *sc);
+    virtual void interfaceSemantic(Scope *sc);  // CALYPSO
     bool isCOMclass();
     virtual bool isCOMinterface();
     bool isCPPclass();
@@ -298,6 +301,12 @@ public:
     const char *kind();
 
     void addLocalClass(ClassDeclarations *);
+
+    // CALYPSO
+    virtual bool allowMultipleInheritance() { return false; }  // will allow more than one non-interface base
+    virtual void initVtbl();
+    virtual void buildLayout(); // determine the agg size and field offsets
+    ClassDeclaration *foreignBase();
 
 #if IN_DMD
     // Back end

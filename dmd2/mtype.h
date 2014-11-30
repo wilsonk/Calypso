@@ -805,7 +805,7 @@ public:
     AliasThisRec att;
 
     // CALYPSO
-    LangPlugin *langPlugin();
+    LangPlugin *langPlugin() override;
 
     TypeStruct(StructDeclaration *sym);
     const char *kind();
@@ -929,6 +929,9 @@ class TypeClass : public Type
 public:
     ClassDeclaration *sym;
     AliasThisRec att;
+
+    // CALYPSO
+    LangPlugin *langPlugin() override;
 
     TypeClass(ClassDeclaration *sym);
     const char *kind();

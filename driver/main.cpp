@@ -928,6 +928,7 @@ static void emitEntryPointInto(llvm::Module* lm)
         error(Loc(), "%s", linkError.c_str());
 }
 
+// CALYPSO
 static void genModules(Modules &modules,
                        std::vector<llvm::Module*> &llvmModules)
 {

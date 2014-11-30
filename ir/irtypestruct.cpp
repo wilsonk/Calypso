@@ -48,15 +48,6 @@ IrTypeStruct* IrTypeStruct::get(StructDeclaration* sd)
         sd->toPrettyChars(), sd->loc.toChars());
     LOG_SCOPE;
 
-    // CALYPSO
-    if (auto lp = sd->langPlugin())
-    {
-        // FIXME: the LLVM D type shouldn't be created then discarded
-        t->type = lp->codegen()->toType(sd->type);
-                // what about default_fields
-        return t;
-    }
-
     // if it's a forward declaration, all bets are off, stick with the opaque
     if (sd->sizeok != SIZEOKdone)
         return t;
@@ -67,6 +58,15 @@ IrTypeStruct* IrTypeStruct::get(StructDeclaration* sd)
         // Unfortunately, the previous check is not enough in case the struct
         // contains an align declaration. See issue 726.
         t->packed = isPacked(sd);
+    }
+
+    // CALYPSO
+    if (auto lp = sd->langPlugin())
+    {
+        t->type = lp->codegen()->toType(sd->type);
+                // what about default_fields
+        lp->codegen()->buildGEPIndices(t, t->varGEPIndices);
+        return t;
     }
 
     AggrTypeBuilder builder(t->packed);

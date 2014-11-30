@@ -510,21 +510,24 @@ static llvm::Function* DtoDeclareVaFunction(FuncDeclaration* fdecl)
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
-void DtoResolveFunction(FuncDeclaration* fdecl) {
-    fdecl->toResolveFunction();
-}
-
-void FuncDeclaration::toResolveFunction()
+void DtoResolveFunction(FuncDeclaration* fdecl)
 {
-    if ((!global.params.useUnitTests || !this->type) && this->isUnitTestDeclaration()) {
-        IF_LOG Logger::println("Ignoring unittest %s", this->toPrettyChars());
+    if ((!global.params.useUnitTests || !fdecl->type) && fdecl->isUnitTestDeclaration()) {
+        IF_LOG Logger::println("Ignoring unittest %s", fdecl->toPrettyChars());
         return; // ignore declaration completely
     }
 
-    if (this->ir.isResolved()) return;
-    this->ir.setResolved();
+    if (fdecl->ir.isResolved()) return;
+    fdecl->ir.setResolved();
 
-    Type *type = this->type;
+    // CALYPSO
+    if (auto lp = fdecl->langPlugin())
+    {
+        lp->codegen()->toResolveFunction(fdecl);
+        return;
+    }
+
+    Type *type = fdecl->type;
     // If errors occurred compiling it, such as bugzilla 6118
     if (type && type->ty == Tfunction) {
         Type *next = static_cast<TypeFunction *>(type)->next;
@@ -532,70 +535,70 @@ void FuncDeclaration::toResolveFunction()
             return;
     }
 
-    //printf("resolve function: %s\n", this->toPrettyChars());
+    //printf("resolve function: %s\n", fdecl->toPrettyChars());
 
-    if (this->parent)
-    if (TemplateInstance* tinst = this->parent->isTemplateInstance())
+    if (fdecl->parent)
+    if (TemplateInstance* tinst = fdecl->parent->isTemplateInstance())
     {
         if (TemplateDeclaration* tempdecl = tinst->tempdecl->isTemplateDeclaration())
         {
             if (tempdecl->llvmInternal == LLVMva_arg)
             {
                 Logger::println("magic va_arg found");
-                this->llvmInternal = LLVMva_arg;
-                this->ir.setDefined();
-                return; // this gets mapped to an instruction so a declaration makes no sence
+                fdecl->llvmInternal = LLVMva_arg;
+                fdecl->ir.setDefined();
+                return; // fdecl gets mapped to an instruction so a declaration makes no sence
             }
             else if (tempdecl->llvmInternal == LLVMva_start)
             {
                 Logger::println("magic va_start found");
-                this->llvmInternal = LLVMva_start;
+                fdecl->llvmInternal = LLVMva_start;
             }
             else if (tempdecl->llvmInternal == LLVMintrinsic)
             {
                 Logger::println("overloaded intrinsic found");
-                assert(this->llvmInternal == LLVMintrinsic);
-                assert(this->mangleOverride);
+                assert(fdecl->llvmInternal == LLVMintrinsic);
+                assert(fdecl->mangleOverride);
             }
             else if (tempdecl->llvmInternal == LLVMinline_asm)
             {
                 Logger::println("magic inline asm found");
-                TypeFunction* tf = static_cast<TypeFunction*>(this->type);
-                if (tf->varargs != 1 || (this->parameters && this->parameters->dim != 0))
+                TypeFunction* tf = static_cast<TypeFunction*>(fdecl->type);
+                if (tf->varargs != 1 || (fdecl->parameters && fdecl->parameters->dim != 0))
                 {
                     tempdecl->error("invalid __asm declaration, must be a D style variadic with no explicit parameters");
                     fatal();
                 }
-                this->llvmInternal = LLVMinline_asm;
-                this->ir.setDefined();
-                return; // this gets mapped to a special inline asm call, no point in going on.
+                fdecl->llvmInternal = LLVMinline_asm;
+                fdecl->ir.setDefined();
+                return; // fdecl gets mapped to a special inline asm call, no point in going on.
             }
             else if (tempdecl->llvmInternal == LLVMinline_ir)
             {
                 Logger::println("magic inline ir found");
-                this->llvmInternal = LLVMinline_ir;
-                this->linkage = LINKc;
-                Type* type = this->type;
+                fdecl->llvmInternal = LLVMinline_ir;
+                fdecl->linkage = LINKc;
+                Type* type = fdecl->type;
                 assert(type->ty == Tfunction);
                 static_cast<TypeFunction*>(type)->linkage = LINKc;
 
-                DtoFunctionType(this);
-                DtoDeclareFunction(this);
-                this->ir.setDefined();
+                DtoFunctionType(fdecl);
+                DtoDeclareFunction(fdecl);
+                fdecl->ir.setDefined();
                 return;
             }
         }
     }
 
-    DtoFunctionType(this);
+    DtoFunctionType(fdecl);
 
-    IF_LOG Logger::println("DtoResolveFunction(%s): %s", this->toPrettyChars(), this->loc.toChars());
+    IF_LOG Logger::println("DtoResolveFunction(%s): %s", fdecl->toPrettyChars(), fdecl->loc.toChars());
     LOG_SCOPE;
 
     // queue declaration unless the function is abstract without body
-    if (!this->isAbstract() || this->fbody)
+    if (!fdecl->isAbstract() || fdecl->fbody)
     {
-        DtoDeclareFunction(this);
+        DtoDeclareFunction(fdecl);
     }
 }
 
