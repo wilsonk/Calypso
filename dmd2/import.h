@@ -102,6 +102,11 @@ public:
 
     // ===== - - - - - ===== //
 
+    virtual Expression *getRightThis(Loc loc, Scope *sc, AggregateDeclaration *ad,
+        Expression *e1, Declaration *var, int flag = 0) = 0;
+
+    // ===== - - - - - ===== //
+
     virtual FuncDeclaration *buildDtor(AggregateDeclaration *ad, Scope *sc) = 0;
     virtual FuncDeclaration *buildCpCtor(StructDeclaration *sd, Scope *sc) = 0;
 

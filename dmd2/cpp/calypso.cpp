@@ -3,6 +3,7 @@
 #include "calypso.h"
 #include "cppimport.h"
 #include "cppmodule.h"
+#include "cppaggregate.h"
 
 #include "../aggregate.h"
 #include "../declaration.h"
@@ -263,6 +264,23 @@ bool isCPP(Dsymbol* s)
         lp = cd->langPlugin();
 
     return lp == &calypso;
+}
+
+cpp::ClassDeclaration *isDCXX(Dsymbol* s)
+{
+    auto cd = s->isClassDeclaration();
+    assert(cd);
+
+    if (isCPP(cd))
+        return nullptr;  // Pure C++ class
+
+    auto base = cd->baseClass;
+    while (base && !isCPP(base))
+        base = base->baseClass;
+    if (!base)
+        return nullptr;  // Pure D class
+
+    return static_cast<cpp::ClassDeclaration*>(base);
 }
 
 }

@@ -38,4 +38,6 @@ public:
     virtual void addBaseClassData(AggrTypeBuilder &builder, ClassDeclaration *base) = 0;
 
     virtual void emitAdditionalClassSymbols(ClassDeclaration *cd) = 0;
+
+    virtual void toPostNewClass(Loc& loc, TypeClass* tc, DValue* val) = 0;
 };

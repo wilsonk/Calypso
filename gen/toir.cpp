@@ -1395,23 +1395,8 @@ public:
         if (!e->var) {
             Logger::println("this exp without var declaration");
 
-            auto v = p->func()->thisArg;
-
-            // CALYPSO
-            if (e->op == TOKsuper)
-            {
-                auto ad = p->func()->decl->isThis();
-                assert(ad);
-                auto cd = ad->isClassDeclaration();
-                assert(cd && cd->baseClass);
-
-                auto im = new DImValue(cd->getType(), v);
-                result = DtoCastClass(e->loc, im,
-                                      cd->baseClass->getType());
-            }
-            else
-                result = new DVarValue(e->type, v);
-            return;
+            LLValue* v = p->func()->thisArg;
+            result = new DVarValue(e->type, v);
         }
         // regular this expr
         else if (VarDeclaration* vd = e->var->isVarDeclaration()) {
@@ -1428,6 +1413,13 @@ public:
             if (vdparent != p->func()->decl) {
                 Logger::println("nested this exp");
                 result = DtoNestedVariable(e->loc, e->type, vd, e->type->ty == Tstruct);
+                return;
+            }
+            // CALYPSO
+            else if (!p->func()->decl->vthis->type->toBasetype()->equals(e->type->toBasetype())) {
+                auto thisVal = new DImValue(p->func()->decl->vthis->type,
+                                            DtoLoad(p->func()->thisArg));
+                result = DtoCast(e->loc, thisVal, e->type);
                 return;
             }
             else {

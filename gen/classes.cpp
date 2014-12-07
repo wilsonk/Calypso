@@ -142,11 +142,15 @@ DValue* DtoNewClass(Loc& loc, TypeClass* tc, NewExp* newexp)
         /*return */DtoCallFunction(newexp->loc, tc, &dfn, newexp->arguments); // CALYPSO WARNING: was the return really needed? The return value is expected to be "this" but Clang doesn't return it
     }
 
+    DValue *result = new DImValue(tc, mem);
+
     // CALYPSO NOTE: while LDC set the vptr inside DtoInitClass, Clang makes the ctor sets it
-    // So to make the C++ vptr "mature" to the derived class vptr (as ctor prologues from derived classes do),
+    // So here, after the ctor call is the most natural place to make the C++ vptrs "mature" to the derived class vptrs
+    for (auto *lp: global.langPlugins)
+        lp->codegen()->toPostNewClass(loc, tc, result);
 
     // return default constructed class
-    return new DImValue(tc, mem);
+    return result;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -314,15 +318,17 @@ DValue* DtoCastClass(Loc& loc, DValue* val, Type* _to)
         else if (tc->sym->isBaseOf(fc->sym, &offset)) {
             Logger::println("static down cast");
             LLType* tolltype = DtoType(_to);
-            LLValue* rval = DtoBitCast(val->getRVal(), tolltype);
             // CALYPSO
+            LLValue* rval = DtoBitCast(val->getRVal(),
+                                       llvm::Type::getInt8PtrTy(gIR->context()));
             if (offset)
             {
                 auto baseOffset =
                     llvm::ConstantInt::get(DtoType(Type::tptrdiff_t), offset);
-                rval =
-                    gIR->ir->CreateInBoundsGEP(rval, baseOffset, "add.ptr");
+                rval = gIR->ir->CreateInBoundsGEP(rval,
+                                                  baseOffset, "add.ptr");
             }
+            rval = DtoBitCast(rval, tolltype);
             return new DImValue(_to, rval);
         }
         // class -> class - dynamic up cast
@@ -559,7 +565,7 @@ static unsigned build_classinfo_flags(ClassDeclaration* cd)
         flags |= 8;
     if (cd->isabstract)
         flags |= 64;
-    if (cd->isCPPclass() || cd->langPlugin()) // CALYPSO FIXME! This is checked by the GC, which expects the first member in the vtbl to point to ClassInfo and thus segfaults during destruction, we need to implement a c++ specific destruction
+    if (cd->isCPPclass() || !ClassDeclaration::object->isBaseOf2(cd)) // CALYPSO NOTE: This is checked by the GC, which expects the first member in the vtbl to point to ClassInfo and thus segfaults during destruction, we need to implement a c++ specific destruction
         flags |= 128;
     for (ClassDeclaration *cd2 = cd; cd2; cd2 = cd2->baseClass)
     {

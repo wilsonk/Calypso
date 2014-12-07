@@ -35,6 +35,8 @@ bool ClassDeclaration::isBaseOf(::ClassDeclaration *cd, int *poffset)
 
     if (poffset)
     {
+        *poffset = 0;
+
         // If the derived class is a D one, class instances need to hold two __vptr pointers
         // Their header will be:
         //      D __vptr
@@ -47,9 +49,12 @@ bool ClassDeclaration::isBaseOf(::ClassDeclaration *cd, int *poffset)
             cd = cd->baseClass;
 
         auto& Context = calypso.getASTContext();
-        auto RD2 = static_cast<ClassDeclaration*>(cd)->RD;
-        auto offset = Context.getASTRecordLayout(RD2).getBaseClassOffset(RD);
+        auto RD2 = static_cast<cpp::ClassDeclaration*>(cd)->RD;
 
+        if (RD->getCanonicalDecl() == RD2->getCanonicalDecl())
+            return true;
+
+        auto offset = Context.getASTRecordLayout(RD2).getBaseClassOffset(RD);
         *poffset += offset.getQuantity();
     }
 
@@ -79,18 +84,21 @@ FuncDeclaration *ClassDeclaration::findMethod(const clang::CXXMethodDecl* MD)
     auto s = ScopeDsymbol::search(loc,
                                   toIdentifier(MD->getIdentifier()));
 
-    if (auto os = s->isOverloadSet())
+    if (s)
     {
-        for (auto *s2: os->a)
+        if (auto os = s->isOverloadSet())
         {
-            if (auto md = funcMatch(s2, MD))
+            for (auto *s2: os->a)
+            {
+                if (auto md = funcMatch(s2, MD))
+                    return md;
+            }
+        }
+        else if (auto fd = s->isFuncDeclaration())
+        {
+            if (auto md = funcMatch(fd, MD))
                 return md;
         }
-    }
-    else if (auto fd = s->isFuncDeclaration())
-    {
-        if (auto md = funcMatch(fd, MD))
-            return md;
     }
 
     // search in base classes
@@ -123,13 +131,20 @@ void ClassDeclaration::initVtbl()
     clang::CXXFinalOverriderMap FinaOverriders;
     RD->getFinalOverriders(FinaOverriders);
 
+    llvm::DenseSet<const clang::CXXMethodDecl*> inVtbl;
+
     for (auto I = FinaOverriders.begin(), E = FinaOverriders.end();
          I != E; ++I)
     {
         auto OverMD = I->second.begin()->second.front().Method;
+        if (inVtbl.count(OverMD))
+            continue;
+
         auto md = findMethod(OverMD);
         assert(md && "CXXFinalOverrider not in cpp::ClassDeclaration");
+
         vtbl.push(md);
+        inVtbl.insert(OverMD);
     }
 }
 
@@ -156,12 +171,35 @@ void ClassDeclaration::buildLayout()
             continue;
         
         auto fldIdx = FD->getFieldIndex();
-        c_vd->offset = RL.getFieldOffset(fldIdx);
+        c_vd->offset = RL.getFieldOffset(fldIdx) / 8;
         
         fields.push(c_vd);
     }
     
     sizeok = SIZEOKdone;
+}
+
+// NOTE: we need to adjust every "this" pointer when accessing fields from bases
+// This is what Clang does in Sema::PerformObjectMemberConversion
+Expression *LangPlugin::getRightThis(Loc loc, Scope *sc, ::AggregateDeclaration *ad,
+        Expression *e1, Declaration *var, int)
+{
+    if (!ad->isClassDeclaration())
+        return nullptr;
+
+    auto cd = static_cast<cpp::ClassDeclaration*>(ad);
+
+    Type *t = e1->type->toBasetype();
+    if (t->equals(ad->getType()))
+        return e1;
+
+    ::ClassDeclaration *tcd = t->isClassHandle();
+    assert(tcd && cd->isBaseOf2(tcd));
+
+    e1 = new CastExp(loc, e1, ad->getType());
+    e1 = e1->semantic(sc);
+
+    return e1;
 }
 
 ::FuncDeclaration *LangPlugin::buildCpCtor(::StructDeclaration *sd,
@@ -177,8 +215,8 @@ void ClassDeclaration::buildLayout()
     bool isClass = ad->isClassDeclaration();
 
     const clang::RecordDecl *RD = isClass
-              ? static_cast<ClassDeclaration*>(ad)->RD
-              : static_cast<StructDeclaration*>(ad)->RD;
+              ? static_cast<cpp::ClassDeclaration*>(ad)->RD
+              : static_cast<cpp::StructDeclaration*>(ad)->RD;
 
     auto CRD = llvm::dyn_cast<clang::CXXRecordDecl>(RD);
     if (!CRD)

@@ -590,14 +590,15 @@ Lancestorsdone:
 
     if (sizeok == SIZEOKnone)
     {
-        initVtbl();
-        interfaceSemantic(sc);
-
         for (size_t i = 0; i < members->dim; i++)
         {
             Dsymbol *s = (*members)[i];
             s->addMember(sc, this, 1);
         }
+
+        // CALYPSO cpp::initVtbl needs symtab to be filled
+        initVtbl();
+        interfaceSemantic(sc);
 
         /* If this is a nested class, add the hidden 'this'
          * member which is a pointer to the enclosing scope.

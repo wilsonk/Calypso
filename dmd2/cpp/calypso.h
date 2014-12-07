@@ -34,6 +34,8 @@ namespace clang
 namespace cpp
 {
 
+class ClassDeclaration;
+
 Identifier *toIdentifier(clang::IdentifierInfo *II);
 Loc toLoc(clang::SourceLocation L);
 
@@ -110,6 +112,9 @@ public:
         Loc loc, Identifiers *packages, Identifier *id,
         Identifier *aliasId, int isstatic) override;
 
+    Expression *getRightThis(Loc loc, Scope *sc, ::AggregateDeclaration *ad,
+        Expression *e1, Declaration *var, int flag = 0) override;
+
     ::FuncDeclaration *buildDtor(::AggregateDeclaration *ad, Scope *sc) override;
     ::FuncDeclaration *buildCpCtor(::StructDeclaration *sd, Scope *sc) override;
 
@@ -142,6 +147,8 @@ public:
     void addBaseClassData(AggrTypeBuilder &builder, ::ClassDeclaration *base) override;
 
     void emitAdditionalClassSymbols(::ClassDeclaration *cd) override;
+
+    void toPostNewClass(Loc& loc, TypeClass* tc, DValue* val) override;
          
     // ==== ==== ====
     PCH pch;
@@ -165,6 +172,7 @@ private:
 
 extern LangPlugin calypso;
 bool isCPP(Dsymbol *s);
+cpp::ClassDeclaration *isDCXX(Dsymbol *s);
 
 }
 
