@@ -1,4 +1,5 @@
 #include "cpp/calypso.h"
+#include "cpp/cppimport.h"
 #include "module.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
@@ -131,9 +132,21 @@ Type *TypeMapper::toTypeUnqual(const clang::Type *T)
     else if (auto CT = T->getAsComplexIntegerType())
         return toTypeComplex(CT);
 
+    // Typedefs
+    if (auto TT = llvm::dyn_cast<clang::TypedefType>(T))
+        return toTypeTypedef(TT);
+
+    // Enums
+    if (auto ET = llvm::dyn_cast<clang::EnumType>(T))
+        return toTypeEnum(ET);
+
     // Aggregates
     if (auto RT = llvm::dyn_cast<clang::RecordType>(T))
         return toTypeRecord(RT);
+
+    // Elaborated
+    if (auto ELT = llvm::dyn_cast<clang::ElaboratedType>(T))
+        return toTypeElaborated(ELT);
 
         // NOTE: the C++ classes don't exactly map to D classes, but we can work
         // around that:
@@ -166,7 +179,7 @@ Type *TypeMapper::toTypeUnqual(const clang::Type *T)
             return pt->referenceTo();
     }
 
-    llvm::llvm_unreachable_internal("unrecognized");
+    llvm::llvm_unreachable_internal("Unrecognized C++ type");
 }
 
 
@@ -194,21 +207,51 @@ Type *TypeMapper::toTypeComplex(const clang::ComplexType *T)
     return nullptr;
 }
 
+static TypeIdentifier *typeIdentifierForInternal(const clang::NamedDecl* ND,
+            const clang::DeclContext *Root)
+{
+    auto ident = toIdentifier(ND->getIdentifier());
+
+    auto RootDecl = llvm::cast<clang::Decl>(Root);
+    if (ND->getCanonicalDecl() == RootDecl ||
+            ND->getDeclContext()->isTranslationUnit())
+        return new TypeIdentifier(Loc(), ident);
+
+    auto ParentND = llvm::cast<clang::NamedDecl>(
+            ND->getDeclContext());
+
+    auto tid = typeIdentifierForInternal(ParentND, Root);
+    tid->addIdent(ident);
+    return tid;
+}
+
+TypeIdentifier* TypeMapper::typeIdentifierFor(const clang::NamedDecl* ND)
+{
+    AddImplicitImportForDecl(ND);
+
+    auto Root = llvm::cast<clang::DeclContext>(
+            GetImplicitImportKeyForDecl(ND));
+    return typeIdentifierForInternal(ND, Root);
+}
+
+Type* TypeMapper::toTypeTypedef(const clang::TypedefType* T)
+{
+    return typeIdentifierFor(T->getDecl());
+}
+
+Type* TypeMapper::toTypeEnum(const clang::EnumType* T)
+{
+    return typeIdentifierFor(T->getDecl());
+}
+
 Type *TypeMapper::toTypeRecord(const clang::RecordType *T)
 {
-    const clang::RecordDecl *RD = T->getDecl();
-    AddImplicitImportForDecl(RD);
-    return new TypeIdentifier(Loc(), toIdentifier(RD->getIdentifier()));
+    return typeIdentifierFor(T->getDecl());
+}
 
-//     if (auto ad = declMap[RD])
-//         return ad->getType();
-//     else
-//     {
-//         ad = static_cast<AggregateDeclaration*>(
-//                 BuildImplicitImport(RD));
-//         declMap[RD] = ad;
-//         return ad->getType();
-//     }
+Type* TypeMapper::toTypeElaborated(const clang::ElaboratedType* T)
+{
+    return toType(T->getNamedType());
 }
 
 TypeFunction *TypeMapper::toTypeFunction(const clang::FunctionProtoType* T)
@@ -244,32 +287,38 @@ void TypeMapper::AddImplicitImportForDecl(const clang::NamedDecl* ND)
 // Other decl in TU -> the TU
 const clang::Decl* TypeMapper::GetImplicitImportKeyForDecl(const clang::NamedDecl* ND)
 {
+    auto ParentDC = ND->getDeclContext();
+
     if (auto Tag = llvm::dyn_cast<clang::TagDecl>(ND))
     {
-        if (auto ParentTag = llvm::dyn_cast<clang::TagDecl>(ND->getDeclContext()))
+        if (auto ParentTag = llvm::dyn_cast<clang::TagDecl>(ParentDC))
             return GetImplicitImportKeyForDecl(ParentTag);
         else
             return Tag->getCanonicalDecl();
     }
-    else if (auto NS = llvm::dyn_cast<clang::NamespaceDecl>(ND->getDeclContext()))
-        return NS->getCanonicalDecl();
+    else if (llvm::isa<clang::TagDecl>(ParentDC) ||
+                llvm::isa<clang::NamespaceDecl>(ParentDC))
+        return llvm::cast<clang::Decl>(ParentDC)->getCanonicalDecl();
     else
-        return llvm::cast<clang::TranslationUnitDecl>(ND->getDeclContext());
+        return llvm::cast<clang::TranslationUnitDecl>(ParentDC);
 }
 
-Import *TypeMapper::BuildImplicitImport(const clang::Decl *ND)
+::Import *TypeMapper::BuildImplicitImport(const clang::Decl *ND)
 {
     auto loc = toLoc(ND->getLocation());
 
     auto sPackages = new Identifiers;
     Identifier *sModule = nullptr;
 
-    auto DC = llvm::cast<clang::DeclContext>(ND);
+    auto DC = llvm::dyn_cast<clang::DeclContext>(ND);
+    if (!DC)
+        DC = ND->getDeclContext();
+
     if (!BuildImplicitImportInternal(DC, loc, sPackages, sModule))
         // ND isn't a tag, we need to import the namespace's functions and vars
         sModule = Lexer::idPool("_");
 
-    return new Import(loc, sPackages, sModule, nullptr, 0);
+    return new cpp::Import(loc, sPackages, sModule, nullptr, 0);
 }
 
 bool TypeMapper::BuildImplicitImportInternal(const clang::DeclContext *DC, Loc loc,

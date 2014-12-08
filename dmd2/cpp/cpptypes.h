@@ -17,6 +17,7 @@ class Dsymbol;
 class Identifier;
 class Import;
 class Type;
+class TypeIdentifier;
 class TypeFunction;
 
 namespace clang
@@ -52,7 +53,10 @@ public:
     Type *toTypeUnqual(const clang::Type *T);
     Type *toTypeBuiltin(const clang::BuiltinType *T);
     Type *toTypeComplex(const clang::ComplexType *T);
+    Type *toTypeTypedef(const clang::TypedefType *T);
+    Type *toTypeEnum(const clang::EnumType *T);
     Type *toTypeRecord(const clang::RecordType *T);
+    Type *toTypeElaborated(const clang::ElaboratedType *T);
     TypeFunction *toTypeFunction(const clang::FunctionProtoType *T);
 
 protected:
@@ -64,9 +68,11 @@ protected:
     void AddImplicitImportForDecl(const clang::NamedDecl* ND);
     const clang::Decl* GetImplicitImportKeyForDecl(const clang::NamedDecl* ND);
 
-    Import* BuildImplicitImport(const clang::Decl* ND);
+    ::Import* BuildImplicitImport(const clang::Decl* ND);
     bool BuildImplicitImportInternal(const clang::DeclContext* DC, Loc loc,
             Identifiers* sPackages, Identifier*& sModule);
+
+    TypeIdentifier *typeIdentifierFor(const clang::NamedDecl *ND);
 };
 
 }

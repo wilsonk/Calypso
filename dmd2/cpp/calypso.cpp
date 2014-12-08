@@ -53,9 +53,10 @@ Loc toLoc(clang::SourceLocation L)
 
 void PCH::init()
 {
-    CACHE_SUFFIXED_FILENAME(headerList, ".list");
+//     CACHE_SUFFIXED_FILENAME(headerList, ".list");
+    auto& headerList = calypso.cachePrefix;
 
-    auto fheaderList = fopen(headerList.c_str(), "r"); // ordered list of headers
+    auto fheaderList = fopen(headerList, "r"); // ordered list of headers
         // currently cached as one big PCH (neither modules nor chained PCH can be
         // used without modifying Clang).
     if (!fheaderList)
@@ -159,11 +160,11 @@ void PCH::update()
         Argv.reserve(opts::cppArgs.size() + 7);
         unsigned i = 0;
 #define ARGV_ADD(a) { Argv.emplace_back(a); i++; }
-        ARGV_ADD("-cc1");
         for (unsigned j = 0; j < opts::cppArgs.size(); ++j)
             ARGV_ADD(opts::cppArgs[j]);
         ARGV_ADD("-x");
         ARGV_ADD("c++-header");
+        ARGV_ADD("-Xclang");
         ARGV_ADD("-emit-pch");
         ARGV_ADD("-o");
         ARGV_ADD(pchFilename);

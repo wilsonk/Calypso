@@ -169,7 +169,7 @@ Dsymbol *Mapper::VisitDecl(const clang::Decl *D)
 
     if (0) ;
 //     DECL(Value)
-//     DECL(Typedef)
+    DECL(Typedef)
     DECL(Record)
     DECL(Function)
 //     DECL(Template)
@@ -288,15 +288,30 @@ Dsymbol *Mapper::VisitRecordDecl(const clang::RecordDecl *D)
             }
         }
 
-        // Add enums
+        // Add specific decls: enums, typedefs
         typedef clang::DeclContext::specific_decl_iterator<clang::EnumDecl> enum_iterator;
         for (enum_iterator I(D->decls_begin()), E(D->decls_end());
+                    I != E; I++)
+            members->push(VisitDecl(*I));
+
+        typedef clang::DeclContext::specific_decl_iterator<clang::TypedefDecl> typedef_iterator;
+        for (typedef_iterator I(D->decls_begin()), E(D->decls_end());
                     I != E; I++)
             members->push(VisitDecl(*I));
 
         a->members = members;
     }
 
+    return a;
+}
+
+Dsymbol* Mapper::VisitTypedefDecl(const clang::TypedefDecl* D)
+{
+    auto loc = toLoc(D->getLocation());
+    auto id = toIdentifier(D->getIdentifier());
+    auto t = toType(D->getUnderlyingType());
+
+    auto a = new AliasDeclaration(loc, id, t);
     return a;
 }
 
@@ -483,7 +498,7 @@ Dsymbol* Mapper::VisitEnumDecl(const clang::EnumDecl* D)
         {
             auto InitVal = ECD->getInitVal();
             auto t = getAPIntDType(InitVal);
-            
+
             value = new IntegerExp(loc, InitVal.isNegative() ? InitVal.getSExtValue() : InitVal.getZExtValue(), t);
         }
 

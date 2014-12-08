@@ -9,6 +9,8 @@ import (C++) test.anotherClass;
 import (C++) test.testMultipleInherit;
 import (C++) test.enumTest;
 
+import (C++) Ogre.Light;
+
 void testEcho(int o) { writeln("Echo ", o); }
 
 class testDClass

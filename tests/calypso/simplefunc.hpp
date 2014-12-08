@@ -1,5 +1,7 @@
 #pragma once
 
+#include "OGRE/Ogre.h"
+
 namespace test {
     int testFunc(char c);
 
