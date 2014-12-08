@@ -2,6 +2,7 @@
 
 #include "../aggregate.h"
 #include "../declaration.h"
+#include "../enum.h"
 #include "../identifier.h"
 #include "../import.h"
 #include "../lexer.h"
@@ -97,11 +98,10 @@ public:
     Dsymbol *VisitTypedefDecl(const clang::TypedefDecl *D);
     Dsymbol *VisitFunctionDecl(const clang::FunctionDecl *D);
     Dsymbol *VisitTemplateDecl(const clang::TemplateDecl *D);
+    Dsymbol *VisitEnumDecl(const clang::EnumDecl *D);
 
     TemplateParameter *VisitTemplateParameter(const clang::NamedDecl *D);
 
-//     Dsymbol *VisitEnumDecl(const clang::EnumDecl *D);
-//     Dsymbol *VisitRecordDecl(const clang::RecordDecl *D);
 //     Dsymbol *VisitEnumConstantDecl(const clang::EnumConstantDecl *D);
 //     Dsymbol *VisitEmptyDecl(const clang::EmptyDecl *D);
 //     Dsymbol *VisitFriendDecl(const clang::FriendDecl *D);
@@ -173,6 +173,7 @@ Dsymbol *Mapper::VisitDecl(const clang::Decl *D)
     DECL(Record)
     DECL(Function)
 //     DECL(Template)
+    DECL(Enum)
 
 #undef DECL
 
@@ -260,7 +261,7 @@ Dsymbol *Mapper::VisitRecordDecl(const clang::RecordDecl *D)
             if (I->getCanonicalDecl() != *I)
                 continue;
 
-            members->push_back(VisitValueDecl(*I));
+            members->push(VisitValueDecl(*I));
         }
 
         if (CRD)
@@ -283,9 +284,15 @@ Dsymbol *Mapper::VisitRecordDecl(const clang::RecordDecl *D)
                 // CALYPSO FIXME remove the null check once everything is implemented
                 auto fd = VisitFunctionDecl(*I);
                 if (fd)
-                    members->push_back(fd);
+                    members->push(fd);
             }
         }
+
+        // Add enums
+        typedef clang::DeclContext::specific_decl_iterator<clang::EnumDecl> enum_iterator;
+        for (enum_iterator I(D->decls_begin()), E(D->decls_end());
+                    I != E; I++)
+            members->push(VisitDecl(*I));
 
         a->members = members;
     }
@@ -442,6 +449,50 @@ Dsymbol *Mapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 //
 //     return tp;
 // }
+
+Type *getAPIntDType(const llvm::APInt &i)
+{
+    bool needs64bits = i.getBitWidth() > 32;
+
+    if (i.isNegative())
+        return needs64bits ? Type::tint64 : Type::tint32;
+    else
+        return needs64bits ? Type::tuns64 : Type::tuns32;
+}
+
+Dsymbol* Mapper::VisitEnumDecl(const clang::EnumDecl* D)
+{
+    auto loc = toLoc(D->getLocation());
+    auto id = toIdentifier(D->getIdentifier());
+
+    auto IntType = D->getIntegerType();
+    if (IntType.isNull())
+        IntType = D->getPromotionType();
+
+    auto e = new EnumDeclaration(loc, id, toType(IntType));
+
+    for (auto ECD: D->enumerators())
+    {
+        if (!e->members)
+            e->members = new Dsymbols;
+
+        auto ident = toIdentifier(ECD->getIdentifier());
+        Expression *value = nullptr;
+
+        if (ECD->getInitExpr())
+        {
+            auto InitVal = ECD->getInitVal();
+            auto t = getAPIntDType(InitVal);
+            
+            value = new IntegerExp(loc, InitVal.isNegative() ? InitVal.getSExtValue() : InitVal.getZExtValue(), t);
+        }
+
+        auto em = new EnumMember(loc, ident, value, nullptr);
+        e->members->push(em);
+    }
+
+    return e;
+}
 
 }
 

@@ -7,6 +7,7 @@ import (C++) test.testClass;
 import (C++) test.testInherit;
 import (C++) test.anotherClass;
 import (C++) test.testMultipleInherit;
+import (C++) test.enumTest;
 
 void testEcho(int o) { writeln("Echo ", o); }
 
@@ -95,4 +96,7 @@ void main()
     writeln("thunkTest.hello() = ", DCXXclass.thunkTest(testCast, true));
     writeln("testCast.hello() = ", testCast.hello(true));
     writeln("testCast.echo2() = ", testCast.echo2(3));
+
+    enumTest someEnumValue = enumTest.ENUM_SOMEVAL;
+    writeln("someEnumValue = ", someEnumValue);
 }

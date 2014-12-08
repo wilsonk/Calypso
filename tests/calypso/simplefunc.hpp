@@ -49,4 +49,11 @@ namespace test {
 
         virtual bool hello(bool who) override;
     };
+
+    enum enumTest
+    {
+        ENUM_FIRSTVAL = 2,
+        ENUM_SOMEVAL,
+        ENUM_LASTVAL
+    };
 }
