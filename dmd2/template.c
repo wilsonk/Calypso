@@ -4362,7 +4362,7 @@ MATCH deduceType(RootObject *o, Scope *sc, Type *tparam, TemplateParameters *par
                         deduceBaseClassParameters(b, sc, tparam, parameters, dedtypes,
                             best, numBaseClassMatches);
                     }
-                    s = (*s->baseclasses)[0]->base;
+                    s = isClassDeclarationOrNull((*s->baseclasses)[0]->base);  // CALYPSO
                 }
 
                 if (numBaseClassMatches == 0)

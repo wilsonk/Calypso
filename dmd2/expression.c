@@ -3541,13 +3541,13 @@ Expression *SuperExp::semantic(Scope *sc)
             cd = s->isClassDeclaration();
             if (cd)
             {
-                cd = cd->baseClass;
-                if (!cd)
+                AggregateDeclaration *base = cd->baseClass; // CALYPSO
+                if (!base)
                 {
                     error("class %s has no 'super'", s->toChars());
                     goto Lerr;
                 }
-                type = cd->type;
+                type = base->type;
                 return this;
             }
         }

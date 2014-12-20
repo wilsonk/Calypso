@@ -2256,7 +2256,7 @@ Expression *VarDeclaration::callScopeDtor(Scope *sc)
     {
         for (ClassDeclaration *cd = type->isClassHandle();
              cd;
-             cd = cd->baseClass)
+             cd = isClassDeclarationOrNull(cd->baseClass))  // CALYPSO
         {
             /* We can do better if there's a way with onstack
              * classes to determine if there's no way the monitor

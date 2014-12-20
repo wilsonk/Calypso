@@ -3070,12 +3070,12 @@ public:
         {
             ClassDeclaration *cd = ((TypeClass *)e->newtype->toBasetype())->sym;
             size_t totalFieldCount = 0;
-            for (ClassDeclaration *c = cd; c; c = c->baseClass)
+            for (AggregateDeclaration *c = cd; c; c = toAggregateBase(c)) // CALYPSO
                 totalFieldCount += c->fields.dim;
             Expressions *elems = new Expressions;
             elems->setDim(totalFieldCount);
             size_t fieldsSoFar = totalFieldCount;
-            for (ClassDeclaration *c = cd; c; c = c->baseClass)
+            for (AggregateDeclaration *c = cd; c; c = toAggregateBase(c)) // CALYPSO
             {
                 fieldsSoFar -= c->fields.dim;
                 for (size_t i = 0; i < c->fields.dim; i++)

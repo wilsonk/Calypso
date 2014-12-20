@@ -253,18 +253,18 @@ llvm::DIType ldc::DIBuilder::CreateMemberType(unsigned linnum, Type *type,
     );
 }
 
-void ldc::DIBuilder::AddBaseFields(ClassDeclaration *sd, llvm::DIFile file,
+void ldc::DIBuilder::AddBaseFields(AggregateDeclaration *ad, llvm::DIFile file,
                                      std::vector<llvm::Value*> &elems)
 {
-    if (sd->baseClass)
+    if (toAggregateBase(ad))
     {
-        AddBaseFields(sd->baseClass, file, elems);
+        AddBaseFields(toAggregateBase(ad), file, elems); // CALYPSO
     }
 
-    size_t narr = sd->fields.dim;
+    size_t narr = ad->fields.dim;
     elems.reserve(narr);
-    for (VarDeclarations::iterator I = sd->fields.begin(),
-                                   E = sd->fields.end();
+    for (VarDeclarations::iterator I = ad->fields.begin(),
+                                   E = ad->fields.end();
                                    I != E; ++I)
     {
         VarDeclaration* vd = *I;

@@ -769,7 +769,8 @@ void FuncDeclaration::semantic(Scope *sc)
         /* Find index of existing function in base class's vtbl[] to override
          * (the index will be the same as in cd's current vtbl[])
          */
-        int vi = cd->baseClass ? findVtblIndex((Dsymbols*)&cd->baseClass->vtbl, (int)cd->baseClass->vtbl.dim)
+        ClassDeclaration *cb = isClassDeclarationOrNull(cd->baseClass);  // CALYPSO
+        int vi = cb ? findVtblIndex((Dsymbols*)&cb->vtbl, (int)cb->vtbl.dim)
                                : -1;
 
         bool doesoverride = false;
@@ -846,7 +847,7 @@ void FuncDeclaration::semantic(Scope *sc)
                 return;
 
             default:
-            {   FuncDeclaration *fdv = cd->baseClass->vtbl[vi]->isFuncDeclaration();
+            {   FuncDeclaration *fdv = cb->vtbl[vi]->isFuncDeclaration();  // CALYPSO
                 FuncDeclaration *fdc = cd->vtbl[vi]->isFuncDeclaration();
                 // This function is covariant with fdv
 
@@ -931,7 +932,8 @@ void FuncDeclaration::semantic(Scope *sc)
         for (size_t i = 0; i < cd->interfaces_dim; i++)
         {
             BaseClass *b = cd->interfaces[i];
-            vi = findVtblIndex((Dsymbols *)&b->base->vtbl, (int)b->base->vtbl.dim);
+            InterfaceDeclaration *ib = (InterfaceDeclaration *)b->base;  // CALYPSO
+            vi = findVtblIndex((Dsymbols *)&ib->vtbl, (int)ib->vtbl.dim);
             switch (vi)
             {
                 case -1:
@@ -943,7 +945,7 @@ void FuncDeclaration::semantic(Scope *sc)
                     return;
 
                 default:
-                {   FuncDeclaration *fdv = (FuncDeclaration *)b->base->vtbl[vi];
+                {   FuncDeclaration *fdv = (FuncDeclaration *)ib->vtbl[vi];
                     Type *ti = NULL;
 
                     /* Remember which functions this overrides
@@ -1588,7 +1590,7 @@ void FuncDeclaration::semantic3(Scope *sc)
 
                 while (!inv && cd)
                 {
-                    cd = cd->baseClass;
+                    cd = isClassDeclarationOrNull(cd->baseClass);  // CALYPSO
                     if (!cd)
                         break;
                     inv = cd->inv;
@@ -1660,7 +1662,7 @@ void FuncDeclaration::semantic3(Scope *sc)
 
                 while (!inv && cd)
                 {
-                    cd = cd->baseClass;
+                    cd = isClassDeclarationOrNull(cd->baseClass);  // CALYPSO
                     if (!cd)
                         break;
                     inv = cd->inv;

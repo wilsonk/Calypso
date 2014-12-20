@@ -47,7 +47,7 @@ void DtoResolveClass(ClassDeclaration* cd)
                                E = cd->baseclasses->end();
                                I != E; ++I)
     {
-        DtoResolveClass((*I)->base);
+        DtoResolveAggregate((*I)->base);  // CALYPSO
     }
 
     // make sure type exists
@@ -77,6 +77,17 @@ void DtoResolveClass(ClassDeclaration* cd)
     if (cd->isInterfaceDeclaration())
     {
         irAggr->initializeInterface();
+    }
+}
+
+void DtoResolveAggregate(AggregateDeclaration* ad) // CALYPSO
+{
+    if (auto cd = ad->isClassDeclaration())
+        DtoResolveClass(cd);
+    else
+    {
+        auto sd = ad->isStructDeclaration();
+        DtoResolveStruct(sd);
     }
 }
 
@@ -567,13 +578,13 @@ static unsigned build_classinfo_flags(ClassDeclaration* cd)
         flags |= 64;
     if (cd->isCPPclass() || !ClassDeclaration::object->isBaseOf2(cd)) // CALYPSO NOTE: This is checked by the GC, which expects the first member in the vtbl to point to ClassInfo and thus segfaults during destruction, we need to implement a c++ specific destruction
         flags |= 128;
-    for (ClassDeclaration *cd2 = cd; cd2; cd2 = cd2->baseClass)
+    for (AggregateDeclaration *ad2 = cd; ad2; ad2 = toAggregateBase(ad2)) // CALYPSO
     {
-        if (!cd2->members)
+        if (!ad2->members)
             continue;
-        for (size_t i = 0; i < cd2->members->dim; i++)
+        for (size_t i = 0; i < ad2->members->dim; i++)
         {
-            Dsymbol *sm = static_cast<Dsymbol *>(cd2->members->data[i]);
+            Dsymbol *sm = static_cast<Dsymbol *>(ad2->members->data[i]);
             if (sm->isVarDeclaration() && !sm->isVarDeclaration()->isDataseg()) // is this enough?
                 hasOffTi = true;
             //printf("sm = %s %s\n", sm->kind(), sm->toChars());
@@ -677,8 +688,8 @@ LLConstant* DtoDefineClassInfo(ClassDeclaration* cd)
 
     // base classinfo
     // interfaces never get a base , just the interfaces[]
-    if (cd->baseClass && !cd->isInterfaceDeclaration())
-        b.push_classinfo(cd->baseClass);
+    if (isClassDeclarationOrNull(cd->baseClass) && !cd->isInterfaceDeclaration()) // CALYPSO
+        b.push_classinfo(isClassDeclarationOrNull(cd->baseClass));
     else
         b.push_null(cinfo->type);
 

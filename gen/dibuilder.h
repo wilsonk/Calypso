@@ -150,7 +150,7 @@ private:
         , llvm::DIExpression diexpr
 #endif
         );
-    void AddBaseFields(ClassDeclaration *sd, llvm::DIFile file,
+    void AddBaseFields(AggregateDeclaration *ad, llvm::DIFile file,
                          std::vector<llvm::Value*> &elems);
     llvm::DIFile CreateFile(Loc& loc);
     llvm::DIType CreateBasicType(Type *type);

@@ -268,7 +268,9 @@ LLConstant * IrAggr::getClassInfoInit()
 
 llvm::GlobalVariable * IrAggr::getInterfaceVtbl(BaseClass * b, bool new_instance, size_t interfaces_index)
 {
-    ClassGlobalMap::iterator it = interfaceVtblMap.find(b->base);
+    assert(b->base->isClassDeclaration()); // CALYPSO
+    ClassDeclaration *cb = static_cast<ClassDeclaration*>(b->base);
+    ClassGlobalMap::iterator it = interfaceVtblMap.find(cb);
     if (it != interfaceVtblMap.end())
         return it->second;
 
@@ -285,7 +287,7 @@ llvm::GlobalVariable * IrAggr::getInterfaceVtbl(BaseClass * b, bool new_instance
     std::vector<llvm::Constant*> constants;
     constants.reserve(vtbl_array.dim);
 
-    if (!b->base->isCPPinterface()) { // skip interface info for CPP interfaces
+    if (!cb->isCPPinterface()) { // skip interface info for CPP interfaces
         // index into the interfaces array
         llvm::Constant* idxs[2] = {
             DtoConstSize_t(0),
@@ -301,7 +303,7 @@ llvm::GlobalVariable * IrAggr::getInterfaceVtbl(BaseClass * b, bool new_instance
 
     // add virtual function pointers
     size_t n = vtbl_array.dim;
-    for (size_t i = b->base->vtblOffset(); i < n; i++)
+    for (size_t i = cb->vtblOffset(); i < n; i++)
     {
         Dsymbol* dsym = static_cast<Dsymbol*>(vtbl_array.data[i]);
         if (dsym == NULL)
@@ -329,7 +331,7 @@ llvm::GlobalVariable * IrAggr::getInterfaceVtbl(BaseClass * b, bool new_instance
         // the interface not the underlying object as expected. Instead of
         // the function, we place into the vtable a small wrapper, called thunk,
         // that casts 'this' to the object and then pass it to the real function.
-        if (b->base->isCPPinterface()) {
+        if (cb->isCPPinterface()) {
             assert(irFunc->irFty.arg_this);
 
             // create the thunk function
@@ -396,7 +398,7 @@ llvm::GlobalVariable * IrAggr::getInterfaceVtbl(BaseClass * b, bool new_instance
     );
 
     // insert into the vtbl map
-    interfaceVtblMap.insert(std::make_pair(b->base, GV));
+    interfaceVtblMap.insert(std::make_pair(cb, GV));
 
     return GV;
 }
@@ -468,7 +470,9 @@ LLConstant * IrAggr::getClassInfoInterfaces()
         }
         else
         {
-            ClassGlobalMap::iterator itv = interfaceVtblMap.find(it->base);
+            assert(it->base->isClassDeclaration()); // CALYPSO
+            ClassDeclaration *cb = static_cast<ClassDeclaration*>(it->base);
+            ClassGlobalMap::iterator itv = interfaceVtblMap.find(cb);
             assert(itv != interfaceVtblMap.end() && "interface vtbl not found");
             vtb = itv->second;
             vtb = DtoBitCast(vtb, voidptrptr_type);

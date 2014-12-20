@@ -1282,4 +1282,11 @@ const char *UnionDeclaration::kind()
     return "union";
 }
 
+// CALYPSO
+StructDeclaration *isStructDeclarationOrNull(Dsymbol *s)
+{
+    if (!s)
+        return NULL;
 
+    return s->isStructDeclaration();
+}

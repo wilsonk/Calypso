@@ -833,9 +833,10 @@ Expression *semanticTraits(TraitsExp *e, Scope *sc)
                 {
                     for (size_t i = 0; i < cd->baseclasses->dim; i++)
                     {
-                        ClassDeclaration *cb = (*cd->baseclasses)[i]->base;
-                        ScopeDsymbol::foreach(NULL, cb->members, &PushIdentsDg::dg, idents);
-                        if (cb->baseclasses->dim)
+                        AggregateDeclaration *ab = (*cd->baseclasses)[i]->base; // CALYPSO WARNING implications?
+                        ScopeDsymbol::foreach(NULL, ab->members, &PushIdentsDg::dg, idents);
+                        ClassDeclaration *cb = ab->isClassDeclaration();
+                        if (cb && cb->baseclasses->dim)
                             dg(cb, idents);
                     }
                 }

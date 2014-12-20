@@ -1225,7 +1225,11 @@ MATCH implicitConvTo(Expression *e, Type *t)
                                 else if (!v->type->isZeroInit(loc))
                                     return false;
                             }
-                            return cd->baseClass ? convertible(loc, cd->baseClass, mod) : true;
+
+                            if (!isClassDeclarationOrNull(cd->baseClass)) // CALYPSO
+                                return true;
+
+                            return convertible(loc, (ClassDeclaration *)cd->baseClass, mod);
                         }
                     };
 
@@ -2728,18 +2732,18 @@ Lcc:
 
                 /* Pick 'tightest' type
                  */
-                ClassDeclaration *cd1 = tc1->sym->baseClass;
-                ClassDeclaration *cd2 = tc2->sym->baseClass;
+                AggregateDeclaration *ad1 = tc1->sym->baseClass;
+                AggregateDeclaration *ad2 = tc2->sym->baseClass;
 
-                if (cd1 && cd2)
+                if (ad1 && ad2)
                 {
-                    t1 = cd1->type;
-                    t2 = cd2->type;
+                    t1 = ad1->type;
+                    t2 = ad2->type;
                 }
-                else if (cd1)
-                    t1 = cd1->type;
-                else if (cd2)
-                    t2 = cd2->type;
+                else if (ad1)
+                    t1 = ad1->type;
+                else if (ad2)
+                    t2 = ad2->type;
                 else
                     goto Lincompatible;
             }

@@ -44,33 +44,33 @@ ClassDeclaration *ClassReferenceExp::originalClass()
 
 VarDeclaration *ClassReferenceExp::getFieldAt(unsigned index)
 {
-    ClassDeclaration *cd = originalClass();
+    AggregateDeclaration *ad = originalClass(); // CALYPSO
     unsigned fieldsSoFar = 0;
-    while (index - fieldsSoFar >= cd->fields.dim)
+    while (index - fieldsSoFar >= ad->fields.dim)
     {
-        fieldsSoFar += cd->fields.dim;
-        cd = cd->baseClass;
+        fieldsSoFar += ad->fields.dim;
+        ad = toAggregateBase(ad);
     }
-    return cd->fields[index - fieldsSoFar];
+    return ad->fields[index - fieldsSoFar];
 }
 
 // Return index of the field, or -1 if not found
 int ClassReferenceExp::getFieldIndex(Type *fieldtype, unsigned fieldoffset)
 {
-    ClassDeclaration *cd = originalClass();
+    AggregateDeclaration *ad = originalClass();  // CALYPSO
     unsigned fieldsSoFar = 0;
     for (size_t j = 0; j < value->elements->dim; j++)
     {
-        while (j - fieldsSoFar >= cd->fields.dim)
+        while (j - fieldsSoFar >= ad->fields.dim)
         {
-            fieldsSoFar += cd->fields.dim;
-            cd = cd->baseClass;
+            fieldsSoFar += ad->fields.dim;
+            ad = toAggregateBase(ad);
         }
-        VarDeclaration *v2 = cd->fields[j - fieldsSoFar];
+        VarDeclaration *v2 = ad->fields[j - fieldsSoFar];
         if (fieldoffset == v2->offset &&
             fieldtype->size() == v2->type->size())
         {
-            return (int)(value->elements->dim - fieldsSoFar - cd->fields.dim + (j-fieldsSoFar));
+            return (int)(value->elements->dim - fieldsSoFar - ad->fields.dim + (j-fieldsSoFar));
         }
     }
     return -1;
@@ -80,19 +80,19 @@ int ClassReferenceExp::getFieldIndex(Type *fieldtype, unsigned fieldoffset)
 // Same as getFieldIndex, but checks for a direct match with the VarDeclaration
 int ClassReferenceExp::findFieldIndexByName(VarDeclaration *v)
 {
-    ClassDeclaration *cd = originalClass();
+    AggregateDeclaration *ad = originalClass();  // CALYPSO
     size_t fieldsSoFar = 0;
     for (size_t j = 0; j < value->elements->dim; j++)
     {
-        while (j - fieldsSoFar >= cd->fields.dim)
+        while (j - fieldsSoFar >= ad->fields.dim)
         {
-            fieldsSoFar += cd->fields.dim;
-            cd = cd->baseClass;
+            fieldsSoFar += ad->fields.dim;
+            ad = toAggregateBase(ad);
         }
-        VarDeclaration *v2 = cd->fields[j - fieldsSoFar];
+        VarDeclaration *v2 = ad->fields[j - fieldsSoFar];
         if (v == v2)
         {
-            return (int)(value->elements->dim - fieldsSoFar - cd->fields.dim + (j-fieldsSoFar));
+            return (int)(value->elements->dim - fieldsSoFar - ad->fields.dim + (j-fieldsSoFar));
         }
     }
     return -1;
@@ -2134,16 +2134,17 @@ void showCtfeExpr(Expression *e, int level)
             }
             else if (cd)
             {
-                while (i - fieldsSoFar >= cd->fields.dim)
+                AggregateDeclaration *ad = cd;
+                while (i - fieldsSoFar >= ad->fields.dim)
                 {
-                    fieldsSoFar += cd->fields.dim;
-                    cd = cd->baseClass;
+                    fieldsSoFar += ad->fields.dim;
+                    ad = toAggregateBase(ad); // CALYPSO
                     for (int j = level; j>0; --j) printf(" ");
-                    printf(" BASE CLASS: %s\n", cd->toChars());
+                    printf(" BASE CLASS: %s\n", ad->toChars());
                 }
-                v = cd->fields[i - fieldsSoFar];
-                assert((elements->dim + i) >= (fieldsSoFar + cd->fields.dim));
-                size_t indx = (elements->dim - fieldsSoFar)- cd->fields.dim + i;
+                v = ad->fields[i - fieldsSoFar];
+                assert((elements->dim + i) >= (fieldsSoFar + ad->fields.dim));
+                size_t indx = (elements->dim - fieldsSoFar)- ad->fields.dim + i;
                 assert(indx < elements->dim);
                 z = (*elements)[indx];
             }

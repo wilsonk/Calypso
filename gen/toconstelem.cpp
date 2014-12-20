@@ -634,12 +634,12 @@ public:
             {
                 const size_t nexprs = value->elements->dim;
 
-                std::stack<ClassDeclaration*> classHierachy;
-                ClassDeclaration* cur = origClass;
+                std::stack<AggregateDeclaration*> classHierachy; // CALYPSO
+                AggregateDeclaration* cur = origClass;
                 while (cur)
                 {
                     classHierachy.push(cur);
-                    cur = cur->baseClass;
+                    cur = toAggregateBase(cur);
                 }
                 size_t i = 0;
                 while (!classHierachy.empty())

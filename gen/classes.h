@@ -17,6 +17,7 @@
 
 #include "gen/structs.h"
 
+class AggregateDeclaration;
 class ClassDeclaration;
 class CtorDeclaration;
 class FuncDeclaration;
@@ -25,6 +26,9 @@ class TypeClass;
 
 /// Resolves the llvm type for a class declaration
 void DtoResolveClass(ClassDeclaration* cd);
+
+// CALYPSO
+void DtoResolveAggregate(AggregateDeclaration* ad);
 
 /// Provides the llvm declaration for a class declaration
 void DtoDeclareClass(ClassDeclaration* cd);

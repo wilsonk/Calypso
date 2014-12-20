@@ -88,7 +88,7 @@ protected:
    std::vector<llvm::Type*> buildVtblType(Type* first, FuncDeclarations* vtbl_array);
 
     ///
-    void addBaseClassData(AggrTypeBuilder &builder, ClassDeclaration *base);
+    void addBaseClassData(AggrTypeBuilder &builder, AggregateDeclaration *base);
 
     /// Adds the interface and all it's base interface to the interface
     /// to index map.

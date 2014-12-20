@@ -45,7 +45,7 @@ IrTypeClass::IrTypeClass(ClassDeclaration* cd)
 
 //////////////////////////////////////////////////////////////////////////////
 
-void IrTypeClass::addBaseClassData(AggrTypeBuilder &builder, ClassDeclaration *base)
+void IrTypeClass::addBaseClassData(AggrTypeBuilder &builder, AggregateDeclaration *base)
 {
     // CALYPSO
     if (auto lp = base->langPlugin())
@@ -54,15 +54,17 @@ void IrTypeClass::addBaseClassData(AggrTypeBuilder &builder, ClassDeclaration *b
         return;
     }
 
-    if (base->baseClass)
+    ClassDeclaration *bcd = base->isClassDeclaration();  // CALYPSO
+
+    if (bcd && bcd->baseClass)
     {
-        addBaseClassData(builder, base->baseClass);
+        addBaseClassData(builder, bcd->baseClass);
     }
 
     builder.addAggregate(base);
 
     // any interface implementations?
-    if (base->vtblInterfaces && base->vtblInterfaces->dim > 0)
+    if (bcd && bcd->vtblInterfaces && bcd->vtblInterfaces->dim > 0)
     {
         bool new_instances = (base == cd);
 
@@ -72,18 +74,21 @@ void IrTypeClass::addBaseClassData(AggrTypeBuilder &builder, ClassDeclaration *b
         // align offset
         builder.alignCurrentOffset(Target::ptrsize);
 
-        for (BaseClasses::iterator I = base->vtblInterfaces->begin(),
-                                   E = base->vtblInterfaces->end();
+        for (BaseClasses::iterator I = bcd->vtblInterfaces->begin(),
+                                   E = bcd->vtblInterfaces->end();
                                    I != E; ++I)
         {
             BaseClass *b = *I;
             IF_LOG Logger::println("Adding interface vtbl for %s", b->base->toPrettyChars());
 
+            assert(b->base->isInterfaceDeclaration());
+            InterfaceDeclaration *ib = static_cast<InterfaceDeclaration*>(b->base); // CALYPSO
+
             FuncDeclarations arr;
             b->fillVtbl(cd, &arr, new_instances);
 
             // add to the interface map
-            addInterfaceToMap(b->base, builder.currentFieldIndex());
+            addInterfaceToMap(ib, builder.currentFieldIndex());
 
             llvm::Type* ivtbl_type = llvm::StructType::get(gIR->context(), buildVtblType(first, &arr));
             builder.addType(llvm::PointerType::get(ivtbl_type, 0), Target::ptrsize);
@@ -107,7 +112,7 @@ IrTypeClass* IrTypeClass::get(ClassDeclaration* cd)
 
     // This class may contain an align declaration. See issue 726.
     t->packed = false;
-    for (ClassDeclaration *base = cd; base != 0 && !t->packed; base = base->baseClass)
+    for (AggregateDeclaration *base = cd; base != 0 && !t->packed; base = toAggregateBase(base)) // CALYPSO
     {
         t->packed = isPacked(base);
     }
@@ -273,7 +278,8 @@ void IrTypeClass::addInterfaceToMap(ClassDeclaration * inter, size_t index)
     if (inter->interfaces_dim > 0)
     {
         BaseClass* b = inter->interfaces[0];
-        addInterfaceToMap(b->base, index);
+        assert(b->base->isClassDeclaration());
+        addInterfaceToMap(static_cast<ClassDeclaration *>(b->base), index);  // CALYPSO
     }
 }
 

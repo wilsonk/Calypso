@@ -207,7 +207,7 @@ struct BaseClass
     Type *type;                         // (before semantic processing)
     PROT protection;               // protection for the base interface
 
-    ClassDeclaration *base;
+    AggregateDeclaration *base; // CALYPSO
     unsigned offset;                    // 'this' pointer offset
     FuncDeclarations vtbl;              // for interfaces: Array of FuncDeclaration's
                                         // making up the vtbl[]
@@ -251,7 +251,7 @@ public:
     static ClassDeclaration *exception;
     static ClassDeclaration *errorException;
 
-    ClassDeclaration *baseClass;        // NULL only if this is Object
+    AggregateDeclaration *baseClass;        // NULL only if this is Object // CALYPSO
     FuncDeclaration *staticCtor;
     FuncDeclaration *staticDtor;
     Dsymbols vtbl;                      // Array of FuncDeclaration's making up the vtbl[]
@@ -278,8 +278,8 @@ public:
                                         // and do addMember(). [== Semantic(Start,In,Done)]
 
     ClassDeclaration(Loc loc, Identifier *id, BaseClasses *baseclasses, bool inObject = false);
-    Dsymbol *syntaxCopy(Dsymbol *s);
-    void semantic(Scope *sc);
+    virtual Dsymbol *syntaxCopy(Dsymbol *s);
+    virtual void semantic(Scope *sc);
     void toCBuffer(OutBuffer *buf, HdrGenState *hgs);
     bool isBaseOf2(ClassDeclaration *cd);
 
@@ -304,9 +304,10 @@ public:
 
     // CALYPSO
     virtual bool allowMultipleInheritance() { return false; }  // will allow more than one non-interface base
+    virtual bool allowInheritFromStruct() { return false; }
     virtual void initVtbl();
     virtual void buildLayout(); // determine the agg size and field offsets
-    ClassDeclaration *foreignBase();
+    AggregateDeclaration *foreignBase();
 
 #if IN_DMD
     // Back end
@@ -341,5 +342,10 @@ public:
     InterfaceDeclaration *isInterfaceDeclaration() { return this; }
     void accept(Visitor *v) { v->visit(this); }
 };
+
+// CALYPSO
+ClassDeclaration *isStructDeclarationOrNull(Dsymbol* s);
+ClassDeclaration *isClassDeclarationOrNull(Dsymbol *s);
+AggregateDeclaration *toAggregateBase(Dsymbol *s);
 
 #endif /* DMD_AGGREGATE_H */

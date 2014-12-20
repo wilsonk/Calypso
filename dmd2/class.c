@@ -393,35 +393,51 @@ void ClassDeclaration::semantic(Scope *sc)
             BaseClass *b = (*baseclasses)[0];
             Type *tb = b->type->toBasetype();
             TypeClass *tc = (tb->ty == Tclass) ? (TypeClass *)tb : NULL;
-            if (!tc)
+            TypeStruct *ts = (allowInheritFromStruct() && (tb->ty == Tstruct)) ? (TypeStruct *)tb : NULL; // CALYPSO
+
+            if (!tc && !ts)
             {
                 if (b->type != Type::terror)
-                    error("base type must be class or interface, not %s", b->type->toChars());
+                {
+                    if (allowInheritFromStruct())
+                        error("base type must be class or interface, not %s", b->type->toChars());
+                    else
+                        error("base type must be class, struct or interface, not %s", b->type->toChars());
+                }
                 baseclasses->remove(0);
                 goto L7;
             }
 
-            if (tc->sym->isDeprecated())
+            AggregateDeclaration *sym;
+            if (tc)
+                sym = tc->sym;
+            else
+                sym = ts->sym;
+            
+            if (sym->isDeprecated())
             {
                 if (!isDeprecated())
                 {
                     // Deriving from deprecated class makes this one deprecated too
                     isdeprecated = true;
 
-                    tc->checkDeprecated(loc, sc);
+                    tb->checkDeprecated(loc, sc);
                 }
             }
 
-            if (tc->sym->isInterfaceDeclaration())
+            if (sym->isInterfaceDeclaration())
                 goto L7;
 
-            for (ClassDeclaration *cdb = tc->sym; cdb; cdb = cdb->baseClass)
+            if (tc)
             {
-                if (cdb == this)
+                for (ClassDeclaration *cdb = tc->sym; cdb; cdb = isClassDeclarationOrNull(cdb->baseClass)) // CALYPSO
                 {
-                    error("circular inheritance");
-                    baseclasses->remove(0);
-                    goto L7;
+                    if (cdb == this)
+                    {
+                        error("circular inheritance");
+                        baseclasses->remove(0);
+                        goto L7;
+                    }
                 }
             }
 
@@ -430,17 +446,20 @@ void ClassDeclaration::semantic(Scope *sc)
              * Therefore, even if tc->sym->sizeof == SIZEOKnone,
              * we need to set baseClass field for class covariance check.
              */
-            baseClass = tc->sym;
+            baseClass = sym;
             b->base = baseClass;
 
-            if (tc->sym->scope && tc->sym->doAncestorsSemantic != SemanticDone)
-                tc->sym->semantic(NULL);    // Try to resolve forward reference
-            if (tc->sym->doAncestorsSemantic != SemanticDone)
+            if (tc)
             {
-                //printf("\ttry later, forward reference of base class %s\n", tc->sym->toChars());
-                if (tc->sym->scope)
-                    tc->sym->scope->module->addDeferredSemantic(tc->sym);
-                doAncestorsSemantic = SemanticStart;
+                if (tc->sym->scope && tc->sym->doAncestorsSemantic != SemanticDone)
+                    tc->sym->semantic(NULL);    // Try to resolve forward reference
+                if (tc->sym->doAncestorsSemantic != SemanticDone)
+                {
+                    //printf("\ttry later, forward reference of base class %s\n", tc->sym->toChars());
+                    if (tc->sym->scope)
+                        tc->sym->scope->module->addDeferredSemantic(tc->sym);
+                    doAncestorsSemantic = SemanticStart;
+                }
             }
          L7: ;
         }
@@ -452,8 +471,9 @@ void ClassDeclaration::semantic(Scope *sc)
             BaseClass *b = (*baseclasses)[i];
             Type *tb = b->type->toBasetype();
             TypeClass *tc = (tb->ty == Tclass) ? (TypeClass *)tb : NULL;
-            if ((!tc || !tc->sym->isInterfaceDeclaration())
-                    && !allowMultipleInheritance()) // CALYPSO
+            TypeStruct *ts = (allowInheritFromStruct() && (tb->ty == Tstruct)) ? (TypeStruct *)tb : NULL;
+            if ((!tc && !ts) ||  // CALYPSO
+                (tc && !tc->sym->isInterfaceDeclaration() && !allowMultipleInheritance()))
             {
                 if (b->type != Type::terror)
                     error("base type must be interface, not %s", b->type->toChars());
@@ -461,11 +481,17 @@ void ClassDeclaration::semantic(Scope *sc)
                 continue;
             }
 
+            AggregateDeclaration *sym;
+            if (tc)
+                sym = tc->sym;
+            else
+                sym = ts->sym;
+
             // Check for duplicate interfaces
             for (size_t j = (baseClass ? 1 : 0); j < i; j++)
             {
                 BaseClass *b2 = (*baseclasses)[j];
-                if (b2->base == tc->sym)
+                if (b2->base == sym)
                 {
                     error("inherits from duplicate interface %s", b2->base->toChars());
                     baseclasses->remove(i);
@@ -473,27 +499,30 @@ void ClassDeclaration::semantic(Scope *sc)
                 }
             }
 
-            if (tc->sym->isDeprecated())
+            if (sym->isDeprecated())
             {
                 if (!isDeprecated())
                 {
                     // Deriving from deprecated class makes this one deprecated too
                     isdeprecated = true;
 
-                    tc->checkDeprecated(loc, sc);
+                    tb->checkDeprecated(loc, sc);
                 }
             }
 
-            b->base = tc->sym;
+            b->base = sym;
 
-            if (tc->sym->scope && tc->sym->doAncestorsSemantic != SemanticDone)
-                tc->sym->semantic(NULL);    // Try to resolve forward reference
-            if (tc->sym->doAncestorsSemantic != SemanticDone)
+            if (tc)
             {
-                //printf("\ttry later, forward reference of base %s\n", tc->sym->toChars());
-                if (tc->sym->scope)
-                    tc->sym->scope->module->addDeferredSemantic(tc->sym);
-                doAncestorsSemantic = SemanticStart;
+                if (tc->sym->scope && tc->sym->doAncestorsSemantic != SemanticDone)
+                    tc->sym->semantic(NULL);    // Try to resolve forward reference
+                if (tc->sym->doAncestorsSemantic != SemanticDone)
+                {
+                    //printf("\ttry later, forward reference of base %s\n", tc->sym->toChars());
+                    if (tc->sym->scope)
+                        tc->sym->scope->module->addDeferredSemantic(tc->sym);
+                    doAncestorsSemantic = SemanticStart;
+                }
             }
             i++;
         }
@@ -530,17 +559,17 @@ void ClassDeclaration::semantic(Scope *sc)
             assert(!baseClass->isInterfaceDeclaration());
             b->base = baseClass;
         }
-        if (baseClass)
+        if (ClassDeclaration *cb = isClassDeclarationOrNull(baseClass)) // CALYPSO
         {
             if (baseClass->storage_class & STCfinal)
                 error("cannot inherit from final class %s", baseClass->toChars());
 
             // Inherit properties from base class
-            if (baseClass->isCOMclass())
+            if (cb->isCOMclass())
                 com = true;
-            if (baseClass->isCPPclass())
+            if (cb->isCPPclass())
                 cpp = true;
-            if (baseClass->isscope)
+            if (cb->isscope)
                 isscope = true;
             enclosing = baseClass->enclosing;
             storage_class |= baseClass->storage_class & STC_TYPECTOR;
@@ -554,7 +583,8 @@ void ClassDeclaration::semantic(Scope *sc)
             BaseClass *b = interfaces[i];
             // If this is an interface, and it derives from a COM interface,
             // then this is a COM interface too.
-            if (b->base->isCOMinterface())
+            ClassDeclaration *cb = b->base->isClassDeclaration(); // CALYPSO
+            if (cb && cb->isCOMinterface())
                 com = true;
         }
     }
@@ -572,16 +602,14 @@ Lancestorsdone:
     {
         BaseClass *b = (*baseclasses)[i];
         Type *tb = b->type->toBasetype();
-        assert(tb->ty == Tclass);
-        TypeClass *tc = (TypeClass *)tb;
 
-        if (tc->sym->semanticRun < PASSsemanticdone)
+        if (b->base->semanticRun < PASSsemanticdone) // CALYPSO
         {
             // Forward referencee of one or more bases, try again later
             scope = scx ? scx : sc->copy();
             scope->setNoFree();
-            if (tc->sym->scope)
-                tc->sym->scope->module->addDeferredSemantic(tc->sym);
+            if (b->base->scope)
+                b->base->scope->module->addDeferredSemantic(b->base);
             scope->module->addDeferredSemantic(this);
             //printf("\tL%d semantic('%s') failed due to forward references\n", __LINE__, toChars());
             return;
@@ -882,7 +910,7 @@ bool ClassDeclaration::isBaseOf2(ClassDeclaration *cd)
     for (size_t i = 0; i < cd->baseclasses->dim; i++)
     {
         BaseClass *b = (*cd->baseclasses)[i];
-        if (b->base == this || isBaseOf2(b->base))
+        if (b->base == this || isBaseOf2(isClassDeclarationOrNull(b->base))) // CALYPSO
             return true;
     }
     return false;
@@ -911,7 +939,7 @@ bool ClassDeclaration::isBaseOf(ClassDeclaration *cd, int *poffset)
         if (this == cd->baseClass)
             return true;
 
-        cd = cd->baseClass;
+        cd = isClassDeclarationOrNull(cd->baseClass); // CALYPSO
     }
     return false;
 }
@@ -1118,7 +1146,7 @@ FuncDeclaration *ClassDeclaration::findFunc(Identifier *ident, TypeFunction *tf)
         if (!cd)
             break;
         vtbl = &cd->vtblFinal;
-        cd = cd->baseClass;
+        cd = isClassDeclarationOrNull(cd->baseClass); // CALYPSO FIXME?
     }
 
     if (fdambig)
@@ -1222,13 +1250,13 @@ void ClassDeclaration::addLocalClass(ClassDeclarations *aclasses)
 void ClassDeclaration::initVtbl()
 {
     // initialize vtbl
-    if (baseClass)
+    if (ClassDeclaration *cb = isClassDeclarationOrNull(baseClass))
     {
         // Copy vtbl[] from base class
-        vtbl.setDim(baseClass->vtbl.dim);
-        memcpy(vtbl.tdata(), baseClass->vtbl.tdata(), sizeof(void *) * vtbl.dim);
+        vtbl.setDim(cb->vtbl.dim);
+        memcpy(vtbl.tdata(), cb->vtbl.tdata(), sizeof(void *) * vtbl.dim);
 
-        vthis = baseClass->vthis;
+        vthis = cb->vthis;
     }
     else
     {
@@ -1485,9 +1513,11 @@ void InterfaceDeclaration::semantic(Scope *sc)
             BaseClass *b = interfaces[i];
             // If this is an interface, and it derives from a COM interface,
             // then this is a COM interface too.
-            if (b->base->isCOMinterface())
+            assert(b->base->isInterfaceDeclaration()); // CALYPSO
+            InterfaceDeclaration *ib = (InterfaceDeclaration *)b->base;
+            if (ib->isCOMinterface())
                 com = true;
-            if (b->base->isCPPinterface())
+            if (ib->isCPPinterface())
                 cpp = true;
         }
     }
@@ -1531,6 +1561,7 @@ Lancestorsdone:
         for (size_t i = 0; i < interfaces_dim; i++)
         {
             BaseClass *b = interfaces[i];
+            InterfaceDeclaration *ib = (InterfaceDeclaration *)b->base; // CALYPSO
 
             // Skip if b has already appeared
             for (size_t k = 0; k < i; k++)
@@ -1540,19 +1571,19 @@ Lancestorsdone:
             }
 
             // Copy vtbl[] from base class
-            if (b->base->vtblOffset())
+            if (ib->vtblOffset())
             {
-                size_t d = b->base->vtbl.dim;
+                size_t d = ib->vtbl.dim;
                 if (d > 1)
                 {
                     vtbl.reserve(d - 1);
                     for (size_t j = 1; j < d; j++)
-                        vtbl.push(b->base->vtbl[j]);
+                        vtbl.push(ib->vtbl[j]);
                 }
             }
             else
             {
-                vtbl.append(&b->base->vtbl);
+                vtbl.append(&ib->vtbl);
             }
 
           Lcontinue:
@@ -1673,7 +1704,8 @@ bool InterfaceDeclaration::isBaseOf(ClassDeclaration *cd, int *poffset)
         }
     }
 
-    if (cd->baseClass && isBaseOf(cd->baseClass, poffset))
+    ClassDeclaration *cb = isClassDeclarationOrNull(cd->baseClass);
+    if (cb && isBaseOf(cb, poffset))
         return true;
 
     if (poffset)
@@ -1778,14 +1810,18 @@ bool BaseClass::fillVtbl(ClassDeclaration *cd, FuncDeclarations *vtbl, int newin
 {
     bool result = false;
 
+    ClassDeclaration *cb = base->isClassDeclaration(); // CALYPSO
+    if (!cb)
+        return false;
+
     //printf("BaseClass::fillVtbl(this='%s', cd='%s')\n", base->toChars(), cd->toChars());
     if (vtbl)
-        vtbl->setDim(base->vtbl.dim);
+        vtbl->setDim(cb->vtbl.dim);
 
     // first entry is ClassInfo reference
-    for (size_t j = base->vtblOffset(); j < base->vtbl.dim; j++)
+    for (size_t j = cb->vtblOffset(); j < cb->vtbl.dim; j++)
     {
-        FuncDeclaration *ifd = base->vtbl[j]->isFuncDeclaration();
+        FuncDeclaration *ifd = cb->vtbl[j]->isFuncDeclaration();
         FuncDeclaration *fd;
         TypeFunction *tf;
 
@@ -1834,14 +1870,18 @@ void BaseClass::copyBaseInterfaces(BaseClasses *vtblInterfaces)
 //    if (baseInterfaces_dim)
 //      return;
 
-    baseInterfaces_dim = base->interfaces_dim;
+    ClassDeclaration *cb = base->isClassDeclaration(); // CALYPSO
+    if (!cb)
+        return;
+
+    baseInterfaces_dim = cb->interfaces_dim;
     baseInterfaces = (BaseClass *)mem.calloc(baseInterfaces_dim, sizeof(BaseClass));
 
     //printf("%s.copyBaseInterfaces()\n", base->toChars());
     for (size_t i = 0; i < baseInterfaces_dim; i++)
     {
         BaseClass *b = &baseInterfaces[i];
-        BaseClass *b2 = base->interfaces[i];
+        BaseClass *b2 = cb->interfaces[i];
 
         assert(b2->vtbl.dim == 0);      // should not be filled yet
         memcpy(b, b2, sizeof(BaseClass));
@@ -1851,4 +1891,23 @@ void BaseClass::copyBaseInterfaces(BaseClasses *vtblInterfaces)
         b->copyBaseInterfaces(vtblInterfaces);
     }
     //printf("-copyBaseInterfaces\n");
+}
+
+ClassDeclaration *isClassDeclarationOrNull(Dsymbol *s)
+{
+    if (!s)
+        return NULL;
+
+    return s->isClassDeclaration();
+}
+
+AggregateDeclaration *toAggregateBase(Dsymbol *s)
+{
+    assert(s);
+
+    ClassDeclaration *cd = s->isClassDeclaration();
+    if (!cd)
+        return NULL;
+
+    return cd->baseClass;
 }
