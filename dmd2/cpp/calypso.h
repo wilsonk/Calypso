@@ -37,6 +37,7 @@ namespace cpp
 class ClassDeclaration;
 
 Identifier *toIdentifier(clang::IdentifierInfo *II);
+Identifier *getIdentifier(const clang::NamedDecl* D);
 Loc toLoc(clang::SourceLocation L);
 
 struct PCH
@@ -144,11 +145,13 @@ public:
 
     void toResolveFunction(::FuncDeclaration* fdecl) override;
 
-    void addBaseClassData(AggrTypeBuilder &builder, ::ClassDeclaration *base) override;
+    void addBaseClassData(AggrTypeBuilder &builder, ::AggregateDeclaration *base) override;
 
     void emitAdditionalClassSymbols(::ClassDeclaration *cd) override;
 
     void toPostNewClass(Loc& loc, TypeClass* tc, DValue* val) override;
+
+    void toDeclareVariable(::VarDeclaration* vd) override;
          
     // ==== ==== ====
     PCH pch;
@@ -177,6 +180,6 @@ cpp::ClassDeclaration *isDCXX(Dsymbol *s);
 }
 
 #define CALYPSO_LANGPLUGIN \
-    ::LangPlugin *langPlugin() { return &calypso; }
+    ::LangPlugin *langPlugin() override { return &calypso; }
 
 #endif /* DMD_CPP_CALYPSO_H */

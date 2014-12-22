@@ -34,6 +34,17 @@ Identifier *toIdentifier(clang::IdentifierInfo *II)
         // Is this the cost of interfacing with Clang or is there another way? (probably not an easy one)
 }
 
+Identifier *getIdentifier(const clang::NamedDecl* D)
+{
+    clang::IdentifierInfo *II = D->getIdentifier();
+
+    if (auto Tag = llvm::dyn_cast<clang::TagDecl>(D))
+        if (auto Typedef = Tag->getTypedefNameForAnonDecl())
+            II = Typedef->getIdentifier();
+
+    return toIdentifier(II);
+}
+
 Loc toLoc(clang::SourceLocation L)
 {    Loc loc;
 
@@ -259,12 +270,7 @@ clang::ASTContext& LangPlugin::getASTContext()
 
 bool isCPP(Dsymbol* s)
 {
-    ::LangPlugin *lp = nullptr;
-
-    if (auto cd = s->isClassDeclaration())
-        lp = cd->langPlugin();
-
-    return lp == &calypso;
+    return s->langPlugin() == &calypso;
 }
 
 cpp::ClassDeclaration *isDCXX(Dsymbol* s)
@@ -277,7 +283,7 @@ cpp::ClassDeclaration *isDCXX(Dsymbol* s)
 
     auto base = cd->baseClass;
     while (base && !isCPP(base))
-        base = base->baseClass;
+        base = toAggregateBase(base);
     if (!base)
         return nullptr;  // Pure D class
 

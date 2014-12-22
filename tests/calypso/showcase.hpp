@@ -1,6 +1,6 @@
 #pragma once
 
-#include "OGRE/Ogre.h"
+// #include "OGRE/Ogre.h"
 
 namespace test {
     int testFunc(char c);
@@ -11,6 +11,9 @@ namespace test {
         char c;
         unsigned n;
     };
+
+    extern double testDoubleVar;
+    extern testStruct testVar;
     
     class testClass
     {

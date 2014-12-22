@@ -1,9 +1,13 @@
 // Contributed by Elie Morisse, same license DMD uses
 
-#include "cppaggregate.h"
-#include "cppdeclaration.h"
-#include "calypso.h"
-#include "../target.h"
+#include "cpp/calypso.h"
+#include "cpp/cppaggregate.h"
+#include "cpp/cppdeclaration.h"
+#include "cpp/cpptemplate.h"
+#include "scope.h"
+#include "target.h"
+#include "template.h"
+#include "id.h"
 
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
@@ -14,6 +18,10 @@
 namespace cpp
 {
 
+using llvm::isa;
+using llvm::cast;
+using llvm::dyn_cast;
+
 StructDeclaration::StructDeclaration(Loc loc, Identifier* id,
                                      const clang::RecordDecl* RD)
     : ::StructDeclaration(loc, id)
@@ -21,11 +29,90 @@ StructDeclaration::StructDeclaration(Loc loc, Identifier* id,
     this->RD = RD;
 }
 
+StructDeclaration::StructDeclaration(const StructDeclaration& o)
+    : StructDeclaration(o.loc, o.ident, o.RD)
+{
+}
+
 ClassDeclaration::ClassDeclaration(Loc loc, Identifier *id, BaseClasses *baseclasses,
                                    const clang::CXXRecordDecl *RD)
     : ::ClassDeclaration(loc, id, baseclasses)
 {
     this->RD = RD;
+}
+
+ClassDeclaration::ClassDeclaration(const ClassDeclaration& o)
+    : ClassDeclaration(o.loc, o.ident, o.baseclasses, o.RD)
+{
+}
+
+IMPLEMENT_syntaxCopy(StructDeclaration)
+IMPLEMENT_syntaxCopy(ClassDeclaration)
+
+void StructDeclaration::semantic(Scope *sc)
+{
+    // Copy pasted from ClassDeclaration::semantic, but are class templates ever non POD?
+    // POD explicit instanciations of non POD class templates are possible, so that might happen.
+
+    auto CRD = dyn_cast<clang::CXXRecordDecl>(RD);
+    assert(CRD || !sc->parent->isTemplateInstance());
+
+    if (CRD)
+        if (auto CTD = CRD->getDescribedClassTemplate())
+        {
+            auto tempinst = sc->parent->isTemplateInstance();
+
+            // HACK we don't instantiate on our own for now, we reuse the specializations already in the PCH
+            assert(tempinst && isCPP(tempinst));
+            auto c_tempinst = static_cast<cpp::TemplateInstance*>(tempinst);
+            CRD = cast<clang::CXXRecordDecl>(c_tempinst->Instantiated);
+
+            DeclMapper m(nullptr);
+            m.addImplicitDecls = false;
+            auto tempsd = m.VisitRecordDecl(CRD)->isStructDeclaration();
+            assert(tempsd);
+            members = Dsymbol::arraySyntaxCopy(tempsd->members);
+        }
+
+    ::StructDeclaration::semantic(sc);
+}
+
+void ClassDeclaration::semantic(Scope *sc)
+{
+    // Basically a hook at the beginning of semantic(), to change RD from the template decl
+    // to the instantation decl if needed.
+//     auto& S = calypso.getASTUnit()->getSema();
+//
+    if (auto CTD = RD->getDescribedClassTemplate())
+    {
+        auto tempinst = sc->parent->isTemplateInstance();
+//
+//         clang::TemplateName TN(CTD);
+//         clang::ASTTemplateArgsPtr TemplateArgsPtr(TemplateId->getTemplateArgs(),
+//                                         TemplateId->NumArgs);
+//
+//         clang::CXXScopeSpec CSS;
+//         auto TagResult = S.ActOnExplicitInstantiation(nullptr,
+//             clang::SourceLocation(), clang::SourceLocation(),
+//             clang::DeclSpec::TST_class, clang::SourceLocation(),
+//             CSS, clang::Sema::TemplateTy::make(TN), clang::SourceLocation(), clang::SourceLocation(),
+//             TemplateArgsPtr, clang::SourceLocation());
+//
+//         assert(!TagResult.isInvalid() && !TagResult.isUnset() && "Something went wrong during C++ template instanciation");
+
+        // HACK we don't instantiate on our own for now, we reuse the specializations already in the PCH
+        assert(tempinst && isCPP(tempinst));
+        auto c_tempinst = static_cast<cpp::TemplateInstance*>(tempinst);
+        RD = cast<clang::CXXRecordDecl>(c_tempinst->Instantiated);
+
+        DeclMapper m(nullptr);
+        m.addImplicitDecls = false;
+        auto tempcd = m.VisitRecordDecl(RD, DeclMapper::ForceNonPOD)->isClassDeclaration();
+        assert(tempcd);
+        members = Dsymbol::arraySyntaxCopy(tempcd->members);
+    }
+
+    ::ClassDeclaration::semantic(sc);
 }
 
 bool ClassDeclaration::isBaseOf(::ClassDeclaration *cd, int *poffset)
@@ -46,7 +133,7 @@ bool ClassDeclaration::isBaseOf(::ClassDeclaration *cd, int *poffset)
             *poffset = Target::ptrsize * 2;
 
         while (!isCPP(cd))
-            cd = cd->baseClass;
+            cd = static_cast<::ClassDeclaration*>(cd->baseClass);
 
         auto& Context = calypso.getASTContext();
         auto RD2 = static_cast<cpp::ClassDeclaration*>(cd)->RD;
@@ -80,24 +167,34 @@ static FuncDeclaration *funcMatch(Dsymbol *s, const clang::CXXMethodDecl* MD)
 FuncDeclaration *ClassDeclaration::findMethod(const clang::CXXMethodDecl* MD)
 {
     TypeMapper tmap;
+    tmap.addImplicitDecls = false;
 
-    auto s = ScopeDsymbol::search(loc,
-                                  toIdentifier(MD->getIdentifier()));
+    Identifier *ident;
+    if (isa<clang::CXXConstructorDecl>(MD))
+        ident = Id::ctor;
+    else if (isa<clang::CXXDestructorDecl>(MD))
+        ident = Id::dtor;
+    else
+        ident = toIdentifier(MD->getIdentifier());
 
+    auto s = ScopeDsymbol::search(loc, ident);
     if (s)
     {
-        if (auto os = s->isOverloadSet())
+//         if (auto os = s->isOverloadSet())
+//         {
+//             for (auto *s2: os->a)
+//             {
+//                 if (auto md = funcMatch(s2, MD))
+//                     return md;
+//             }
+//         }
+
+        if (auto fd = s->isFuncDeclaration())
         {
-            for (auto *s2: os->a)
-            {
-                if (auto md = funcMatch(s2, MD))
+            fd = fd->overloadExactMatch(tmap.toType(MD->getType()));
+            if (fd)
+                if (auto md = funcMatch(fd, MD))
                     return md;
-            }
-        }
-        else if (auto fd = s->isFuncDeclaration())
-        {
-            if (auto md = funcMatch(fd, MD))
-                return md;
         }
     }
 
@@ -120,7 +217,7 @@ FuncDeclaration *ClassDeclaration::findMethod(const clang::CXXMethodDecl* MD)
 // Note that Func::semantic will re-set methods redundantly (although it's useful as a sanity check and it also sets vtblIndex),
 // but vanilla doesn't know how to deal with multiple inheritance hence the need to query Clang.
 
-// Why is this needed? Because D vtbls are only built after the one base class, so this is actually the cleanest and easiest way
+// Why is this needed? Because D vtbls are only built after the first base class, so this is actually the cleanest and easiest way
 // to take C++ multiple inheritance into account. No change to FuncDeclaration::semantic needed.
 void ClassDeclaration::initVtbl()
 {
@@ -141,7 +238,14 @@ void ClassDeclaration::initVtbl()
             continue;
 
         auto md = findMethod(OverMD);
+#if 0
+        if (!md)
+            md = findMethod(OverMD);
         assert(md && "CXXFinalOverrider not in cpp::ClassDeclaration");
+#else
+        if (!md)
+            continue;
+#endif
 
         vtbl.push(md);
         inVtbl.insert(OverMD);
@@ -165,7 +269,7 @@ void ClassDeclaration::buildLayout()
             continue;
         
         auto c_vd = static_cast<VarDeclaration*>(vd);
-        auto FD = llvm::dyn_cast<clang::FieldDecl>(c_vd->VD);
+        auto FD = dyn_cast<clang::FieldDecl>(c_vd->VD);
         
         if (!FD)
             continue;
@@ -218,7 +322,7 @@ Expression *LangPlugin::getRightThis(Loc loc, Scope *sc, ::AggregateDeclaration 
               ? static_cast<cpp::ClassDeclaration*>(ad)->RD
               : static_cast<cpp::StructDeclaration*>(ad)->RD;
 
-    auto CRD = llvm::dyn_cast<clang::CXXRecordDecl>(RD);
+    auto CRD = dyn_cast<clang::CXXRecordDecl>(RD);
     if (!CRD)
         return nullptr;
 

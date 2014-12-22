@@ -17,7 +17,7 @@ class Dsymbol;
 class Identifier;
 class Import;
 class Type;
-class TypeIdentifier;
+class TypeQualified;
 class TypeFunction;
 
 namespace clang
@@ -27,6 +27,7 @@ class Decl;
 
 namespace cpp
 {
+class Module;
 
 class BuiltinTypes
 {
@@ -45,7 +46,9 @@ protected:
 class TypeMapper
 {
 public:
-    TypeMapper(::Module *mod = nullptr);  // mod can be null if no implicit import is needed
+    TypeMapper(cpp::Module *mod = nullptr);  // mod can be null if no implicit import is needed
+
+    bool addImplicitDecls = true; // this is a temporary safety for TypeMapper uses that should not add implicit decls, a simple mod == null will replace the assert and this variable later
 
     // Type conversions
     Type *toType(const clang::QualType T);  // main type conversion method
@@ -57,10 +60,16 @@ public:
     Type *toTypeEnum(const clang::EnumType *T);
     Type *toTypeRecord(const clang::RecordType *T);
     Type *toTypeElaborated(const clang::ElaboratedType *T);
+    Type *toTypeTemplateSpecialization(const clang::TemplateSpecializationType *T);
+    Type *toTypeTemplateTypeParm(const clang::TemplateTypeParmType *T);
+    Type *toTypeSubstTemplateTypeParm(const clang::SubstTemplateTypeParmType *T);
+    Type *toTypeDependentName(const clang::DependentNameType *T);
+    Type *toTypeInjectedClassName(const clang::InjectedClassNameType *T);
+    Type *toTypeAdjusted(const clang::AdjustedType *T);
     TypeFunction *toTypeFunction(const clang::FunctionProtoType *T);
 
 protected:
-    Module *mod;
+    cpp::Module *mod;
 
     llvm::SmallDenseMap<const clang::Decl*, Import*, 8> implicitImports;
     llvm::DenseMap<const clang::NamedDecl*, Dsymbol*> declMap;  // fast lookup of mirror decls
@@ -71,8 +80,11 @@ protected:
     ::Import* BuildImplicitImport(const clang::Decl* ND);
     bool BuildImplicitImportInternal(const clang::DeclContext* DC, Loc loc,
             Identifiers* sPackages, Identifier*& sModule);
-
-    TypeIdentifier *typeIdentifierFor(const clang::NamedDecl *ND);
+    TypeQualified *typeQualifiedFor(const clang::NamedDecl* ND,
+                                    const clang::TemplateArgument* TempArgBegin = nullptr,
+                                    const clang::TemplateArgument* TempArgEnd = nullptr);
+    
+    bool isNonPODRecord(const clang::QualType T);
 };
 
 }

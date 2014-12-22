@@ -1,4 +1,4 @@
-modmap (C++) "simplefunc.hpp";
+modmap (C++) "showcase.hpp";
 
 import std.stdio;
 import (C++) test._;
@@ -9,9 +9,16 @@ import (C++) test.anotherClass;
 import (C++) test.testMultipleInherit;
 import (C++) test.enumTest;
 
-import (C++) Ogre.Light;
+// import (C++) Ogre.Light;
 
 void testEcho(int o) { writeln("Echo ", o); }
+
+// struct testStruct
+// {
+//     float f;
+//     char c;
+//     uint n;
+// };
 
 class testDClass
 {
@@ -63,6 +70,12 @@ void main()
     t.c = 'x';
     writeln(t.f);
     writeln(t.c);
+
+    writeln("testDoubleVar = ", testDoubleVar);
+
+    writeln("testVar.f = ", testVar.f);
+    writeln("testVar.c = ", testVar.c);
+    writeln("testVar.n = ", testVar.n);
 
     auto dd = new testDClass;
     dd.mycstruct.f = 9.51;

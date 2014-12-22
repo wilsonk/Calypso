@@ -539,7 +539,7 @@ void ClassDeclaration::semantic(Scope *sc)
 
         // If no base class, and this is not an Object, use Object as base class
         if (!baseClass && ident != Id::Object && !cpp
-               && !langPlugin()) // CALYPSO
+               && !langPlugin()) // CALYPSO conundrum FIXME
         {
             if (!object)
             {
@@ -1301,13 +1301,15 @@ void ClassDeclaration::buildLayout()
     }
 }
 
-ClassDeclaration *ClassDeclaration::foreignBase()
+AggregateDeclaration *ClassDeclaration::foreignBase()
 {
-    ClassDeclaration *b = this;
-    while (b = b->baseClass)
+    AggregateDeclaration *b = this;
+    while (b)
     {
         if (b->langPlugin())
             return b;
+
+        b = toAggregateBase(b);  // CALYPSO
     }
 
     return NULL;

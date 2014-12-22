@@ -10,11 +10,13 @@
 #include "gen/llvmhelpers.h"
 #include "expression.h"
 #include "id.h"
+#include "import.h"
 #include "init.h"
 #include "mars.h"
 #include "module.h"
 #include "template.h"
 #include "gen/arrays.h"
+#include "gen/cgforeign.h"
 #include "gen/classes.h"
 #include "gen/complex.h"
 #include "gen/dvalue.h"
@@ -951,6 +953,13 @@ void DtoResolveVariable(VarDeclaration* vd)
         assert(!vd->ir.isInitialized());
         if (gIR->dmodule)
             vd->ir.setInitialized();
+
+        if (auto lp = vd->langPlugin()) // CALYPSO
+        {
+            lp->codegen()->toDeclareVariable(vd);
+            return;
+        }
+
         std::string llName(mangle(vd));
 
         // Since the type of a global must exactly match the type of its

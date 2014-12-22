@@ -1,3 +1,34 @@
+Special Calypso notes
+------------
+
+Interested in the prototype that might turn D overnight into the huge time saver for C++ developers it is promised to be?
+
+First you need a LLVM + Clang 3.5 source tree, built libraries and the Clang binaries. Installing binary packages from your distribution isn't enough since the include/ files aren't exposing many symbols, so the source packages are needed as well. Or if you want or need to build Clang yourself, make sure to get the 3.5 branch:
+
+    $ svn co http://llvm.org/svn/llvm-project/llvm/branches/release_35 llvm
+    $ cd llvm/tool
+    $ svn co http://llvm.org/svn/llvm-project/cfe/branches/release_35 clang
+    $ cd ../..
+    $ cd llvm/projects
+    $ svn co http://llvm.org/svn/llvm-project/compiler-rt/branches/release_35 compiler-rt
+
+Then build and install Clang as described in the rest of:
+http://clang.llvm.org/get_started.html
+    
+After cloning the Calypso repository and initializing the submodules, revert them to the commits Calypso is known to work with (until Calypso catches up with upstream):
+
+    $ cd runtime/druntime
+    $ git checkout d12cc013df9dd8dbe9f40b6cd60ffcfc8d164870
+    $ cd ../phobos
+    $ git checkout da5549e7a67b29a8860878f4f700cfc59c1df478
+
+Finally tell CMake where to find the LLVM source tree:
+
+    $ cd build
+    $ cmake .. -DLLVM_SOURCE_PATH="/path/to/llvm/source/tree"
+    
+The rest of the build process is identical to LDC.
+
 LDC – the LLVM-based D Compiler
 ===============================
 

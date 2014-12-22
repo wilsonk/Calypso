@@ -10,12 +10,20 @@
 #include "root.h"
 #include "dsymbol.h"
 
-#include "../module.h"
+#include "cpp/cpptypes.h"
+#include "module.h"
+
+namespace clang
+{
+class Decl;
+}
 
 namespace cpp {
 
 struct Module : ::Module
 {
+    const clang::Decl *rootDecl = nullptr; // the decl we're generating the module for
+
     static DsymbolTable *modules;   // symbol tree of all C/C++ modules
     static Modules amodules;            // array of all modules
     static void init();

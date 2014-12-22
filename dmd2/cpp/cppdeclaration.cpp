@@ -15,11 +15,21 @@ VarDeclaration::VarDeclaration(Loc loc, Identifier *id,
     this->VD = VD;
 }
 
+VarDeclaration::VarDeclaration(const VarDeclaration& o)
+    : VarDeclaration(o.loc, o.ident, o.VD, o.type)
+{
+}
+
 FuncDeclaration::FuncDeclaration(Loc loc, Identifier *id, StorageClass storage_class,
                     Type* type, const clang::FunctionDecl *FD)
     : ::FuncDeclaration(loc, loc, id, storage_class, type)
 {
     this->FD = FD;
+}
+
+FuncDeclaration::FuncDeclaration(const FuncDeclaration& o)
+    : FuncDeclaration(o.loc, o.ident, o.storage_class, o.type, o.FD)
+{
 }
 
 CtorDeclaration::CtorDeclaration(Loc loc, StorageClass storage_class,
@@ -29,11 +39,26 @@ CtorDeclaration::CtorDeclaration(Loc loc, StorageClass storage_class,
     this->CCD = CCD;
 }
 
+CtorDeclaration::CtorDeclaration(const CtorDeclaration& o)
+    : CtorDeclaration(o.loc, o.storage_class, o.type, o.CCD)
+{
+}
+
 DtorDeclaration::DtorDeclaration(Loc loc, StorageClass storage_class,
                                  Identifier* id, const clang::CXXDestructorDecl* CDD)
     : ::DtorDeclaration(loc, loc, storage_class, id)
 {
     this->CDD = CDD;
 }
+
+DtorDeclaration::DtorDeclaration(const DtorDeclaration& o)
+    : DtorDeclaration(o.loc, o.storage_class, o.ident, o.CDD)
+{
+}
+
+IMPLEMENT_syntaxCopy(VarDeclaration)
+IMPLEMENT_syntaxCopy(FuncDeclaration)
+IMPLEMENT_syntaxCopy(CtorDeclaration)
+IMPLEMENT_syntaxCopy(DtorDeclaration)
 
 }

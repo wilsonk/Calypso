@@ -1,9 +1,13 @@
-#include "simplefunc.hpp"
+#include "showcase.hpp"
 
 namespace test
 {
 
-int testFunc(char c) {
+double testDoubleVar = 99.99;
+testStruct testVar = { 42.24, 'c', 555 };
+
+int testFunc(char c)
+{
     if (c == 'a')
         return 2;
     else if (c == 'b')

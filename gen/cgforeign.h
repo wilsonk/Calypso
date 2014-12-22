@@ -35,9 +35,11 @@ public:
 
     virtual void toResolveFunction(FuncDeclaration* fdecl) = 0;
 
-    virtual void addBaseClassData(AggrTypeBuilder &builder, ClassDeclaration *base) = 0;
+    virtual void addBaseClassData(AggrTypeBuilder &builder, AggregateDeclaration *base) = 0;
 
     virtual void emitAdditionalClassSymbols(ClassDeclaration *cd) = 0;
 
     virtual void toPostNewClass(Loc& loc, TypeClass* tc, DValue* val) = 0;
+
+    virtual void toDeclareVariable(VarDeclaration* vd) = 0;
 };

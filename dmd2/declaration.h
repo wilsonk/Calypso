@@ -134,9 +134,6 @@ public:
     const char *mangleOverride;      // overridden symbol with pragma(mangle, "...")
     Semantic sem;
 
-    // CALYPSO
-    virtual LangPlugin *langPlugin() { return NULL; }
-
     Declaration(Identifier *id);
     void semantic(Scope *sc);
     const char *kind();
@@ -307,7 +304,7 @@ public:
     IntRange *range;            // if !NULL, the variable is known to be within the range
 
     VarDeclaration(Loc loc, Type *t, Identifier *id, Initializer *init);
-    Dsymbol *syntaxCopy(Dsymbol *);
+    virtual Dsymbol *syntaxCopy(Dsymbol *);
     void semantic(Scope *sc);
     void setFieldOffset(AggregateDeclaration *ad, unsigned *poffset, bool isunion);
     void semantic2(Scope *sc);
@@ -582,9 +579,6 @@ void buildClosure(FuncDeclaration *fd, IRState *irs);
 class FuncDeclaration : public Declaration
 {
 public:
-    // CALYPSO
-    virtual LangPlugin *langPlugin() { return NULL; }
-    
     Types *fthrows;                     // Array of Type's of exceptions (not used)
     Statement *frequire;
     Statement *fensure;
@@ -669,7 +663,7 @@ public:
     unsigned flags;
 
     FuncDeclaration(Loc loc, Loc endloc, Identifier *id, StorageClass storage_class, Type *type);
-    Dsymbol *syntaxCopy(Dsymbol *);
+    virtual Dsymbol *syntaxCopy(Dsymbol *);
     void semantic(Scope *sc);
     void semantic2(Scope *sc);
     void semantic3(Scope *sc);
@@ -810,7 +804,7 @@ class CtorDeclaration : public FuncDeclaration
 {
 public:
     CtorDeclaration(Loc loc, Loc endloc, StorageClass stc, Type *type);
-    Dsymbol *syntaxCopy(Dsymbol *);
+    virtual Dsymbol *syntaxCopy(Dsymbol *);
     void semantic(Scope *sc);
     const char *kind();
     char *toChars();
@@ -843,7 +837,7 @@ class DtorDeclaration : public FuncDeclaration
 public:
     DtorDeclaration(Loc loc, Loc endloc);
     DtorDeclaration(Loc loc, Loc endloc, StorageClass stc, Identifier *id);
-    Dsymbol *syntaxCopy(Dsymbol *);
+    virtual Dsymbol *syntaxCopy(Dsymbol *);
     void semantic(Scope *sc);
     void toCBuffer(OutBuffer *buf, HdrGenState *hgs);
     const char *kind();

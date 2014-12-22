@@ -355,11 +355,16 @@ void LangPlugin::toResolveFunction(::FuncDeclaration* fdecl)
     irFunc->func = llvm::cast<llvm::Function>(Callee);
 }
 
-void LangPlugin::addBaseClassData(AggrTypeBuilder &b, ::ClassDeclaration *base)
+void LangPlugin::addBaseClassData(AggrTypeBuilder &b, ::AggregateDeclaration *base)
 {
     auto& CGM = *AB->CGM();
 
-    auto RD = static_cast<cpp::ClassDeclaration*>(base)->RD;
+    const clang::RecordDecl *RD;
+    if (base->isClassDeclaration())
+        RD = static_cast<cpp::ClassDeclaration*>(base)->RD;
+    else
+        RD  = static_cast<cpp::StructDeclaration*>(base)->RD;
+
     auto& CGRL = CGM.getTypes().getCGRecordLayout(RD);
 
     auto BaseTy = CGRL.getBaseSubobjectLLVMType();
@@ -379,6 +384,25 @@ void LangPlugin::addBaseClassData(AggrTypeBuilder &b, ::ClassDeclaration *base)
     }
 
     b.m_offset += BaseLayout->getSizeInBytes();
+}
+
+void LangPlugin::toDeclareVariable(::VarDeclaration* vd)
+{
+    auto& CGM = *AB->CGM();
+    auto VD = llvm::cast<clang::VarDecl>(
+            static_cast<cpp::VarDeclaration*>(vd)->VD);
+
+//     updateCGFInsertPoint();
+
+    LLValue *v;
+
+    // If it's thread_local, emit a call to its wrapper function instead.
+//     if (VD->getTLSKind() == clang::VarDecl::TLS_Dynamic)
+//         v = CGM.getCXXABI().EmitThreadLocalVarDeclLValue(*CGF, VD, VD->getType()).getAddress();
+//     else
+        v = CGM.GetAddrOfGlobalVar(VD);
+
+    getIrGlobal(vd)->value = v;
 }
 
 }

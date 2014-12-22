@@ -1,6 +1,7 @@
 // Contributed by Elie Morisse, same license DMD uses
 
 #include "../aggregate.h"
+#include "../attrib.h"
 #include "../declaration.h"
 #include "../enum.h"
 #include "../identifier.h"
@@ -14,6 +15,7 @@
 #include "cppdeclaration.h"
 #include "cppimport.h"
 #include "cppaggregate.h"
+#include "cppexpression.h"
 
 #include <unistd.h>
 #include <stdio.h>
@@ -30,6 +32,10 @@
 
 namespace cpp
 {
+
+using llvm::cast;
+using llvm::dyn_cast;
+using llvm::isa;
 
 /********************************/
 
@@ -78,57 +84,12 @@ Module::Module(const char* filename, Identifier* ident, Identifiers *packages)
 
 /************************************/
 
-namespace
-{
+// DeclMapper::DeclMapper(Module* mod)
+//     : TypeMapper(mod)
+// {
+// }
 
-class Mapper : public TypeMapper
-{
-public:
-    Mapper(Module *mod);
-
-    inline PROT toPROT(clang::AccessSpecifier AS);
-
-    // Declarations
-    Dsymbols *VisitDeclContext(const clang::DeclContext *DC);
-
-    Dsymbol *VisitDecl(const clang::Decl *D);
-
-    Dsymbol *VisitValueDecl(const clang::ValueDecl *D);
-    Dsymbol *VisitRecordDecl(const clang::RecordDecl *D);
-    Dsymbol *VisitTypedefDecl(const clang::TypedefDecl *D);
-    Dsymbol *VisitFunctionDecl(const clang::FunctionDecl *D);
-    Dsymbol *VisitTemplateDecl(const clang::TemplateDecl *D);
-    Dsymbol *VisitEnumDecl(const clang::EnumDecl *D);
-
-    TemplateParameter *VisitTemplateParameter(const clang::NamedDecl *D);
-
-//     Dsymbol *VisitEnumConstantDecl(const clang::EnumConstantDecl *D);
-//     Dsymbol *VisitEmptyDecl(const clang::EmptyDecl *D);
-//     Dsymbol *VisitFriendDecl(const clang::FriendDecl *D);
-//     Dsymbol *VisitLabelDecl(const clang::LabelDecl *D);
-//     Dsymbol *VisitParmVarDecl(const clang::ParmVarDecl *D);
-//     Dsymbol *VisitFileScopeAsmDecl(const clang::FileScopeAsmDecl *D);
-//     Dsymbol *VisitImportDecl(const clang::ImportDecl *D);
-//     Dsymbol *VisitStaticAssertDecl(const clang::StaticAssertDecl *D);
-//     Dsymbol *VisitNamespaceDecl(const clang::NamespaceDecl *D);
-//     Dsymbol *VisitUsingDirectiveDecl(const clang::UsingDirectiveDecl *D);
-//     Dsymbol *VisitNamespaceAliasDecl(const clang::NamespaceAliasDecl *D);
-//     Dsymbol *VisitLinkageSpecDecl(const clang::LinkageSpecDecl *D);
-//     Dsymbol *VisitFunctionTemplateDecl(const clang::FunctionTemplateDecl *D);
-//     Dsymbol *VisitClassTemplateDecl(const clang::ClassTemplateDecl *D);
-//     Dsymbol *VisitUnresolvedUsingTypenameDecl(const clang::UnresolvedUsingTypenameDecl *D);
-//     Dsymbol *VisitUnresolvedUsingValueDecl(const clang::UnresolvedUsingValueDecl *D);
-};
-
-
-/*****/
-
-Mapper::Mapper(Module* mod)
-    : TypeMapper(mod)
-{
-}
-
-inline PROT Mapper::toPROT(clang::AccessSpecifier AS)
+inline PROT DeclMapper::toPROT(clang::AccessSpecifier AS)
 {
     switch(AS) {
         case clang::AS_public:
@@ -146,17 +107,21 @@ inline PROT Mapper::toPROT(clang::AccessSpecifier AS)
 
 /*****/
 
-Dsymbols *Mapper::VisitDeclContext(const clang::DeclContext *DC)
-{    Dsymbols *decldefs = new Dsymbols();
+Dsymbols *DeclMapper::VisitDeclContext(const clang::DeclContext *DC)
+{
+    auto decldefs = new Dsymbols;
 
-    for (clang::DeclContext::decl_iterator D = DC->decls_begin(), DEnd = DC->decls_end();
+    for (auto D = DC->decls_begin(), DEnd = DC->decls_end();
         D != DEnd; ++D)
-        decldefs->push(VisitDecl(*D));
+    {
+        if (auto d = VisitDecl(*D))
+            decldefs->push(d);
+    }
 
     return decldefs;
 }
 
-Dsymbol *Mapper::VisitDecl(const clang::Decl *D)
+Dsymbol *DeclMapper::VisitDecl(const clang::Decl *D)
 {   Dsymbol *s = nullptr;
 
     // Unfortunately a long ugly list of if (... dyn_cast...) is more solid and
@@ -164,149 +129,209 @@ Dsymbol *Mapper::VisitDecl(const clang::Decl *D)
 
 #define DECL(BASE) \
     else if (const clang::BASE##Decl *BASE##D = \
-                            llvm::dyn_cast<clang::BASE##Decl>(D)) \
+                            dyn_cast<clang::BASE##Decl>(D)) \
         s = Visit##BASE##Decl(BASE##D);
 
     if (0) ;
-//     DECL(Value)
-    DECL(Typedef)
+    DECL(TypedefName)
+    DECL(ClassTemplateSpecialization)
     DECL(Record)
     DECL(Function)
-//     DECL(Template)
+    DECL(Template)
     DECL(Enum)
+    DECL(Value)
 
 #undef DECL
 
     return s;
 }
 
-Dsymbol *Mapper::VisitValueDecl(const clang::ValueDecl *D)
+Dsymbol *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
 {
-    auto loc = toLoc(D->getLocation());
-    auto t = toType(D->getType());
-    auto id = toIdentifier(D->getIdentifier());
+    auto& Context = calypso.getASTContext();
 
-    return new VarDeclaration(loc, id, D, t);
+    auto loc = toLoc(D->getLocation());
+    auto Ty = D->getType().getDesugaredType(Context);
+
+    if (Ty->isUnionType() || Ty->isStructureType())
+    {
+        if (auto RT = Ty->getAs<clang::RecordType>()) // dyn_cast because it can also be a typedeftype, which always have names
+        {
+            auto RD = RT->getDecl();
+
+            if (RD->isAnonymousStructOrUnion()) // NOTE: in union {...} myUnion this will be false, see Decl.h
+                return VisitRecordDecl(RD);
+
+            // FIXME how to handle union {...} myUnion? Ignore them for now
+            if (!RD->getIdentifier())
+                return nullptr;
+        }
+    }
+
+    auto id = toIdentifier(D->getIdentifier());
+    auto t = toType(D->getType());
+
+    if (!t)
+        return nullptr;
+
+    auto a = new VarDeclaration(loc, id, D, t);
+
+    if (auto Var = dyn_cast<clang::VarDecl>(D))
+    {
+        if (Var->hasExternalStorage())
+            a->storage_class |= STCextern;
+
+        if (Var->getTLSKind() == clang::VarDecl::TLS_Dynamic)
+            a->storage_class |= STCtls;
+    }
+    return a;
 }
 
-// // Translate typedefs and C++-0x's "using Alias = type;" to alias declarations.
-// Dsymbol *Mapper::VisitTypedefDecl(const clang::TypedefDecl *D)
-// {   AliasDeclaration *a;
-//     Loc *loc = toLoc(D->getLocation());
-//     Type *t = toType(D->getUnderlyingType());
-//     Identifier *id = toIdentifier(D->getIdentifier());
-//
-//     a = new AliasDeclaration(loc, id, t);
-//
-//     return a;
-// }
-//
-Dsymbol *Mapper::VisitRecordDecl(const clang::RecordDecl *D)
+Dsymbol *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags)
 {   AggregateDeclaration *a;
     auto& Context = calypso.pch.AST->getASTContext();
     auto& S = calypso.pch.AST->getSema();
+    auto TND = D->getTypedefNameForAnonDecl();
     bool isPOD = true;
-    bool isDefined = D->getDefinition();
 
-    if (isDefined && !D->isCompleteDefinition())
+    if (!D->isThisDeclarationADefinition())
         return nullptr;
+
+    int anon = 0;
+    if (D->isAnonymousStructOrUnion())
+    {
+        assert(!TND);
+
+        anon = 1;
+        if (D->isUnion())
+            anon = 2;
+    }
 
     // If the definition isn't in the PCH we will still submit an empty aggregate decl
 
     auto loc = toLoc(D->getLocation());
-    auto id = toIdentifier(D->getIdentifier());
 
-    auto CRD = llvm::dyn_cast<clang::CXXRecordDecl>(D);
+    auto CRD = dyn_cast<clang::CXXRecordDecl>(D);
         // NOTE: CXXRecordDecl will disappear in a future version of Clang and only
         // RecordDecl will remain to be used for both C and C++.
 
-    if (CRD && !CRD->isPOD())
+    if ((flags & ForceNonPOD) ||
+            (CRD && !CRD->isPOD()))
         isPOD = false;
 
-    if (isPOD)
+    if (!anon)
     {
-        a = new StructDeclaration(loc, id, D);
-    }
-    else
-    {
-        auto baseclasses = new BaseClasses;
+        auto id = getIdentifier(D);
 
-        for (auto B = CRD->bases_begin(),
-                BEnd = CRD->bases_end(); B != BEnd; ++B)
+        if (D->isUnion())
         {
-            auto BRT = llvm::cast<clang::RecordType>(B->getType().getTypePtr());
-            auto BRD = BRT->getDecl();
-            auto brt = new TypeIdentifier(loc,
-                                          toIdentifier(BRD->getIdentifier()));
+            a = new UnionDeclaration(loc, id);
+        }
+        else if (isPOD)
+        {
+            a = new StructDeclaration(loc, id, D);
+        }
+        else
+        {
+            auto baseclasses = new BaseClasses;
 
-            AddImplicitImportForDecl(BRD);
-            baseclasses->push(new BaseClass(brt,
-                                            toPROT(B->getAccessSpecifier())));
+            if (CRD)
+            {
+                for (auto B = CRD->bases_begin(),
+                        BEnd = CRD->bases_end(); B != BEnd; ++B)
+                {
+                    auto brt = toType(B->getType());
+                    baseclasses->push(new BaseClass(brt,
+                                                    toPROT(B->getAccessSpecifier())));
+                }
+            }
+
+            auto cd = new ClassDeclaration(loc, id, baseclasses, CRD);
+            a = cd;
         }
 
-        auto cd = new ClassDeclaration(loc, id, baseclasses, CRD);
-        a = cd;
+        declMap[D] = a;
     }
-    
-    declMap[D] = a;
 
-    if (isDefined)
+    // atm we're sortof mirroring parseAggregate()
+    auto members = new Dsymbols;
+
+    for (auto I = D->field_begin(), E = D->field_end();
+            I != E; ++I)
     {
-        // atm we're sortof mirroring parseAggregate()
-        auto members = new Dsymbols;
+        if (I->getCanonicalDecl() != *I)
+            continue;
 
-        for (auto I = D->field_begin(), E = D->field_end();
-             I != E; ++I)
+        auto field = VisitValueDecl(*I);
+        if (field)
+            members->push(field);
+    }
+
+    if (CRD && /* TEMPORARY HACK */ !D->isUnion())
+    {
+        if (!isPOD && !CRD->getDescribedClassTemplate())
+        {
+            S.CurContext = Context.getTranslationUnitDecl(); // HACK?
+
+            // Clang declares and defines the implicit default constructor lazily, so do it here
+            // before adding methods.
+            if (auto CD = S.LookupDefaultConstructor(
+                        const_cast<clang::CXXRecordDecl *>(CRD)))
+                S.MarkFunctionReferenced(clang::SourceLocation(), CD); // TODO put into NewExp semantic
+        }
+
+        for (auto I = CRD->method_begin(), E = CRD->method_end();
+            I != E; ++I)
         {
             if (I->getCanonicalDecl() != *I)
                 continue;
 
-            members->push(VisitValueDecl(*I));
+            auto CCD = dyn_cast<clang::CXXConstructorDecl>(*I);
+            if (CCD && CCD->isDefaultConstructor() && isPOD)
+                continue;
+
+            // CALYPSO FIXME remove the null check once everything is implemented
+            auto fd = VisitFunctionDecl(*I);
+            if (fd)
+                members->push(fd);
         }
-
-        if (CRD)
-        {
-            if (!isPOD)
-            {
-                // Clang declares and defines the implicit default constructor lazily, so do it here
-                // before adding methods.
-                auto CD = S.LookupDefaultConstructor(
-                            const_cast<clang::CXXRecordDecl *>(CRD));
-                S.MarkFunctionReferenced(clang::SourceLocation(), CD); // TODO put into NewExp semantic
-            }
-
-            for (auto I = CRD->method_begin(), E = CRD->method_end();
-                I != E; ++I)
-            {
-                if (I->getCanonicalDecl() != *I)
-                    continue;
-
-                // CALYPSO FIXME remove the null check once everything is implemented
-                auto fd = VisitFunctionDecl(*I);
-                if (fd)
-                    members->push(fd);
-            }
-        }
-
-        // Add specific decls: enums, typedefs
-        typedef clang::DeclContext::specific_decl_iterator<clang::EnumDecl> enum_iterator;
-        for (enum_iterator I(D->decls_begin()), E(D->decls_end());
-                    I != E; I++)
-            members->push(VisitDecl(*I));
-
-        typedef clang::DeclContext::specific_decl_iterator<clang::TypedefDecl> typedef_iterator;
-        for (typedef_iterator I(D->decls_begin()), E(D->decls_end());
-                    I != E; I++)
-            members->push(VisitDecl(*I));
-
-        a->members = members;
     }
+
+    // Add specific decls: enums, typedefs
+    typedef clang::DeclContext::specific_decl_iterator<clang::EnumDecl> enum_iterator;
+    for (enum_iterator I(D->decls_begin()), E(D->decls_end());
+                I != E; I++)
+        if (!I->getTypedefNameForAnonDecl())
+            members->push(VisitDecl(*I));
+
+    typedef clang::DeclContext::specific_decl_iterator<clang::TypedefDecl> typedef_iterator;
+    for (typedef_iterator I(D->decls_begin()), E(D->decls_end());
+                I != E; I++)
+        members->push(VisitDecl(*I));
+
+    if (anon)
+        return new AnonDeclaration(loc, anon == 2, members);
+
+    a->members = members;
 
     return a;
 }
 
-Dsymbol* Mapper::VisitTypedefDecl(const clang::TypedefDecl* D)
+// TODO translate C++-0x's "using Alias = type;" to alias declarations.
+Dsymbol* DeclMapper::VisitTypedefNameDecl(const clang::TypedefNameDecl* D)
 {
+    auto& Context = calypso.getASTContext();
+
+    if (auto TagTy = dyn_cast<clang::TagType>
+            (D->getUnderlyingType().getDesugaredType(Context)))
+    {
+        // special case for typedef class/struct/enum { ...anon record... } SymbolName
+        auto Tag = TagTy->getDecl();
+
+        if (Tag->getTypedefNameForAnonDecl())
+            return VisitDecl(Tag);
+    }
+
     auto loc = toLoc(D->getLocation());
     auto id = toIdentifier(D->getIdentifier());
     auto t = toType(D->getUnderlyingType());
@@ -315,16 +340,21 @@ Dsymbol* Mapper::VisitTypedefDecl(const clang::TypedefDecl* D)
     return a;
 }
 
-Dsymbol *Mapper::VisitFunctionDecl(const clang::FunctionDecl *D)
+Dsymbol *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 {
     auto loc = toLoc(D->getLocation());
 
-    auto FPT = llvm::cast<clang::FunctionProtoType>(D->getType().getTypePtr());
-    auto MD = llvm::dyn_cast<clang::CXXMethodDecl>(D);
+    auto FPT = cast<clang::FunctionProtoType>(D->getType().getTypePtr());
+    auto MD = dyn_cast<clang::CXXMethodDecl>(D);
     
     auto tf = toTypeFunction(FPT);
+    if (!tf)
+    {
+        fprintf(stderr, "Discarding %s, has a class value argument\n", D->getDeclName().getAsString().c_str());
+        return nullptr; // FIXME function with unhandled argument types
+    }
+
     StorageClass stc = STCundefined;
-    
     if (MD)
     {
         if (MD->isStatic())
@@ -343,11 +373,11 @@ Dsymbol *Mapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     tf->addSTC(stc);
     
     ::FuncDeclaration *fd = nullptr;
-    if (auto CD = llvm::dyn_cast<clang::CXXConstructorDecl>(D))
+    if (auto CD = dyn_cast<clang::CXXConstructorDecl>(D))
     {
         fd = new CtorDeclaration(loc, stc, tf, CD);
     }
-    else if (auto DD = llvm::dyn_cast<clang::CXXDestructorDecl>(D))
+    else if (auto DD = dyn_cast<clang::CXXDestructorDecl>(D))
     {
          // Destructors are a special case, Clang can only emit a destructor if it's not trivial.
         // The dtor is checked and added by buildDtor during the semantic pass.
@@ -360,7 +390,7 @@ Dsymbol *Mapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     {
         if (!D->getIdentifier())
         {
-            fprintf(stderr, "No id, operator? support soon\n");
+//             fprintf(stderr, "No id, operator? support soon\n");
             return nullptr;
         }
         
@@ -372,113 +402,177 @@ Dsymbol *Mapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     return fd;
 }
 
-// Dsymbol *Mapper::VisitTemplateDecl(const clang::TemplateDecl *D)
-// {   TemplateDeclaration *a;
-//
-//     Loc *loc = toLoc(D->getLocation());
-//     Identifier *id = toIdentifier(D->getIdentifier());
-//
-//     TemplateParameters *tpl = new TemplateParameters();
-//     auto TPL = D->getTemplateParameters();
-//
-//     for (auto P = TPL->begin(),
-//                 PEnd = TPL->end(); P != PEnd; ++P)
-//     {
-//         TemplateParameter *tp = VisitTemplateParameter(*P);
-//         tpl->push(tp);
-//     }
-//
-//     Dsymbol *s;
-//     if (auto CTD =
-//                     llvm::dyn_cast<clang::ClassTemplateDecl>(D))
-//     {
-//         if (!CTD->isThisDeclarationADefinition())
-//             return nullptr;
-//
-//         s = VisitRecordDecl(CTD->getTemplatedDecl());
-//     }
-//     else if (auto FTD =
-//                     llvm::dyn_cast<clang::FunctionTemplateDecl>(D))
-//     {
-//         if (!FTD->isThisDeclarationADefinition())
-//             return nullptr;
-//
-//         s = VisitFunctionDecl(FTD->getTemplatedDecl());
-//     }
-//
-//     Dsymbols *decldefs = new Dsymbols();
-//     decldefs->push(s);
-//
-//     a = new TemplateDeclaration(loc, id, tpl, nullptr, decldefs, 0);
-//
-//     return a;
-// }
-//
-// TemplateParameter *Mapper::VisitTemplateParameter(const clang::NamedDecl *D)
-// {   TemplateParameter *tp;
-//
-//     Loc *loc = toLoc(D->getLocation());
-//     Identifier *tp_ident = toIdentifier(D->getIdentifier());
-//
-//     if (const clang::NonTypeTemplateParmDecl *NTTPD =
-//             llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(D))
-//     {
-//         Type *tp_valtype = toType(NTTPD->getType());
-//
-//         if (NTTPD->isParameterPack())
-//         {
-//             // tuple
-//         }
-//         else
-//         {
-//             Expression *tp_defaultvalue = nullptr;
-//
-//             if (NTTPD->hasDefaultArgument())
-//                 tp_defaultvalue = toExpression(NTTPD->getDefaultArgument());
-//
-//                 // NOTE: the default argument isn't really needed though
-//
-//             tp = new TemplateValueParameter(loc, tp_ident, tp_valtype,
-//                                         nullptr, tp_defaultvalue);
-//         }
-//
-//     }
-//     else if (const clang::TemplateTypeParmDecl *TTPD =
-//             llvm::dyn_cast<clang::TemplateTypeParmDecl>(D))
-//     {
-//         if (TTPD->isParameterPack())
-//         {
-//
-//         }
-//         else
-//         {
-//             Type *tp_defaulttype = nullptr;
-//
-//             if (TTPD->hasDefaultArgument())
-//                 tp_defaulttype = toType(TTPD->getDefaultArgument());
-//
-//             tp = new TemplateTypeParameter(loc, tp_ident, nullptr, tp_defaulttype);
-//         }
-//     }
-//     else assert(false && "unrecognized template parameter");
-//
-//     return tp;
-// }
+Dsymbol *DeclMapper::VisitTemplateDecl(const clang::TemplateDecl *D)
+{   TemplateDeclaration *a;
 
-Type *getAPIntDType(const llvm::APInt &i)
-{
-    bool needs64bits = i.getBitWidth() > 32;
-
-    if (i.isNegative())
-        return needs64bits ? Type::tint64 : Type::tint32;
-    else
-        return needs64bits ? Type::tuns64 : Type::tuns32;
-}
-
-Dsymbol* Mapper::VisitEnumDecl(const clang::EnumDecl* D)
-{
     auto loc = toLoc(D->getLocation());
     auto id = toIdentifier(D->getIdentifier());
+
+    auto tpl = new TemplateParameters;
+    auto TPL = D->getTemplateParameters();
+
+    for (auto P: *TPL)
+    {
+        auto tp = VisitTemplateParameter(P);
+
+        if (!tp)    // FIXME temporary
+            return nullptr;
+
+        tpl->push(tp);
+    }
+
+    Dsymbol *s;
+    if (auto CTD =  dyn_cast<clang::ClassTemplateDecl>(D))
+    {
+        if (!CTD->isThisDeclarationADefinition())
+            return nullptr;
+
+        s = VisitRecordDecl(CTD->getTemplatedDecl());
+    }
+    else if (auto FTD = dyn_cast<clang::FunctionTemplateDecl>(D))
+    {
+//         if (!FTD->isThisDeclarationADefinition())
+            return nullptr;
+
+//         s = VisitFunctionDecl(FTD->getTemplatedDecl());
+    }
+
+    auto decldefs = new Dsymbols;
+    decldefs->push(s);
+
+    a = new TemplateDeclaration(loc, id, tpl, nullptr, decldefs, false);
+    return a;
+}
+
+TemplateParameter *DeclMapper::VisitTemplateParameter(const clang::NamedDecl *Param,
+                                                                      const clang::TemplateArgument *SpecArg)
+{
+    auto loc = toLoc(Param->getLocation());
+    auto id = toIdentifier(Param->getIdentifier());
+
+    TemplateParameter *tp;
+
+    if (auto NTTPD =
+            dyn_cast<clang::NonTypeTemplateParmDecl>(Param))
+    {
+        auto valTy = toType(NTTPD->getType());
+
+        if (NTTPD->isParameterPack())
+        {
+            // tuple
+            ::error(Loc(), "%s", "C++ template parameter pack not supported yet");
+            return nullptr;
+        }
+        else
+        {
+            Expression *tp_specvalue = nullptr;
+            Expression *tp_defaultvalue = nullptr;
+
+            if (SpecArg)
+            {
+                switch (SpecArg->getKind())
+                {
+                    case clang::TemplateArgument::Expression:
+                        tp_specvalue = toExpression(SpecArg->getAsExpr());
+                        break;
+                    case clang::TemplateArgument::Integral:
+                        tp_specvalue = APIntToExpression(SpecArg->getAsIntegral());
+                        break;
+                    case clang::TemplateArgument::NullPtr:
+                        tp_specvalue = new NullExp(Loc()/*, toType(SpecArg->getNullPtrType())*/);
+                        break;
+                    default:
+                        assert(false && "Unsupported template specialization value");
+                }
+                assert(tp_specvalue);
+            }
+
+            if (NTTPD->hasDefaultArgument())
+                tp_defaultvalue = toExpression(NTTPD->getDefaultArgument());
+
+            tp = new TemplateValueParameter(loc, id, valTy,
+                                        tp_specvalue, tp_defaultvalue);
+        }
+
+    }
+    else if (auto TTPD =
+            dyn_cast<clang::TemplateTypeParmDecl>(Param))
+    {
+        if (TTPD->isParameterPack())
+        {
+            ::error(Loc(), "%s", "C++ template parameter pack not supported yet");
+            return nullptr;
+        }
+        else
+        {
+            Type *tp_spectype = nullptr;
+            Type *tp_defaulttype = nullptr;
+
+            if (SpecArg)
+            {
+                assert(SpecArg->getKind() == clang::TemplateArgument::Type);
+                tp_spectype = toType(SpecArg->getAsType());
+            }
+
+            if (TTPD->hasDefaultArgument())
+                tp_defaulttype = toType(TTPD->getDefaultArgument());
+
+            tp = new TemplateTypeParameter(loc, id, tp_spectype, tp_defaulttype);
+        }
+    }
+    else assert(false && "unrecognized template parameter");
+
+    return tp;
+}
+
+// Explicit specializations only
+Dsymbol *DeclMapper::VisitClassTemplateSpecializationDecl(const clang::ClassTemplateSpecializationDecl *D)
+{   TemplateDeclaration *a;
+
+    if (!D->isThisDeclarationADefinition())
+        return nullptr;
+
+    if (!D->isExplicitSpecialization())
+        return nullptr; // not sure about that
+
+    if (isa<clang::ClassTemplatePartialSpecializationDecl>(D))
+        return nullptr; // TODO
+
+    auto loc = toLoc(D->getLocation());
+    auto id = toIdentifier(D->getIdentifier());
+
+    auto tpl = new TemplateParameters;
+
+    auto CT = D->getDescribedClassTemplate();
+    auto TPL = CT->getTemplateParameters();
+    auto& TAL = D->getTemplateArgs();
+
+    assert(TPL->size() == TAL.size());
+
+    auto AI = TAL.asArray().begin();
+    for (auto PI = TPL->begin(), PE = TPL->end();
+        PI != PE; PI++, AI++)
+    {
+        auto tp = VisitTemplateParameter(*PI, AI);
+
+        if (!tp)
+            return nullptr;
+
+        tpl->push(tp);
+    }
+
+    auto decldefs = new Dsymbols;
+    auto ad = VisitRecordDecl(D);
+    decldefs->push(ad);
+
+    a = new TemplateDeclaration(loc, id, tpl, nullptr, decldefs);
+    return a;
+}
+
+Dsymbol* DeclMapper::VisitEnumDecl(const clang::EnumDecl* D)
+{
+    auto loc = toLoc(D->getLocation());
+    auto id = getIdentifier(D);
 
     auto IntType = D->getIntegerType();
     if (IntType.isNull())
@@ -494,21 +588,14 @@ Dsymbol* Mapper::VisitEnumDecl(const clang::EnumDecl* D)
         auto ident = toIdentifier(ECD->getIdentifier());
         Expression *value = nullptr;
 
-        if (ECD->getInitExpr())
-        {
-            auto InitVal = ECD->getInitVal();
-            auto t = getAPIntDType(InitVal);
-
-            value = new IntegerExp(loc, InitVal.isNegative() ? InitVal.getSExtValue() : InitVal.getZExtValue(), t);
-        }
+        if (auto InitE = ECD->getInitExpr())
+            value = toExpression(InitE);
 
         auto em = new EnumMember(loc, ident, value, nullptr);
         e->members->push(em);
     }
 
     return e;
-}
-
 }
 
 /*****/
@@ -529,34 +616,41 @@ std::string moduleName(Identifiers *packages, Identifier *ident)
 // Look into namespace redecls if there are any
 clang::DeclContext::lookup_const_result wideLookup(Loc loc,
                                                    const clang::DeclContext *DC,
-                                                   Identifier *id)
+                                                   Identifier *id,
+                                                   bool lookupInRedecls = true)
 {
     auto& AST = calypso.pch.AST;
     auto& Table = AST->getPreprocessor().getIdentifierTable();
+    auto& II = Table.get(id->string);
 
-    auto NS = llvm::dyn_cast<clang::NamespaceDecl>(DC);
-    clang::NamespaceDecl::redecl_iterator I, E;
+    if (lookupInRedecls)
+        if (auto NS = dyn_cast<clang::NamespaceDecl>(DC))
+        {
+            for (auto Redecl: NS->redecls())
+            {
+                auto R = wideLookup(loc, Redecl, id, false);
+                if (!R.empty())
+                    return R;
+            }
+        }
 
-    if (NS)
-    {
-        I = NS->redecls_begin();
-        E = NS->redecls_end();
-    }
+//     typedef clang::DeclContext::specific_decl_iterator<clang::LinkageSpecDecl>
+//         linkagespec_iterator;
+//     linkagespec_iterator LSI(DC->decls_begin()), LSE(DC->decls_end());
 
     do
     {
-        auto& II = Table.get(id->string);
         auto R = DC->lookup(clang::DeclarationName(&II));
 
         if (!R.empty())
             return R;
 
-        if (NS && I != E)
-        {
-            DC = *I;
-            I++;
-        }
-        else
+//         if (LSI != LSE)
+//         {
+//             DC = *LSI;
+//             LSI++;
+//         }
+//         else
             DC = nullptr;
 
     } while(DC);
@@ -571,9 +665,9 @@ clang::DeclContext::lookup_const_result wideLookup(Loc loc,
 
 Module *Module::load(Loc loc, Identifiers *packages, Identifier *ident)
 {
-    auto& AST = calypso.pch.AST;
+    auto& Context = calypso.getASTContext();
 
-    const clang::DeclContext *DC = AST->getASTContext().getTranslationUnitDecl();
+    const clang::DeclContext *DC = Context.getTranslationUnitDecl();
     auto dst = modules;
 
     if (packages && packages->dim)
@@ -589,7 +683,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *ident)
                 fatal();
             }
 
-            auto NSN = llvm::dyn_cast<clang::NamespaceDecl>(R[0]);
+            auto NSN = dyn_cast<clang::NamespaceDecl>(R[0]);
             if (!NSN)
             {
                 ::error(loc, "only namespaces can be C++ packages");
@@ -598,7 +692,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *ident)
 
             DC = NSN;
 
-            if (auto NDC = llvm::dyn_cast<clang::NamedDecl>(DC))
+            if (auto NDC = dyn_cast<clang::NamedDecl>(DC))
             {
                 auto id = toIdentifier(NDC->getIdentifier());
 
@@ -621,13 +715,13 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *ident)
     m->members = new Dsymbols;
     m->loc = loc;
 
-    Mapper mapper(m);
+    DeclMapper mapper(m);
 
     // HACK « hardcoded modules »
     if (strcmp(ident->string, "_") == 0)
     {
         // All non-tag declarations inside the namespace go in _ (this is horrible for C functions of course, this will be fixed by the switch to Clang module system)
-        auto NS = llvm::dyn_cast<clang::NamespaceDecl>(DC);
+        auto NS = dyn_cast<clang::NamespaceDecl>(DC);
 
         if (!NS)
         {
@@ -636,6 +730,8 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *ident)
         }
         else
         {
+            m->rootDecl = NS->getCanonicalDecl();
+
             auto I = NS->redecls_begin(),
                     E = NS->redecls_end();
 
@@ -648,7 +744,10 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *ident)
                 {
                     if (llvm::isa<clang::FunctionDecl>(*D) ||
                             llvm::isa<clang::VarDecl>(*D))
-                        m->members->push(mapper.VisitDecl(*D));
+                    {
+                        if (auto s = mapper.VisitDecl(*D))
+                            m->members->push(s);
+                    }
                 }
             }
         }
@@ -662,16 +761,26 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *ident)
             fatal();
         }
 
-        // Module must be a record or enum
-        auto TD = llvm::dyn_cast<clang::TagDecl>(R[0]);
-
-        if (!TD)
+        auto D = R[0];
+        if (auto TD = dyn_cast<clang::TypedefNameDecl>(D))
         {
-            ::error(loc, "C++ modules have to be records (class/struct) (template or not) or enums");
+            auto UT = TD->getUnderlyingType().getDesugaredType(Context);
+            if (auto RT = dyn_cast<clang::TagType>(UT))
+                D = RT->getDecl();
+        }
+
+        // Module must be a record or enum
+        if (!isa<clang::TagDecl>(D) &&
+            !isa<clang::ClassTemplateDecl>(D))
+        {
+            ::error(loc, "C++ modules have to be records (class/struct, template or not) or enums");
             fatal();
         }
 
-        m->members->push(mapper.VisitDecl(TD));
+        m->rootDecl = D->getCanonicalDecl();
+
+        if (auto s = mapper.VisitDecl(R[0]))
+            m->members->push(s);
 //         srcFilename = AST->getSourceManager().getFilename(TD->getLocation());
     }
     

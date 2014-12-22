@@ -1415,18 +1415,15 @@ public:
                 result = DtoNestedVariable(e->loc, e->type, vd, e->type->ty == Tstruct);
                 return;
             }
-            // CALYPSO
-            else if (!p->func()->decl->vthis->type->toBasetype()->equals(e->type->toBasetype())) {
-                auto thisVal = new DImValue(p->func()->decl->vthis->type,
-                                            DtoLoad(p->func()->thisArg));
-                result = DtoCast(e->loc, thisVal, e->type);
-                return;
-            }
             else {
                 Logger::println("normal this exp");
                 v = p->func()->thisArg;
             }
-            result = new DVarValue(e->type, vd, v);
+            result = new DVarValue(p->func()->decl->vthis->type, vd, v);
+
+            // CALYPSO
+            if (!p->func()->decl->vthis->type->toBasetype()->equals(e->type->toBasetype()))
+                result = DtoCast(e->loc, result, e->type);
         } else {
             llvm_unreachable("No VarDeclaration in ThisExp.");
         }

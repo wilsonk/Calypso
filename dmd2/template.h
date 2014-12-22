@@ -346,7 +346,7 @@ public:
     TemplateInstance(Loc loc, Identifier *temp_id);
     TemplateInstance(Loc loc, TemplateDeclaration *tempdecl, Objects *tiargs);
     static Objects *arraySyntaxCopy(Objects *objs);
-    Dsymbol *syntaxCopy(Dsymbol *);
+    virtual Dsymbol *syntaxCopy(Dsymbol *);
     void semantic(Scope *sc, Expressions *fargs);
     void semantic(Scope *sc);
     void semantic2(Scope *sc);

@@ -4707,7 +4707,15 @@ CtorDeclaration::CtorDeclaration(Loc loc, Loc endloc, StorageClass stc, Type *ty
 
 Dsymbol *CtorDeclaration::syntaxCopy(Dsymbol *s)
 {
-    CtorDeclaration *f = new CtorDeclaration(loc, endloc, storage_class, type->syntaxCopy());
+    // CALYPSO WARNING unforeseen consequences? why was using s disabled?
+    CtorDeclaration *f;
+    if (s)
+    {
+        f  = s->isCtorDeclaration();
+        assert(f);
+    }
+    else
+        f = new CtorDeclaration(loc, endloc, storage_class, type->syntaxCopy());
 
     f->outId = outId;
     f->frequire = frequire ? frequire->syntaxCopy() : NULL;
@@ -4869,19 +4877,28 @@ void PostBlitDeclaration::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
 /********************************* DtorDeclaration ****************************/
 
 DtorDeclaration::DtorDeclaration(Loc loc, Loc endloc)
-    : FuncDeclaration(loc, endloc, Id::dtor, STCundefined, NULL)
+    : FuncDeclaration(loc, endloc, Id::dtor, STCundefined,
+                      new TypeFunction(NULL, Type::tvoid, false, LINKd, STCundefined))  // CALYPSO
 {
 }
 
 DtorDeclaration::DtorDeclaration(Loc loc, Loc endloc, StorageClass stc, Identifier *id)
-    : FuncDeclaration(loc, endloc, id, stc, NULL)
+    : FuncDeclaration(loc, endloc, id, stc,
+                      new TypeFunction(NULL, Type::tvoid, false, LINKd, stc))
 {
 }
 
 Dsymbol *DtorDeclaration::syntaxCopy(Dsymbol *s)
 {
-    assert(!s);
-    DtorDeclaration *dd = new DtorDeclaration(loc, endloc, storage_class, ident);
+    // CALYPSO WARNING unforeseen consequences? why was using s disabled?
+    DtorDeclaration *dd;
+    if (s)
+    {
+        dd = s->isDtorDeclaration();
+        assert(dd);
+    }
+    else
+        dd = new DtorDeclaration(loc, endloc, storage_class, ident);
     return FuncDeclaration::syntaxCopy(dd);
 }
 
@@ -4904,8 +4921,7 @@ void DtorDeclaration::semantic(Scope *sc)
     else if (ident == Id::dtor && semanticRun < PASSsemantic)
         ad->dtors.push(this);
 
-    if (!type)
-        type = new TypeFunction(NULL, Type::tvoid, false, LINKd, storage_class);
+    // CALYPSO moved to the constructor, because cpp::ClassDeclaration::findMethod needs it before calling semantic() on this
 
     sc = sc->push();
     sc->stc &= ~STCstatic;              // not a static destructor

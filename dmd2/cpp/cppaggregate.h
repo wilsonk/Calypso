@@ -32,6 +32,9 @@ public:
     const clang::RecordDecl *RD;
 
     StructDeclaration(Loc loc, Identifier* id, const clang::RecordDecl* RD);
+    StructDeclaration(const StructDeclaration&);
+    Dsymbol *syntaxCopy(Dsymbol *s) override;
+    void semantic(Scope *sc) override;
 };
 
 // The rest, i.e anything involving inheritance, virtual functions.
@@ -44,11 +47,15 @@ public:
 
     ClassDeclaration(Loc loc, Identifier *id, BaseClasses *baseclasses,
                      const clang::CXXRecordDecl *RD);
+    ClassDeclaration(const ClassDeclaration&);
+    Dsymbol *syntaxCopy(Dsymbol *s) override;
+    void semantic(Scope *sc) override;
     
     bool isBaseOf(::ClassDeclaration* cd, int* poffset) override;
     void interfaceSemantic(Scope *sc) override;
     
     bool allowMultipleInheritance() override { return true; }
+    bool allowInheritFromStruct() override { return true; }
     void initVtbl() override;
     void buildLayout() override; // determine the agg size and field offsets
 

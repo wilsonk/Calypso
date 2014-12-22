@@ -75,9 +75,6 @@ public:
     Dsymbol *deferred;          // any deferred semantic2() or semantic3() symbol
     bool isdeprecated;          // true if deprecated
 
-    // CALYPSO
-    virtual LangPlugin *langPlugin() { return NULL; }
-
     Dsymbol *enclosing;         /* !=NULL if is nested
                                  * pointing to the dsymbol that directly enclosing it.
                                  * 1. The function that enclosing it (nested struct and class)
@@ -172,8 +169,8 @@ public:
     Type *arg2type;
 
     StructDeclaration(Loc loc, Identifier *id);
-    Dsymbol *syntaxCopy(Dsymbol *s);
-    void semantic(Scope *sc);
+    virtual Dsymbol *syntaxCopy(Dsymbol *s);
+    virtual void semantic(Scope *sc);
     void semanticTypeInfoMembers();
     Dsymbol *search(Loc, Identifier *ident, int flags = IgnoreNone);
     void toCBuffer(OutBuffer *buf, HdrGenState *hgs);
@@ -344,7 +341,7 @@ public:
 };
 
 // CALYPSO
-ClassDeclaration *isStructDeclarationOrNull(Dsymbol* s);
+StructDeclaration *isStructDeclarationOrNull(Dsymbol* s);
 ClassDeclaration *isClassDeclarationOrNull(Dsymbol *s);
 AggregateDeclaration *toAggregateBase(Dsymbol *s);
 
