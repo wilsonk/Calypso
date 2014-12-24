@@ -9,9 +9,8 @@
 
 #include "root.h"
 #include "dsymbol.h"
-
-#include "cpp/cpptypes.h"
 #include "module.h"
+#include "cpp/calypso.h"
 
 namespace clang
 {
@@ -20,8 +19,11 @@ class Decl;
 
 namespace cpp {
 
-struct Module : ::Module
+class Module : public ::Module
 {
+public:
+    CALYPSO_LANGPLUGIN
+
     const clang::Decl *rootDecl = nullptr; // the decl we're generating the module for
 
     static DsymbolTable *modules;   // symbol tree of all C/C++ modules

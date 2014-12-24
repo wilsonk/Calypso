@@ -277,7 +277,10 @@ Dsymbol *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags)
             // before adding methods.
             if (auto CD = S.LookupDefaultConstructor(
                         const_cast<clang::CXXRecordDecl *>(CRD)))
+            {
+                CD->setTrivial(false); // Force its definition and Sema to act on it
                 S.MarkFunctionReferenced(clang::SourceLocation(), CD); // TODO put into NewExp semantic
+            }
         }
 
         for (auto I = CRD->method_begin(), E = CRD->method_end();
@@ -785,6 +788,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *ident)
     }
     
     amodules.push_back(m);
+    modules->insert(m);
     return m;
 }
 

@@ -1285,21 +1285,25 @@ int main(int argc, char **argv)
     if (global.errors)
        fatal();
 
+    // CALYPSO HACK & NOTE: this must be done after the importAll pass for D modules for modmap to kick in
+    for (unsigned i = 0; i < cpp::Module::amodules.dim; i++)
+    {
+        auto m = cpp::Module::amodules[i];
+
+        m->importedFrom = m;
+        m->buildTargetFiles(singleObj);
+        m->deleteObjFile();
+        m->importAll(0);
+
+        modules.push(m);
+    }
+
     // Do semantic analysis
     for (unsigned i = 0; i < modules.dim; i++)
     {
         if (global.params.verbose)
             fprintf(global.stdmsg, "semantic  %s\n", modules[i]->toChars());
         modules[i]->semantic();
-    }
-    // CALYPSO HACK? Calypso modules shouldn't be special
-    // How about compiling modules in applications but only importing them in static libraries?
-    for (unsigned i = 0; i < cpp::Module::amodules.dim; i++)
-    {
-        Module *m = cpp::Module::amodules[i];
-        m->buildTargetFiles(singleObj);
-        m->deleteObjFile();
-        m->semantic();
     }
     if (global.errors)
         fatal();
@@ -1314,8 +1318,6 @@ int main(int argc, char **argv)
             fprintf(global.stdmsg, "semantic2 %s\n", modules[i]->toChars());
         modules[i]->semantic2();
     }
-    for (unsigned i = 0; i < cpp::Module::amodules.dim; i++)
-        cpp::Module::amodules[i]->semantic2();
     if (global.errors)
         fatal();
 
@@ -1326,8 +1328,6 @@ int main(int argc, char **argv)
             fprintf(global.stdmsg, "semantic3 %s\n", modules[i]->toChars());
         modules[i]->semantic3();
     }
-    for (unsigned i = 0; i < cpp::Module::amodules.dim; i++)
-        cpp::Module::amodules[i]->semantic3();
     if (global.errors)
         fatal();
 
@@ -1354,8 +1354,7 @@ int main(int argc, char **argv)
 
     // Generate output files
     genModules(modules, llvmModules);
-    genModules(cpp::Module::amodules, llvmModules);
-            // CALYPSO
+            // CALYPSO todo revert to vanilla
 
     // internal linking for singleobj
     if (singleObj && llvmModules.size() > 0)

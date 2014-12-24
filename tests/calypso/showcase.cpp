@@ -46,4 +46,12 @@ bool testMultipleInherit::hello(bool who)
     return anotherClass::hello(who);
 }
 
+// int implicitSpecPlease(char_arrayten<char> &o)
+// {
+//     if (o.FifthChar() == 'p')
+//         return 1;
+//
+//     return 0;
+// }
+
 }

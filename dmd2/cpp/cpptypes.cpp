@@ -502,8 +502,13 @@ const clang::Decl* TypeMapper::GetImplicitImportKeyForDecl(const clang::NamedDec
         DC = ND->getDeclContext();
 
     if (!BuildImplicitImportInternal(DC, loc, sPackages, sModule))
-        // ND isn't a tag, we need to import the namespace's functions and vars
-        sModule = Lexer::idPool("_");
+    {
+        if (isa<clang::ClassTemplateDecl>(ND))
+            sModule = getIdentifier(cast<clang::NamedDecl>(ND));
+        else
+            // ND is neither a tag nor a class template, we need to import the namespace's functions and vars
+            sModule = Lexer::idPool("_");
+    }
 
     return new cpp::Import(loc, sPackages, sModule, nullptr, 0);
 }
@@ -527,7 +532,7 @@ bool TypeMapper::BuildImplicitImportInternal(const clang::DeclContext *DC, Loc l
 
         return false;
     }
-    else if (isa<clang::ClassTemplateDecl>(DC) || isa<clang::TagDecl>(DC))
+    else if (isa<clang::TagDecl>(DC))
     {
         sModule = getIdentifier(cast<clang::NamedDecl>(DC));
         return true;

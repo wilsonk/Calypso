@@ -77,7 +77,9 @@ protected:
     void AddImplicitImportForDecl(const clang::NamedDecl* ND);
     const clang::Decl* GetImplicitImportKeyForDecl(const clang::NamedDecl* ND);
 
+public: // HACK
     ::Import* BuildImplicitImport(const clang::Decl* ND);
+protected:
     bool BuildImplicitImportInternal(const clang::DeclContext* DC, Loc loc,
             Identifiers* sPackages, Identifier*& sModule);
     TypeQualified *typeQualifiedFor(const clang::NamedDecl* ND,

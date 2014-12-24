@@ -8,6 +8,7 @@ import (C++) test.testInherit;
 import (C++) test.anotherClass;
 import (C++) test.testMultipleInherit;
 import (C++) test.enumTest;
+import (C++) test.char_arrayten;
 
 // import (C++) Ogre.Light;
 
@@ -114,4 +115,9 @@ void main()
 
     enumTest someEnumValue = enumTest.ENUM_SOMEVAL;
     writeln("someEnumValue = ", someEnumValue);
+
+    char_arrayten!char amIAValue = new char_arrayten!char;
+    amIAValue.someCharArray[4] = 'h';
+    writeln("&amIAValue = ", &amIAValue);
+    writeln("amIAValue.FifthChar() = ", amIAValue.FifthChar());
 }

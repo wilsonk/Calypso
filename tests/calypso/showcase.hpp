@@ -61,4 +61,21 @@ namespace test {
         ENUM_SOMEVAL,
         ENUM_LASTVAL
     };
+
+    template<typename _CharT>
+    struct char_arrayten
+    {
+        _CharT someCharArray[10];
+        _CharT FifthChar() { return someCharArray[4]; }
+    };
+
+//     int implicitSpecPlease(char_arrayten<char> &o);
+
+    int implicitSpecPlease(char_arrayten<char> &o)
+    {
+        if (o.FifthChar() == 'p')
+            return 1;
+
+        return 0;
+    }
 }
