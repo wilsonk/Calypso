@@ -2,6 +2,7 @@
 #include "cpp/calypso.h"
 #include "cpp/cppdeclaration.h"
 #include "cpp/cppaggregate.h"
+#include "cpp/cpptemplate.h"
 
 #include "mtype.h"
 #include "target.h"
@@ -22,6 +23,7 @@
 #include "clang/lib/CodeGen/CodeGenTypes.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/Basic/ABI.h"
 #include "clang/Basic/LangOptions.h"
@@ -403,6 +405,17 @@ void LangPlugin::toDeclareVariable(::VarDeclaration* vd)
         v = CGM.GetAddrOfGlobalVar(VD);
 
     getIrGlobal(vd)->value = v;
+}
+
+void LangPlugin::toDefineTemplateInstance(::TemplateInstance *inst)
+{
+    auto c_inst = static_cast<cpp::TemplateInstance *>(inst);
+
+    if (c_inst->instantiatingModuleCpp == gIR->dmodule) // hmm this just works but the whole thing still is a fragile HACK to avoid duplicate instances
+    {
+        auto CTSD = llvm::cast<clang::ClassTemplateSpecializationDecl>(c_inst->Instantiated);
+        AB->HandleTagDeclDefinition(CTSD);
+    }
 }
 
 }

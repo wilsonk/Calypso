@@ -69,13 +69,5 @@ namespace test {
         _CharT FifthChar() { return someCharArray[4]; }
     };
 
-//     int implicitSpecPlease(char_arrayten<char> &o);
-
-    int implicitSpecPlease(char_arrayten<char> &o)
-    {
-        if (o.FifthChar() == 'p')
-            return 1;
-
-        return 0;
-    }
+    int implicitSpecPlease(char_arrayten<char> &o);
 }

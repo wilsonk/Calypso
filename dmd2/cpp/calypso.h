@@ -152,6 +152,8 @@ public:
     void toPostNewClass(Loc& loc, TypeClass* tc, DValue* val) override;
 
     void toDeclareVariable(::VarDeclaration* vd) override;
+
+    void toDefineTemplateInstance(::TemplateInstance *tempinst) override;
          
     // ==== ==== ====
     PCH pch;

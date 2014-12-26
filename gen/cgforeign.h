@@ -42,4 +42,6 @@ public:
     virtual void toPostNewClass(Loc& loc, TypeClass* tc, DValue* val) = 0;
 
     virtual void toDeclareVariable(VarDeclaration* vd) = 0;
+
+    virtual void toDefineTemplateInstance(TemplateInstance *tempinst) = 0;
 };

@@ -28,6 +28,7 @@ class Decl;
 namespace cpp
 {
 class Module;
+class TypeQualifiedBuilder;
 
 class BuiltinTypes
 {
@@ -77,16 +78,14 @@ protected:
     void AddImplicitImportForDecl(const clang::NamedDecl* ND);
     const clang::Decl* GetImplicitImportKeyForDecl(const clang::NamedDecl* ND);
 
-public: // HACK
     ::Import* BuildImplicitImport(const clang::Decl* ND);
-protected:
     bool BuildImplicitImportInternal(const clang::DeclContext* DC, Loc loc,
             Identifiers* sPackages, Identifier*& sModule);
-    TypeQualified *typeQualifiedFor(const clang::NamedDecl* ND,
-                                    const clang::TemplateArgument* TempArgBegin = nullptr,
-                                    const clang::TemplateArgument* TempArgEnd = nullptr);
+    TypeQualified *typeQualifiedFor(clang::NamedDecl* ND, const clang::TemplateArgument* TempArgBegin = nullptr, const clang::TemplateArgument* TempArgEnd = nullptr);
     
     bool isNonPODRecord(const clang::QualType T);
+
+    friend class cpp::TypeQualifiedBuilder;
 };
 
 }

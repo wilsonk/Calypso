@@ -24,8 +24,11 @@ class TemplateInstance : public ::TemplateInstance
 public:
     CALYPSO_LANGPLUGIN // temporary: we don't atm instantiate templates and store the already instantiated decl from Sema
 
-    const clang::Decl *Instantiated;
-    TemplateInstance(Loc loc, Identifier *temp_id, const clang::Decl *Instantiated);
+    clang::Decl *Instantiated;
+    ::Module *instantiatingModuleCpp; // Clang is lazier than DMD when it comes to template instantiation, a PCH might have references or pointers to a template specialization but that specialization although declared might not be defined and codegen'd, whereas DMD expects template specializations to be defined anywhere they appear even as pointers/refs
+
+    TemplateInstance(Loc loc, Identifier *temp_id,
+                     clang::Decl *Instantiated, ::Module *instantiatingModuleCpp);
     TemplateInstance(const TemplateInstance&);
     Dsymbol *syntaxCopy(Dsymbol *) override;
 };

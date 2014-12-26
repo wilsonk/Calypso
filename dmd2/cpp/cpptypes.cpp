@@ -9,6 +9,7 @@
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Type.h"
 #include "clang/Frontend/ASTUnit.h"
+#include "clang/Sema/Sema.h"
 
 namespace cpp
 {
@@ -232,10 +233,13 @@ public:
 
 protected:
     void addInst(TypeQualified *&tqual,
-                 const clang::NamedDecl* D,
+                 clang::NamedDecl* D,
                  const clang::TemplateArgument *TempArgBegin,
                  const clang::TemplateArgument *TempArgEnd)
     {
+        auto& Context = calypso.pch.AST->getASTContext();
+        auto& S = calypso.pch.AST->getSema();
+
         auto tiargs = new Objects;
 
         for (auto Arg = TempArgBegin;
@@ -266,8 +270,22 @@ protected:
 
         auto ident = getIdentifier(D);
         auto loc = toLoc(D->getLocation());
+        ::Module *instantiatingModuleCpp = nullptr;
+        auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(D);
+
+        if (CTSD && !CTSD->hasDefinition())
+        {
+            auto Ty = Context.getRecordType(CTSD);
+
+            if (S.RequireCompleteType(CTSD->getLocation(), Ty, 0))
+                assert(false && "Sema::RequireCompleteType() failed on template specialization");
+
+            instantiatingModuleCpp = tm.mod;  // if the definition of the class template specialization wasn't present in the PCH there's a chance the code wasn't generated in the C++ libraries, so we do it ourselves
+            assert(instantiatingModuleCpp);
+        }
+
         auto tempinst = new cpp::TemplateInstance(loc, ident,
-            dyn_cast<clang::ClassTemplateSpecializationDecl>(D)); // " HACK ": last arg is the temporary trick to avoid begging Sema to instanciate templates without segfaulting or worse (although I didn't even try yet)
+                                            CTSD, instantiatingModuleCpp); // " HACK ": 3rd arg is the temporary trick to avoid begging Sema to instanciate not declared template specs
         tempinst->tiargs = tiargs;
 
         if (!tqual)
@@ -284,7 +302,7 @@ public:
           TopTempArgBegin(TempArgBegin),
           TopTempArgEnd(TempArgEnd) {}
 
-    TypeQualified *get(const clang::NamedDecl* ND)
+    TypeQualified *get(clang::NamedDecl* ND)
     {
         auto ident = getIdentifier(ND);
 
@@ -325,7 +343,7 @@ public:
     }
 };
 
-TypeQualified* TypeMapper::typeQualifiedFor(const clang::NamedDecl* ND,
+TypeQualified* TypeMapper::typeQualifiedFor(clang::NamedDecl* ND,
     const clang::TemplateArgument *TempArgBegin,
     const clang::TemplateArgument *TempArgEnd)
 {

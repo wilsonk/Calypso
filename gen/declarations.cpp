@@ -352,6 +352,9 @@ public:
         if (decl->ir.isDefined()) return;
         decl->ir.setDefined();
 
+        if (auto lp = decl->langPlugin())
+            lp->codegen()->toDefineTemplateInstance(decl);  // CALYPSO
+
         // FIXME: This is #673 all over again.
         if (!decl->needsCodegen()) return;
 
