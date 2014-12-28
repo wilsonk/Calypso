@@ -27,7 +27,21 @@ class Expr;
 namespace cpp
 {
 
-Expression *toExpression(const clang::Expr *E, Type *t = nullptr);
+class ExprMapper
+{
+public:
+    ExprMapper(TypeMapper &tymap)
+        : tymap(tymap) {}
+
+    Expression *toExpression(const clang::Expr *E, Type *t = nullptr);
+
+protected:
+    TypeMapper &tymap;
+
+    Expression* toUnaExp(const clang::UnaryOperator *E);
+    Expression* toBinExp(const clang::BinaryOperator* E);
+};
+
 Expression *APIntToExpression(const llvm::APInt &Val);
 
 }

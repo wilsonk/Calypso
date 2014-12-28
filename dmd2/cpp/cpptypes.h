@@ -9,6 +9,7 @@
 
 #include <map>
 #include "mars.h"
+#include "arraytypes.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/TargetInfo.h"
 
@@ -57,6 +58,7 @@ public:
     Type *toTypeUnqual(const clang::Type *T);
     Type *toTypeBuiltin(const clang::BuiltinType *T);
     Type *toTypeComplex(const clang::ComplexType *T);
+    Type *toTypeArray(const clang::ArrayType *T);
     Type *toTypeTypedef(const clang::TypedefType *T);
     Type *toTypeEnum(const clang::EnumType *T);
     Type *toTypeRecord(const clang::RecordType *T);
@@ -64,10 +66,15 @@ public:
     Type *toTypeTemplateSpecialization(const clang::TemplateSpecializationType *T);
     Type *toTypeTemplateTypeParm(const clang::TemplateTypeParmType *T);
     Type *toTypeSubstTemplateTypeParm(const clang::SubstTemplateTypeParmType *T);
-    Type *toTypeDependentName(const clang::DependentNameType *T);
     Type *toTypeInjectedClassName(const clang::InjectedClassNameType *T);
     Type *toTypeAdjusted(const clang::AdjustedType *T);
+    Type *toTypeDependentName(const clang::DependentNameType *T);
+    Type *toTypeDependentTemplateSpecialization(const clang::DependentTemplateSpecializationType *T);
+    Type *toTypeDecltype(const clang::DecltypeType *T);
     TypeFunction *toTypeFunction(const clang::FunctionProtoType *T);
+
+    RootObject *toTemplateArgument(const clang::TemplateArgument *Arg);
+    TypeQualified *fromNestedNameSpecifier(const clang::NestedNameSpecifier *NNS);
 
 protected:
     cpp::Module *mod;
@@ -75,13 +82,18 @@ protected:
     llvm::SmallDenseMap<const clang::Decl*, Import*, 8> implicitImports;
     llvm::DenseMap<const clang::NamedDecl*, Dsymbol*> declMap;  // fast lookup of mirror decls
 
+    Objects *toTemplateArguments(const clang::TemplateArgument *First,
+                const clang::TemplateArgument *End);
+
     void AddImplicitImportForDecl(const clang::NamedDecl* ND);
     const clang::Decl* GetImplicitImportKeyForDecl(const clang::NamedDecl* ND);
 
     ::Import* BuildImplicitImport(const clang::Decl* ND);
     bool BuildImplicitImportInternal(const clang::DeclContext* DC, Loc loc,
             Identifiers* sPackages, Identifier*& sModule);
-    TypeQualified *typeQualifiedFor(clang::NamedDecl* ND, const clang::TemplateArgument* TempArgBegin = nullptr, const clang::TemplateArgument* TempArgEnd = nullptr);
+    TypeQualified *typeQualifiedFor(clang::NamedDecl* ND,
+                        const clang::TemplateArgument* TempArgBegin = nullptr,
+                        const clang::TemplateArgument* TempArgEnd = nullptr);
     
     bool isNonPODRecord(const clang::QualType T);
 

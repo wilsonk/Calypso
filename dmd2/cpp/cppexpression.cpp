@@ -2,6 +2,8 @@
 
 #include "cpp/cppexpression.h"
 #include "cpp/cpptypes.h"
+#include "id.h"
+#include "template.h"
 
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
@@ -15,7 +17,22 @@ using llvm::isa;
 
 static Type *getAPIntDType(const llvm::APInt &i);
 
-Expression* toUnaExp(const clang::UnaryOperator *E)
+Objects *fromASTTemplateArgumentListInfo(
+            const clang::ASTTemplateArgumentListInfo &Args,
+            TypeMapper &tymap)
+{
+    auto tiargs = new Objects;
+
+    for (unsigned i = 0; i < Args.NumTemplateArgs; i++)
+    {
+        auto Arg = &Args[i].getArgument();
+        tiargs->push(tymap.toTemplateArgument(Arg));
+    }
+
+    return tiargs;
+}
+
+Expression* ExprMapper::toUnaExp(const clang::UnaryOperator *E)
 {
     auto loc = toLoc(E->getLocStart());
     auto sub = toExpression(E->getSubExpr());
@@ -30,7 +47,7 @@ Expression* toUnaExp(const clang::UnaryOperator *E)
     llvm::llvm_unreachable_internal("Unhandled C++ unary operation exp");
 }
 
-Expression* toBinExp(const clang::BinaryOperator* E)
+Expression* ExprMapper::toBinExp(const clang::BinaryOperator* E)
 {
     auto loc = toLoc(E->getLocStart());
     auto lhs = toExpression(E->getLHS());
@@ -66,9 +83,8 @@ Expression* toBinExp(const clang::BinaryOperator* E)
     llvm::llvm_unreachable_internal("Unhandled C++ binary operation exp");
 }
 
-Expression* toExpression(const clang::Expr* E, Type *t)
+Expression* ExprMapper::toExpression(const clang::Expr* E, Type *t)
 {
-    TypeMapper tymap;
     auto loc = toLoc(E->getLocStart());
 
     if (auto PE = dyn_cast<clang::ParenExpr>(E))
@@ -81,6 +97,14 @@ Expression* toExpression(const clang::Expr* E, Type *t)
         return toUnaExp(UO);
     else if (auto BO = dyn_cast<clang::BinaryOperator>(E))
         return toBinExp(BO);
+    else if (auto CO = dyn_cast<clang::ConditionalOperator>(E))
+    {
+        auto econd = toExpression(CO->getCond());
+        auto e1 = toExpression(CO->getTrueExpr());
+        auto e2 = toExpression(CO->getFalseExpr());
+        
+        return new CondExp(loc, econd, e1, e2);
+    }
 
     if (auto IL = dyn_cast<clang::IntegerLiteral>(E))
     {
@@ -134,11 +158,77 @@ Expression* toExpression(const clang::Expr* E, Type *t)
     {
         return new NullExp(loc);
     }
+    else if (auto TT = dyn_cast<clang::TypeTraitExpr>(E))
+    {
+        if (!TT->isValueDependent())
+            return new IntegerExp(loc, TT->getValue() ? 1 : 0, Type::tbool);
+        else
+            return new NullExp(loc);  // TODO replace by D traits
+    }
+    else if (auto UEOTT = dyn_cast<clang::UnaryExprOrTypeTraitExpr>(E))
+    {
+        auto t = tymap.toType(UEOTT->getTypeOfArgument());
+        auto e1 = new TypeExp(loc, t);
+
+        switch (UEOTT->getKind())
+        {
+            case clang::UETT_SizeOf:
+                return new DotIdExp(loc, e1, Id::__sizeof);
+            case clang::UETT_AlignOf:
+                return new DotIdExp(loc, e1, Id::__xalignof);
+            default:
+                assert(false && "Unsupported");
+        }
+    }
     else if (auto DR = dyn_cast<clang::DeclRefExpr>(E)) // FIXME? this was added for NonTypeTemplateParm, but that's probably not the only use case
     {
         auto ident = getIdentifier(DR->getDecl());
         return new IdentifierExp(loc, ident);
     }
+    else if (auto DSDR = dyn_cast<clang::DependentScopeDeclRefExpr>(E))
+    {
+        Expression *e1 = nullptr;
+        Identifier *ident;
+        TemplateInstance *tempinst = nullptr;
+
+        if (auto NNS = DSDR->getQualifier())
+        {
+            auto tqual = tymap.fromNestedNameSpecifier(NNS);
+            e1 = new TypeExp(loc, tqual);
+        }
+
+        if (DSDR->getDeclName().isIdentifier())
+            ident = toIdentifier(DSDR->getDeclName().getAsIdentifierInfo());
+        else
+            assert(false && "Unhandled DeclarationName kind");
+
+        if (DSDR->hasExplicitTemplateArgs())
+        {
+            auto tiargs = fromASTTemplateArgumentListInfo(
+                              DSDR->getExplicitTemplateArgs(), tymap);
+
+            tempinst = new ::TemplateInstance(loc, ident);
+            tempinst->tiargs = tiargs;
+        }
+
+        if (e1)
+        {
+            if (tempinst)
+                return new DotTemplateInstanceExp(loc, e1, tempinst);
+            else
+                return new DotIdExp(loc, e1, ident);
+        }
+        else
+        {
+            if (tempinst)
+                return new TypeExp(loc, new TypeInstance(loc, tempinst));
+            else
+                return new IdentifierExp(loc, ident);
+        }
+    }
+
+    if (isa<clang::CallExpr>(E)) // TODO implement evaluation
+        return nullptr;
 
     llvm::llvm_unreachable_internal("Unhandled C++ expression");
 }

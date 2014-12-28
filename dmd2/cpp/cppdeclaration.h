@@ -127,6 +127,9 @@ public:
 //     Dsymbol *VisitClassTemplateDecl(const clang::ClassTemplateDecl *D);
 //     Dsymbol *VisitUnresolvedUsingTypenameDecl(const clang::UnresolvedUsingTypenameDecl *D);
 //     Dsymbol *VisitUnresolvedUsingValueDecl(const clang::UnresolvedUsingValueDecl *D);
+
+protected:
+    Scope *sc = nullptr;
 };
 
 }

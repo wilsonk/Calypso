@@ -36,8 +36,10 @@ namespace cpp
 
 class ClassDeclaration;
 
-Identifier *toIdentifier(clang::IdentifierInfo *II);
+Identifier *toIdentifier(const clang::IdentifierInfo* II);
 Identifier *getIdentifier(const clang::NamedDecl* D);
+Identifier *getIdentifierOrNull(const clang::NamedDecl* D);
+
 Loc toLoc(clang::SourceLocation L);
 
 struct PCH

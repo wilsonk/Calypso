@@ -144,6 +144,10 @@ Type *TypeMapper::toTypeUnqual(const clang::Type *T)
     if (auto FT = dyn_cast<clang::FunctionProtoType>(T))
         return toTypeFunction(FT);
 
+    // Purely cosmetic sugar types
+    if (auto PT = dyn_cast<clang::ParenType>(T))
+        return toType(PT->desugar());
+
 #define TYPEMAP(Ty) \
     if (auto Ty##T = dyn_cast<clang::Ty##Type>(T)) \
         return toType##Ty(Ty##T);
@@ -155,9 +159,11 @@ Type *TypeMapper::toTypeUnqual(const clang::Type *T)
     TYPEMAP(TemplateSpecialization)
     TYPEMAP(TemplateTypeParm)
     TYPEMAP(SubstTemplateTypeParm)
-    TYPEMAP(DependentName)
     TYPEMAP(InjectedClassName)
     TYPEMAP(Adjusted)
+    TYPEMAP(DependentName)
+    TYPEMAP(DependentTemplateSpecialization)
+    TYPEMAP(Decltype)
 #undef TYPEMAP
 
         // NOTE: the C++ classes don't exactly map to D classes, but we can work
@@ -167,17 +173,8 @@ Type *TypeMapper::toTypeUnqual(const clang::Type *T)
         //  - if a C++ function returns an object of a class, make the GC acquire it somehow.
 
     // Array types
-    if (auto CAT = dyn_cast<clang::ConstantArrayType>(T))
-    {
-        Expression *dim = new IntegerExp(CAT->getSize().getLimitedValue());
-        Type *t = toType(CAT->getElementType());
-        return new TypeSArray(t, dim);
-    }
-    else if (auto IAT = dyn_cast<clang::IncompleteArrayType>(T))
-    {
-        Type *t = toType(IAT->getElementType());
-        return t->pointerTo();
-    }
+    if (auto AT = dyn_cast<clang::ArrayType>(T))
+        return toTypeArray(AT);
 
     // Pointer and reference types
     bool isPointer = isa<clang::PointerType>(T),
@@ -222,6 +219,64 @@ Type *TypeMapper::toTypeComplex(const clang::ComplexType *T)
     return nullptr;
 }
 
+Type* TypeMapper::toTypeArray(const clang::ArrayType* T)
+{
+    auto t = toType(T->getElementType());
+
+    if (auto CAT = dyn_cast<clang::ConstantArrayType>(T))
+    {
+        auto dim = new IntegerExp(CAT->getSize().getLimitedValue());
+        return new TypeSArray(t, dim);
+    }
+    else if (auto DSAT = dyn_cast<clang::DependentSizedArrayType>(T))
+    {
+        auto dim = ExprMapper(*this).toExpression(DSAT->getSizeExpr());
+        return new TypeSArray(t, dim);
+    }
+    else if (auto IAT = dyn_cast<clang::IncompleteArrayType>(T))
+    {
+        return t->pointerTo();
+    }
+
+    llvm::llvm_unreachable_internal("Unrecognized C++ array type");
+}
+
+RootObject* TypeMapper::toTemplateArgument(const clang::TemplateArgument* Arg)
+{
+    RootObject *tiarg = nullptr;
+    switch (Arg->getKind())
+    {
+        case clang::TemplateArgument::Expression:
+            tiarg = ExprMapper(*this).toExpression(Arg->getAsExpr());
+            break;
+        case clang::TemplateArgument::Integral:
+            tiarg = APIntToExpression(Arg->getAsIntegral());
+            break;
+        case clang::TemplateArgument::NullPtr:
+            tiarg = new NullExp(Loc()/*, toType(Arg->getNullPtrType())*/);
+            break;
+        case clang::TemplateArgument::Type:
+            tiarg = toType(Arg->getAsType());
+            break;
+        default:
+            assert(false && "Unsupported template arg kind");
+    }
+
+    assert(tiarg && "Template argument not supported");
+    return tiarg;
+}
+
+Objects* TypeMapper::toTemplateArguments(const clang::TemplateArgument* First,
+                                         const clang::TemplateArgument* End)
+{
+    auto tiargs = new Objects;
+
+    for (auto Arg = First; Arg != End; Arg++)
+        tiargs->push(toTemplateArgument(Arg));
+
+    return tiargs;
+}
+
 class TypeQualifiedBuilder
 {
 public:
@@ -240,33 +295,7 @@ protected:
         auto& Context = calypso.pch.AST->getASTContext();
         auto& S = calypso.pch.AST->getSema();
 
-        auto tiargs = new Objects;
-
-        for (auto Arg = TempArgBegin;
-             Arg != TempArgEnd; Arg++)
-        {
-            RootObject *tiarg = nullptr;
-            switch (Arg->getKind())
-            {
-                case clang::TemplateArgument::Expression:
-                    tiarg = toExpression(Arg->getAsExpr());
-                    break;
-                case clang::TemplateArgument::Integral:
-                    tiarg = APIntToExpression(Arg->getAsIntegral());
-                    break;
-                case clang::TemplateArgument::NullPtr:
-                    tiarg = new NullExp(Loc()/*, toType(Arg->getNullPtrType())*/);
-                    break;
-                case clang::TemplateArgument::Type:
-                    tiarg = tm.toType(Arg->getAsType());
-                    break;
-                default:
-                    assert(false && "Unsupported template arg kind");
-            }
-
-            assert(tiarg && "Template argument not supported");
-            tiargs->push(tiarg);
-        }
+        auto tiargs = tm.toTemplateArguments(TempArgBegin, TempArgEnd);
 
         auto ident = getIdentifier(D);
         auto loc = toLoc(D->getLocation());
@@ -402,13 +431,6 @@ Type* TypeMapper::toTypeSubstTemplateTypeParm(const clang::SubstTemplateTypeParm
     return toType(T->desugar());
 }
 
-Type* TypeMapper::toTypeDependentName(const clang::DependentNameType* T)
-{
-    // NOTE: these should be "fake" types in DMD's TemplateDeclaration,
-    // resolved by Clang for TemplateInstances.
-    return new TypeNull;
-}
-
 Type* TypeMapper::toTypeInjectedClassName(const clang::InjectedClassNameType* T)
 {
     return toType(T->getInjectedSpecializationType());
@@ -417,6 +439,97 @@ Type* TypeMapper::toTypeInjectedClassName(const clang::InjectedClassNameType* T)
 Type* TypeMapper::toTypeAdjusted(const clang::AdjustedType* T)
 {
     return toType(T->getAdjustedType());
+}
+
+TypeQualified* TypeMapper::fromNestedNameSpecifier(const clang::NestedNameSpecifier* NNS)
+{
+    TypeQualified *result = nullptr;
+
+    switch (NNS->getKind())
+    {
+        case clang::NestedNameSpecifier::Identifier:
+        {
+            auto ident = toIdentifier(NNS->getAsIdentifier());
+            if (auto Prefix = NNS->getPrefix())
+            {
+                result = fromNestedNameSpecifier(Prefix);
+                result->addIdent(ident);
+            }
+            else
+                result = new TypeIdentifier(Loc(), ident);
+
+            break;
+        }
+
+        case clang::NestedNameSpecifier::TypeSpec:
+        case clang::NestedNameSpecifier::TypeSpecWithTemplate:
+        {
+            auto t = toTypeUnqual(NNS->getAsType());
+
+            if (t->ty == Tinstance)
+                result = (TypeInstance*) t;
+            else if (t->ty == Tident)
+                result = (TypeIdentifier*) t;
+            break;
+        }
+
+        default:
+            assert(false && "Unexpected nested name specifier kind for a Dependent*****Type");
+    }
+
+    return result;
+}
+
+// NOTE: Dependent***Type are not mandatory to get templates working because the instantiation is done by Sema
+// and then DMD simply maps the resulting class or function specialization, so we could return TypeNull and it would still work.
+// Still good for reflection.
+Type* TypeMapper::toTypeDependentName(const clang::DependentNameType* T)
+{
+    TypeQualified *tqual = nullptr;
+
+    if (auto NNS = T->getQualifier())
+        tqual = fromNestedNameSpecifier(NNS);
+
+    auto ident = toIdentifier(T->getIdentifier());
+    if (!tqual)
+        tqual = new TypeIdentifier(Loc(), ident);
+    else
+        tqual->addIdent(ident);
+
+    return tqual;
+}
+
+Type* TypeMapper::toTypeDependentTemplateSpecialization(const clang::DependentTemplateSpecializationType* T)
+{
+    TypeQualified *tqual = nullptr;
+
+    if (auto NNS = T->getQualifier())
+        tqual = fromNestedNameSpecifier(NNS);
+
+    auto ident = toIdentifier(T->getIdentifier());
+    auto tiargs = toTemplateArguments(T->begin(), T->end());
+
+    auto tempinst = new ::TemplateInstance(Loc(), ident);
+    tempinst->tiargs = tiargs;
+
+    if (!tqual)
+        tqual = new TypeInstance(Loc(), tempinst);
+    else
+        tqual->addInst(tempinst);
+
+    return tqual;
+}
+
+Type* TypeMapper::toTypeDecltype(const clang::DecltypeType* T)
+{
+    if (T->isSugared())  // TODO: remove this for reflection
+        return toType(T->desugar());
+
+    auto exp = ExprMapper(*this).toExpression(T->getUnderlyingExpr());
+    if (exp) // temporary? some decltype use CallExpr, which I feel would make getting things working much harder for little gain since templates are instantiated by Sema
+        return new TypeTypeof(Loc(), exp);
+    else
+        return new TypeNull;
 }
 
 bool TypeMapper::isNonPODRecord(const clang::QualType T)

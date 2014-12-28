@@ -8,6 +8,7 @@
 #include "../import.h"
 #include "../lexer.h"
 #include "../template.h"
+#include "../scope.h"
 #include "id.h"
 
 #include "calypso.h"
@@ -447,11 +448,37 @@ Dsymbol *DeclMapper::VisitTemplateDecl(const clang::TemplateDecl *D)
     return a;
 }
 
+// Since D doesn't accept anonymous template parameters, unless we complexify the language spec just for C++ it's necessary to generate identifiers.
+// We look for one that is unused in the current scope.
+static Identifier *genAnonIdentifier(const char *base, Scope *sc)
+{
+    static unsigned suffix = 0;  // FIXME
+    suffix++;
+    if (suffix > 1000)
+        suffix = 1;
+
+//     for (unsigned suffix = 1; ; suffix++)
+    {
+        std::string str(base);
+        str.append(std::to_string(suffix));
+
+        auto ident = Lexer::idPool(str.c_str());
+//         if (!sc->search(Loc(), ident, nullptr))
+            return ident;
+    }
+}
+
 TemplateParameter *DeclMapper::VisitTemplateParameter(const clang::NamedDecl *Param,
                                                                       const clang::TemplateArgument *SpecArg)
 {
+    ExprMapper expmap(*this);
+
     auto loc = toLoc(Param->getLocation());
-    auto id = toIdentifier(Param->getIdentifier());
+    Identifier *id;
+    if (auto II = Param->getIdentifier())
+        id = toIdentifier(II);
+    else
+        id = genAnonIdentifier("__tp_", sc); // FIXME there can't be a scope before semantic
 
     TemplateParameter *tp;
 
@@ -476,7 +503,7 @@ TemplateParameter *DeclMapper::VisitTemplateParameter(const clang::NamedDecl *Pa
                 switch (SpecArg->getKind())
                 {
                     case clang::TemplateArgument::Expression:
-                        tp_specvalue = toExpression(SpecArg->getAsExpr());
+                        tp_specvalue = expmap.toExpression(SpecArg->getAsExpr());
                         break;
                     case clang::TemplateArgument::Integral:
                         tp_specvalue = APIntToExpression(SpecArg->getAsIntegral());
@@ -491,7 +518,7 @@ TemplateParameter *DeclMapper::VisitTemplateParameter(const clang::NamedDecl *Pa
             }
 
             if (NTTPD->hasDefaultArgument())
-                tp_defaultvalue = toExpression(NTTPD->getDefaultArgument());
+                tp_defaultvalue = expmap.toExpression(NTTPD->getDefaultArgument());
 
             tp = new TemplateValueParameter(loc, id, valTy,
                                         tp_specvalue, tp_defaultvalue);
@@ -574,14 +601,17 @@ Dsymbol *DeclMapper::VisitClassTemplateSpecializationDecl(const clang::ClassTemp
 
 Dsymbol* DeclMapper::VisitEnumDecl(const clang::EnumDecl* D)
 {
+    if (!D->isCompleteDefinition())
+        return nullptr;
+
     auto loc = toLoc(D->getLocation());
-    auto id = getIdentifier(D);
+    auto ident = getIdentifierOrNull(D);
 
     auto IntType = D->getIntegerType();
     if (IntType.isNull())
         IntType = D->getPromotionType();
 
-    auto e = new EnumDeclaration(loc, id, toType(IntType));
+    auto e = new EnumDeclaration(loc, ident, toType(IntType));
 
     for (auto ECD: D->enumerators())
     {
@@ -592,7 +622,7 @@ Dsymbol* DeclMapper::VisitEnumDecl(const clang::EnumDecl* D)
         Expression *value = nullptr;
 
         if (auto InitE = ECD->getInitExpr())
-            value = toExpression(InitE);
+            value = ExprMapper(*this).toExpression(InitE);
 
         auto em = new EnumMember(loc, ident, value, nullptr);
         e->members->push(em);

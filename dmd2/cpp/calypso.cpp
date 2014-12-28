@@ -27,7 +27,7 @@ LangPlugin calypso;
 
 static inline clang::ASTUnit* ast() { return calypso.pch.AST; }
 
-Identifier *toIdentifier(clang::IdentifierInfo *II)
+Identifier *toIdentifier(const clang::IdentifierInfo *II)
 {
     return Lexer::idPool(II->getNameStart());
         // NOTE: Every C++ identifier passing through DMD gets its own redundant copy in memory
@@ -43,6 +43,14 @@ Identifier *getIdentifier(const clang::NamedDecl* D)
             II = Typedef->getIdentifier();
 
     return toIdentifier(II);
+}
+
+Identifier *getIdentifierOrNull(const clang::NamedDecl* D)
+{
+    if (D->getIdentifier())
+        return getIdentifier(D);
+    else
+        return nullptr;
 }
 
 Loc toLoc(clang::SourceLocation L)
