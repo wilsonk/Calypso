@@ -34,23 +34,25 @@ Identifier *toIdentifier(const clang::IdentifierInfo *II)
         // Is this the cost of interfacing with Clang or is there another way? (probably not an easy one)
 }
 
-Identifier *getIdentifier(const clang::NamedDecl* D)
+Identifier *getIdentifierOrNull(const clang::NamedDecl* D)
 {
-    clang::IdentifierInfo *II = D->getIdentifier();
+    clang::IdentifierInfo *II = nullptr;
 
-    if (auto Tag = llvm::dyn_cast<clang::TagDecl>(D))
+    if (D->getIdentifier())
+        II = D->getIdentifier();
+    else if (auto Tag = llvm::dyn_cast<clang::TagDecl>(D))
         if (auto Typedef = Tag->getTypedefNameForAnonDecl())
             II = Typedef->getIdentifier();
 
-    return toIdentifier(II);
+    return II ? toIdentifier(II) : nullptr;
 }
 
-Identifier *getIdentifierOrNull(const clang::NamedDecl* D)
+Identifier *getIdentifier(const clang::NamedDecl* D)
 {
-    if (D->getIdentifier())
-        return getIdentifier(D);
-    else
-        return nullptr;
+    auto result = getIdentifierOrNull(D);
+    assert(result);
+
+    return result;
 }
 
 Loc toLoc(clang::SourceLocation L)
