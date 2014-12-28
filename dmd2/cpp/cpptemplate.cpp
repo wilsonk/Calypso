@@ -26,6 +26,16 @@ TemplateInstance::TemplateInstance(const TemplateInstance& o)
 {
 }
 
-IMPLEMENT_syntaxCopy(TemplateInstance)
+Dsymbol *TemplateInstance::syntaxCopy(Dsymbol *s)
+{
+    if (!s)
+        s = new cpp::TemplateInstance(*this);
+
+    auto ti = static_cast<cpp::TemplateInstance*>(s);
+    ti->Instantiated = Instantiated;
+    ti->instantiatingModuleCpp = instantiatingModuleCpp;
+
+    return ::TemplateInstance::syntaxCopy(s);
+}
 
 }

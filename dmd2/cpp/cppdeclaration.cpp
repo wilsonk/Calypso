@@ -56,9 +56,9 @@ DtorDeclaration::DtorDeclaration(const DtorDeclaration& o)
 {
 }
 
-IMPLEMENT_syntaxCopy(VarDeclaration)
-IMPLEMENT_syntaxCopy(FuncDeclaration)
-IMPLEMENT_syntaxCopy(CtorDeclaration)
-IMPLEMENT_syntaxCopy(DtorDeclaration)
+IMPLEMENT_syntaxCopy(VarDeclaration, VD)
+IMPLEMENT_syntaxCopy(FuncDeclaration, FD)
+IMPLEMENT_syntaxCopy(CtorDeclaration, CCD)
+IMPLEMENT_syntaxCopy(DtorDeclaration, CDD)
 
 }

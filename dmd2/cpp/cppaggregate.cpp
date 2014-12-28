@@ -46,8 +46,8 @@ ClassDeclaration::ClassDeclaration(const ClassDeclaration& o)
 {
 }
 
-IMPLEMENT_syntaxCopy(StructDeclaration)
-IMPLEMENT_syntaxCopy(ClassDeclaration)
+IMPLEMENT_syntaxCopy(StructDeclaration, RD)
+IMPLEMENT_syntaxCopy(ClassDeclaration, RD)
 
 void StructDeclaration::semantic(Scope *sc)
 {
@@ -58,6 +58,7 @@ void StructDeclaration::semantic(Scope *sc)
     assert(CRD || !sc->parent->isTemplateInstance());
 
     if (CRD)
+    {
         if (auto CTD = CRD->getDescribedClassTemplate())
         {
             auto tempinst = sc->parent->isTemplateInstance();
@@ -65,14 +66,18 @@ void StructDeclaration::semantic(Scope *sc)
             // HACK we don't instantiate on our own for now, we reuse the specializations already in the PCH
             assert(tempinst && isCPP(tempinst));
             auto c_tempinst = static_cast<cpp::TemplateInstance*>(tempinst);
-            CRD = cast<clang::CXXRecordDecl>(c_tempinst->Instantiated);
+            auto InstantiatedRD = cast<clang::CXXRecordDecl>(c_tempinst->Instantiated);
 
             DeclMapper m(nullptr);
             m.addImplicitDecls = false;
-            auto tempsd = m.VisitRecordDecl(CRD)->isStructDeclaration();
+
+            auto tempsd = static_cast<cpp::StructDeclaration*>(
+                    m.VisitRecordDecl(InstantiatedRD)->isStructDeclaration());
             assert(tempsd);
-            members = Dsymbol::arraySyntaxCopy(tempsd->members);
+
+            tempsd->syntaxCopy(this);
         }
+    }
 
     ::StructDeclaration::semantic(sc);
 }
@@ -103,13 +108,16 @@ void ClassDeclaration::semantic(Scope *sc)
         // HACK we don't instantiate on our own for now, we reuse the specializations already in the PCH
         assert(tempinst && isCPP(tempinst));
         auto c_tempinst = static_cast<cpp::TemplateInstance*>(tempinst);
-        RD = cast<clang::CXXRecordDecl>(c_tempinst->Instantiated);
+        auto InstantiatedRD = cast<clang::CXXRecordDecl>(c_tempinst->Instantiated);
 
         DeclMapper m(nullptr);
         m.addImplicitDecls = false;
-        auto tempcd = m.VisitRecordDecl(RD, DeclMapper::ForceNonPOD)->isClassDeclaration();
+
+        auto tempcd = static_cast<cpp::ClassDeclaration*>(
+            m.VisitRecordDecl(InstantiatedRD, DeclMapper::ForceNonPOD)->isClassDeclaration());
         assert(tempcd);
-        members = Dsymbol::arraySyntaxCopy(tempcd->members);
+
+        tempcd->syntaxCopy(this);
     }
 
     ::ClassDeclaration::semantic(sc);

@@ -77,11 +77,12 @@ public:
     Dsymbol *syntaxCopy(Dsymbol *s) override;
 };
 
-#define IMPLEMENT_syntaxCopy(Class) \
+#define IMPLEMENT_syntaxCopy(Class, D) \
     Dsymbol* Class::syntaxCopy(Dsymbol* s) \
     { \
         if (!s) \
             s = new cpp::Class(*this); \
+        static_cast<cpp::Class*>(s)->D = D; \
         return ::Class::syntaxCopy(s); \
     }
 // NOTE: we use copy constructors only to copy the arguments passed to the main constructor, the rest is handled by syntaxCopy
