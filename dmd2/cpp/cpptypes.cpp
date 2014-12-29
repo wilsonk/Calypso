@@ -241,17 +241,46 @@ Type* TypeMapper::toTypeArray(const clang::ArrayType* T)
     llvm::llvm_unreachable_internal("Unrecognized C++ array type");
 }
 
-RootObject* TypeMapper::toTemplateArgument(const clang::TemplateArgument* Arg)
+RootObject* TypeMapper::toTemplateArgument(const clang::TemplateArgument* Arg,
+                const clang::NamedDecl *Param)
 {
+    ExprMapper expmap(*this);
+
     RootObject *tiarg = nullptr;
     switch (Arg->getKind())
     {
         case clang::TemplateArgument::Expression:
-            tiarg = ExprMapper(*this).toExpression(Arg->getAsExpr());
+            tiarg = expmap.toExpression(Arg->getAsExpr());
             break;
         case clang::TemplateArgument::Integral:
-            tiarg = APIntToExpression(Arg->getAsIntegral());
+        {
+            auto e = APIntToExpression(Arg->getAsIntegral());
+
+            // In Clang AST enum values in template arguments are resolved to integer literals
+            // If the parameter has an enum type, we need to revert integer literals to DeclRefs pointing to enum constants
+            // or else DMD won't find the template decl since from its point of view uint != Enum
+            if (auto NTTP = llvm::dyn_cast_or_null<clang::NonTypeTemplateParmDecl>(Param))
+            {
+                if (auto ET = dyn_cast<clang::EnumType>(NTTP->getType()))
+                {
+                    bool found = false;
+                    for (auto ECD: ET->getDecl()->enumerators())
+                    {
+                        auto Val = ECD->getInitVal().getZExtValue();
+
+                        if (Val == ((IntegerExp *)e)->getInteger())
+                        {
+                            found = true;
+                            e = expmap.toExpressionDeclRef(Loc(), ECD);
+                        }
+                    }
+
+                    assert(found && "Couldn't find the corresponding enum constant for template argument");
+                }
+            }
+            tiarg = e;
             break;
+        }
         case clang::TemplateArgument::NullPtr:
             tiarg = new NullExp(Loc()/*, toType(Arg->getNullPtrType())*/);
             break;
@@ -266,111 +295,104 @@ RootObject* TypeMapper::toTemplateArgument(const clang::TemplateArgument* Arg)
     return tiarg;
 }
 
-Objects* TypeMapper::toTemplateArguments(const clang::TemplateArgument* First,
-                                         const clang::TemplateArgument* End)
+Objects* TypeMapper::toTemplateArguments(const clang::TemplateArgument *First,
+                                        const clang::TemplateArgument *End,
+                                        const clang::TemplateDecl *TD)
 {
     auto tiargs = new Objects;
+    auto Param = TD ? TD->getTemplateParameters()->begin() : nullptr;
 
     for (auto Arg = First; Arg != End; Arg++)
-        tiargs->push(toTemplateArgument(Arg));
+    {
+        auto P = Param ? *Param : nullptr;
+        tiargs->push(toTemplateArgument(Arg, P));
+
+        if (TD)
+            Param++;
+    }
 
     return tiargs;
 }
 
-class TypeQualifiedBuilder
+void TypeQualifiedBuilder::addInst(TypeQualified *&tqual,
+                clang::NamedDecl* D,
+                const clang::TemplateArgument *TempArgBegin,
+                const clang::TemplateArgument *TempArgEnd)
 {
-public:
-    TypeMapper &tm;
+    auto& Context = calypso.pch.AST->getASTContext();
+    auto& S = calypso.pch.AST->getSema();
 
-    const clang::Decl* Root;
-    const clang::TemplateArgument *TopTempArgBegin,
-        *TopTempArgEnd;
+    auto ident = getIdentifier(D);
+    auto loc = toLoc(D->getLocation());
+    ::Module *instantiatingModuleCpp = nullptr;
+    auto CTD = dyn_cast<clang::ClassTemplateDecl>(D);
+    auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(D);
 
-protected:
-    void addInst(TypeQualified *&tqual,
-                 clang::NamedDecl* D,
-                 const clang::TemplateArgument *TempArgBegin,
-                 const clang::TemplateArgument *TempArgEnd)
+    if (CTSD && !CTSD->hasDefinition())
     {
-        auto& Context = calypso.pch.AST->getASTContext();
-        auto& S = calypso.pch.AST->getSema();
+        auto Ty = Context.getRecordType(CTSD);
 
-        auto tiargs = tm.toTemplateArguments(TempArgBegin, TempArgEnd);
+        if (S.RequireCompleteType(CTSD->getLocation(), Ty, 0))
+            assert(false && "Sema::RequireCompleteType() failed on template specialization");
 
-        auto ident = getIdentifier(D);
-        auto loc = toLoc(D->getLocation());
-        ::Module *instantiatingModuleCpp = nullptr;
-        auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(D);
-
-        if (CTSD && !CTSD->hasDefinition())
-        {
-            auto Ty = Context.getRecordType(CTSD);
-
-            if (S.RequireCompleteType(CTSD->getLocation(), Ty, 0))
-                assert(false && "Sema::RequireCompleteType() failed on template specialization");
-
-            instantiatingModuleCpp = tm.mod;  // if the definition of the class template specialization wasn't present in the PCH there's a chance the code wasn't generated in the C++ libraries, so we do it ourselves
-            assert(instantiatingModuleCpp);
-        }
-
-        auto tempinst = new cpp::TemplateInstance(loc, ident,
-                                            CTSD, instantiatingModuleCpp); // " HACK ": 3rd arg is the temporary trick to avoid begging Sema to instanciate not declared template specs
-        tempinst->tiargs = tiargs;
-
-        if (!tqual)
-            tqual = new TypeInstance(Loc(), tempinst);
-        else
-            tqual->addInst(tempinst);
+        instantiatingModuleCpp = tm.mod;  // if the definition of the class template specialization wasn't present in the PCH there's a chance the code wasn't emitted in the C++ libraries, so we do it ourselves
+        assert(instantiatingModuleCpp);
     }
 
-public:
-    TypeQualifiedBuilder(TypeMapper &tm, const clang::Decl* Root,
-        const clang::TemplateArgument *TempArgBegin,
-        const clang::TemplateArgument *TempArgEnd)
-        : tm(tm), Root(Root),
-          TopTempArgBegin(TempArgBegin),
-          TopTempArgEnd(TempArgEnd) {}
+    auto tiargs = tm.toTemplateArguments(TempArgBegin, TempArgEnd,
+            CTSD ? CTSD->getSpecializedTemplate() : CTD);
 
-    TypeQualified *get(clang::NamedDecl* ND)
+    auto tempinst = new cpp::TemplateInstance(loc, ident,
+                                        CTSD, instantiatingModuleCpp); // " HACK ": 3rd arg is the temporary trick to avoid begging Sema to instanciate not declared template specs
+    tempinst->tiargs = tiargs;
+
+    if (!tqual)
+        tqual = new TypeInstance(Loc(), tempinst);
+    else
+        tqual->addInst(tempinst);
+}
+
+TypeQualified *TypeQualifiedBuilder::get(clang::NamedDecl* ND)
+{
+    const clang::Decl *DCDecl = ND;
+    if (auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(ND))
+        DCDecl = CTSD->getSpecializedTemplate();
+    else if (!isa<clang::TagDecl>(ND) && !isa<clang::ClassTemplateDecl>(ND))
+        DCDecl = cast<clang::Decl>(ND->getDeclContext());
+    DCDecl = DCDecl->getCanonicalDecl();
+
+    TypeQualified *tqual;
+    if (DCDecl == Root)
+        tqual = nullptr;
+    else
     {
-        auto ident = getIdentifier(ND);
+        auto ParentDecl = cast<clang::Decl>(
+                ND->getDeclContext())->getCanonicalDecl();
+        tqual = get(
+                cast<clang::NamedDecl>(ParentDecl));
+    }
 
-        const clang::Decl *DCDecl = ND;
-        if (auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(ND))
-            DCDecl = CTSD->getSpecializedTemplate();
-        else if (!isa<clang::TagDecl>(ND) && !isa<clang::ClassTemplateDecl>(ND))
-            DCDecl = cast<clang::Decl>(ND->getDeclContext());
-        DCDecl = DCDecl->getCanonicalDecl();
-
-        TypeQualified *tqual;
-        if (DCDecl == Root)
-            tqual = nullptr;
-        else
-        {
-            auto ParentDecl = cast<clang::Decl>(
-                    ND->getDeclContext())->getCanonicalDecl();
-            tqual = get(
-                    cast<clang::NamedDecl>(ParentDecl));
-        }
-
-        if (auto CTD = dyn_cast<clang::ClassTemplateDecl>(ND))
-            addInst(tqual, CTD, TopTempArgBegin, TopTempArgEnd);
-        if (auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(ND))
-        {
-            auto TempArgs = CTSD->getTemplateArgs().asArray();
-            addInst(tqual, CTSD, TempArgs.begin(), TempArgs.end());
-        }
-        else
-        {
-            if (!tqual)
-                tqual = new TypeIdentifier(Loc(), ident);
-            else
-                tqual->addIdent(ident);
-        }
-
+    auto ident = getIdentifierOrNull(ND);
+    if (!ident)
         return tqual;
+
+    if (auto CTD = dyn_cast<clang::ClassTemplateDecl>(ND))
+        addInst(tqual, CTD, TopTempArgBegin, TopTempArgEnd);
+    if (auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(ND))
+    {
+        auto TempArgs = CTSD->getTemplateArgs().asArray();
+        addInst(tqual, CTSD, TempArgs.begin(), TempArgs.end());
     }
-};
+    else
+    {
+        if (!tqual)
+            tqual = new TypeIdentifier(Loc(), ident);
+        else
+            tqual->addIdent(ident);
+    }
+
+    return tqual;
+}
 
 TypeQualified* TypeMapper::typeQualifiedFor(clang::NamedDecl* ND,
     const clang::TemplateArgument *TempArgBegin,

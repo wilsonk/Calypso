@@ -34,6 +34,7 @@ public:
         : tymap(tymap) {}
 
     Expression *toExpression(const clang::Expr *E, Type *t = nullptr);
+    Expression *toExpressionDeclRef(Loc loc, clang::NamedDecl* D);
 
 protected:
     TypeMapper &tymap;

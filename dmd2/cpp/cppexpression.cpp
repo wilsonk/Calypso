@@ -180,10 +180,10 @@ Expression* ExprMapper::toExpression(const clang::Expr* E, Type *t)
                 assert(false && "Unsupported");
         }
     }
-    else if (auto DR = dyn_cast<clang::DeclRefExpr>(E)) // FIXME? this was added for NonTypeTemplateParm, but that's probably not the only use case
+    else if (auto DR = dyn_cast<clang::DeclRefExpr>(E))
     {
-        auto ident = getIdentifier(DR->getDecl());
-        return new IdentifierExp(loc, ident);
+        return toExpressionDeclRef(loc,
+                            const_cast<clang::ValueDecl*>(DR->getDecl()));
     }
     else if (auto DSDR = dyn_cast<clang::DependentScopeDeclRefExpr>(E))
     {
@@ -248,6 +248,27 @@ Expression* APIntToExpression(const APInt& Val)
     return new IntegerExp(Loc(),
             Val.isNegative() ? Val.getSExtValue() : Val.getZExtValue(),
             getAPIntDType(Val));
+}
+
+Expression* ExprMapper::toExpressionDeclRef(Loc loc, clang::NamedDecl *D)
+{
+    clang::NamedDecl *Parent = nullptr;
+
+    clang::DeclContext *DCParent = D->getDeclContext();;
+    while (!isa<clang::NamedDecl>(DCParent))
+        DCParent = DCParent->getParent();
+
+    Parent = cast<clang::NamedDecl>(DCParent);
+    auto t = tymap.typeQualifiedFor(Parent);
+
+    auto ident = getIdentifier(D);
+    if (t)
+    {
+        auto e1 = new TypeExp(loc, t);
+        return new DotIdExp(loc, e1, ident);
+    }
+    else
+        return new IdentifierExp(loc, ident);
 }
 
 }

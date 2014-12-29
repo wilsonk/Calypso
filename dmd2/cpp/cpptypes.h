@@ -73,8 +73,14 @@ public:
     Type *toTypeDecltype(const clang::DecltypeType *T);
     TypeFunction *toTypeFunction(const clang::FunctionProtoType *T);
 
-    RootObject *toTemplateArgument(const clang::TemplateArgument *Arg);
+    RootObject *toTemplateArgument(const clang::TemplateArgument *Arg,
+                const clang::NamedDecl *Param = nullptr);  // NOTE: Param is required when the parameter type is an enum, because in the AST enum template arguments are resolved to uint while DMD expects an enum constant or it won't find the template decl. Is this a choice or a compiler bug/limitation btw?
     TypeQualified *fromNestedNameSpecifier(const clang::NestedNameSpecifier *NNS);
+
+    const clang::Decl* GetImplicitImportKeyForDecl(const clang::NamedDecl* ND);
+    TypeQualified *typeQualifiedFor(clang::NamedDecl* ND,
+                        const clang::TemplateArgument* TempArgBegin = nullptr,
+                        const clang::TemplateArgument* TempArgEnd = nullptr);
 
 protected:
     cpp::Module *mod;
@@ -83,21 +89,44 @@ protected:
     llvm::DenseMap<const clang::NamedDecl*, Dsymbol*> declMap;  // fast lookup of mirror decls
 
     Objects *toTemplateArguments(const clang::TemplateArgument *First,
-                const clang::TemplateArgument *End);
+                const clang::TemplateArgument *End,
+                const clang::TemplateDecl *TD = nullptr);
 
     void AddImplicitImportForDecl(const clang::NamedDecl* ND);
-    const clang::Decl* GetImplicitImportKeyForDecl(const clang::NamedDecl* ND);
 
     ::Import* BuildImplicitImport(const clang::Decl* ND);
     bool BuildImplicitImportInternal(const clang::DeclContext* DC, Loc loc,
             Identifiers* sPackages, Identifier*& sModule);
-    TypeQualified *typeQualifiedFor(clang::NamedDecl* ND,
-                        const clang::TemplateArgument* TempArgBegin = nullptr,
-                        const clang::TemplateArgument* TempArgEnd = nullptr);
     
     bool isNonPODRecord(const clang::QualType T);
 
     friend class cpp::TypeQualifiedBuilder;
+};
+
+class TypeQualifiedBuilder
+{
+public:
+    TypeMapper &tm;
+
+    const clang::Decl* Root;
+    const clang::TemplateArgument *TopTempArgBegin,
+        *TopTempArgEnd;
+
+protected:
+    void addInst(TypeQualified *&tqual,
+                 clang::NamedDecl* D,
+                 const clang::TemplateArgument *TempArgBegin,
+                 const clang::TemplateArgument *TempArgEnd);
+
+public:
+    TypeQualifiedBuilder(TypeMapper &tm, const clang::Decl* Root,
+        const clang::TemplateArgument *TempArgBegin = nullptr,
+        const clang::TemplateArgument *TempArgEnd = nullptr)
+        : tm(tm), Root(Root),
+          TopTempArgBegin(TempArgBegin),
+          TopTempArgEnd(TempArgEnd) {}
+
+    TypeQualified *get(clang::NamedDecl* ND);
 };
 
 }
