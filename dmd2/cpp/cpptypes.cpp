@@ -378,7 +378,7 @@ TypeQualified *TypeQualifiedBuilder::get(clang::NamedDecl* ND)
 
     if (auto CTD = dyn_cast<clang::ClassTemplateDecl>(ND))
         addInst(tqual, CTD, TopTempArgBegin, TopTempArgEnd);
-    if (auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(ND))
+    else if (auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(ND))
     {
         auto TempArgs = CTSD->getTemplateArgs().asArray();
         addInst(tqual, CTSD, TempArgs.begin(), TempArgs.end());

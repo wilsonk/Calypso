@@ -22,7 +22,7 @@ TemplateInstance::TemplateInstance(Loc loc, Identifier* temp_id,
 }
 
 TemplateInstance::TemplateInstance(const TemplateInstance& o)
-    : TemplateInstance(loc, name, Instantiated, instantiatingModuleCpp)
+    : TemplateInstance(o.loc, o.name, o.Instantiated, o.instantiatingModuleCpp)
 {
 }
 
