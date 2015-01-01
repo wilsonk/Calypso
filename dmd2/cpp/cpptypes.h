@@ -24,6 +24,7 @@ class TypeFunction;
 namespace clang
 {
 class Decl;
+class TemplateParameterList;
 }
 
 namespace cpp
@@ -62,12 +63,10 @@ public:
     Type *toTypeTypedef(const clang::TypedefType *T);
     Type *toTypeEnum(const clang::EnumType *T);
     Type *toTypeRecord(const clang::RecordType *T);
-    Type *toTypeElaborated(const clang::ElaboratedType *T);
     Type *toTypeTemplateSpecialization(const clang::TemplateSpecializationType *T);
     Type *toTypeTemplateTypeParm(const clang::TemplateTypeParmType *T);
     Type *toTypeSubstTemplateTypeParm(const clang::SubstTemplateTypeParmType *T);
     Type *toTypeInjectedClassName(const clang::InjectedClassNameType *T);
-    Type *toTypeAdjusted(const clang::AdjustedType *T);
     Type *toTypeDependentName(const clang::DependentNameType *T);
     Type *toTypeDependentTemplateSpecialization(const clang::DependentTemplateSpecializationType *T);
     Type *toTypeDecltype(const clang::DecltypeType *T);
@@ -76,17 +75,25 @@ public:
     RootObject *toTemplateArgument(const clang::TemplateArgument *Arg,
                 const clang::NamedDecl *Param = nullptr);  // NOTE: Param is required when the parameter type is an enum, because in the AST enum template arguments are resolved to uint while DMD expects an enum constant or it won't find the template decl. Is this a choice or a compiler bug/limitation btw?
     TypeQualified *fromNestedNameSpecifier(const clang::NestedNameSpecifier *NNS);
+    TypeQualified *fromTemplateName(const clang::TemplateName Name,
+                const clang::TemplateArgument *ArgBegin = nullptr,
+                const clang::TemplateArgument *ArgEnd = nullptr);  // returns a template or a template instance
+            // if it's a template it's not actually a type but a symbol, but that's how parsing TemplateAliasParameter works anyway
 
     const clang::Decl* GetImplicitImportKeyForDecl(const clang::NamedDecl* ND);
-    TypeQualified *typeQualifiedFor(clang::NamedDecl* ND,
-                        const clang::TemplateArgument* TempArgBegin = nullptr,
-                        const clang::TemplateArgument* TempArgEnd = nullptr);
+    Type *typeQualifiedFor(clang::NamedDecl* ND,
+                        const clang::TemplateArgument* ArgBegin = nullptr,
+                        const clang::TemplateArgument* ArgEnd = nullptr);
 
 protected:
     cpp::Module *mod;
 
     llvm::SmallDenseMap<const clang::Decl*, Import*, 8> implicitImports;
     llvm::DenseMap<const clang::NamedDecl*, Dsymbol*> declMap;  // fast lookup of mirror decls
+
+    llvm::SmallVector<const clang::TemplateParameterList*, 4> templateParameters;
+    Identifier *getIdentifierForTemplateTypeParm(const clang::TemplateTypeParmType *T);
+    Identifier *getIdentifierForTemplateTemplateParm(const clang::TemplateTemplateParmDecl *D);
 
     Objects *toTemplateArguments(const clang::TemplateArgument *First,
                 const clang::TemplateArgument *End,
@@ -128,6 +135,8 @@ public:
 
     TypeQualified *get(clang::NamedDecl* ND);
 };
+
+const clang::DeclContext *getDeclContextNamedOrTU(const clang::Decl *D); // to skip LinkageSpec
 
 }
 

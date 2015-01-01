@@ -1,10 +1,12 @@
 // Contributed by Elie Morisse, same license DMD uses
 
 #include "cpp/cppexpression.h"
+#include "cpp/cppdeclaration.h"
 #include "cpp/cpptypes.h"
 #include "id.h"
 #include "template.h"
 
+#include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 
@@ -185,6 +187,11 @@ Expression* ExprMapper::toExpression(const clang::Expr* E, Type *t)
         return toExpressionDeclRef(loc,
                             const_cast<clang::ValueDecl*>(DR->getDecl()));
     }
+    else if (auto SNTTP = dyn_cast<clang::SubstNonTypeTemplateParmExpr>(E))
+    {
+        return toExpressionNonTypeTemplateParm(loc,
+                            SNTTP->getParameter());
+    }
     else if (auto DSDR = dyn_cast<clang::DependentScopeDeclRefExpr>(E))
     {
         Expression *e1 = nullptr;
@@ -252,9 +259,12 @@ Expression* APIntToExpression(const APInt& Val)
 
 Expression* ExprMapper::toExpressionDeclRef(Loc loc, clang::NamedDecl *D)
 {
+    if (auto NTTP = dyn_cast<clang::NonTypeTemplateParmDecl>(D))
+        return toExpressionNonTypeTemplateParm(loc, NTTP);
+
     clang::NamedDecl *Parent = nullptr;
 
-    clang::DeclContext *DCParent = D->getDeclContext();;
+    clang::DeclContext *DCParent = D->getDeclContext();
     while (!isa<clang::NamedDecl>(DCParent))
         DCParent = DCParent->getParent();
 
@@ -269,6 +279,12 @@ Expression* ExprMapper::toExpressionDeclRef(Loc loc, clang::NamedDecl *D)
     }
     else
         return new IdentifierExp(loc, ident);
+}
+
+Expression* ExprMapper::toExpressionNonTypeTemplateParm(Loc loc, const clang::NonTypeTemplateParmDecl* D)
+{
+    auto ident = DeclMapper::getIdentifierForTemplateNonTypeParm(D);
+    return new IdentifierExp(loc, ident);
 }
 
 }

@@ -409,11 +409,14 @@ void LangPlugin::toDeclareVariable(::VarDeclaration* vd)
 
 void LangPlugin::toDefineTemplateInstance(::TemplateInstance *inst)
 {
-    auto c_inst = static_cast<cpp::TemplateInstance *>(inst);
+    auto c_ti = static_cast<cpp::TemplateInstance *>(inst);
 
-    if (c_inst->instantiatingModuleCpp == gIR->dmodule) // hmm this just works but the whole thing still is a fragile HACK to avoid duplicate instances
+    if (c_ti->instantiatingModuleCpp != gIR->dmodule) // hmm this just works but the whole thing still is a fragile HACK to avoid duplicate instances
+        return;
+
+    for (auto D: c_ti->Instances)
     {
-        auto CTSD = llvm::cast<clang::ClassTemplateSpecializationDecl>(c_inst->Instantiated);
+        auto CTSD = llvm::cast<clang::ClassTemplateSpecializationDecl>(D.second);
         AB->HandleTagDeclDefinition(CTSD);
     }
 }

@@ -103,15 +103,16 @@ public:
     Dsymbol *VisitRecordDecl(const clang::RecordDecl* D, unsigned flags = 0);
     Dsymbol *VisitTypedefNameDecl(const clang::TypedefNameDecl *D);
     Dsymbol *VisitFunctionDecl(const clang::FunctionDecl *D);
-    Dsymbol *VisitTemplateDecl(const clang::TemplateDecl *D);
+    Dsymbol *VisitRedeclarableTemplateDecl(const clang::RedeclarableTemplateDecl* D);
     Dsymbol *VisitClassTemplateSpecializationDecl(const clang::ClassTemplateSpecializationDecl *D);
     Dsymbol *VisitEnumDecl(const clang::EnumDecl *D);
 
+    Dsymbol *VisitTemplateInstanceMember(const clang::ClassTemplateSpecializationDecl *D, unsigned flags = 0);
     TemplateParameter *VisitTemplateParameter(const clang::NamedDecl *Param,
                                                                     const clang::TemplateArgument *SpecArg = nullptr); // in DMD explicit specializations use parameters, whereas Clang uses args
 
     static const unsigned ForceNonPOD = 1 << 0; // When a templace declaration is non-POD, we want the explicit template specializations to be non-POD too even if isPOD() is true
-
+    
 //     Dsymbol *VisitEnumConstantDecl(const clang::EnumConstantDecl *D);
 //     Dsymbol *VisitEmptyDecl(const clang::EmptyDecl *D);
 //     Dsymbol *VisitFriendDecl(const clang::FriendDecl *D);
@@ -129,8 +130,7 @@ public:
 //     Dsymbol *VisitUnresolvedUsingTypenameDecl(const clang::UnresolvedUsingTypenameDecl *D);
 //     Dsymbol *VisitUnresolvedUsingValueDecl(const clang::UnresolvedUsingValueDecl *D);
 
-protected:
-    Scope *sc = nullptr;
+    static Identifier *getIdentifierForTemplateNonTypeParm(const clang::NonTypeTemplateParmDecl *NTTPD);
 };
 
 }

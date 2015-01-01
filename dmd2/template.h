@@ -109,6 +109,7 @@ public:
     TemplateInstance *findExistingInstance(TemplateInstance *tithis, Expressions *fargs);
     TemplateInstance *addInstance(TemplateInstance *ti);
     void removeInstance(TemplateInstance *handle);
+    virtual TemplateInstance *foreignInstance(TemplateInstance *tithis, Scope *sc) { return NULL; } // CALYPSO
 
     TemplateInstance *getInstantiating(Scope *sc);
 

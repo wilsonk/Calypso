@@ -11,6 +11,7 @@
 
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclTemplate.h"
 #include "clang/AST/RecordLayout.h"
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/Sema/Sema.h"
@@ -51,8 +52,7 @@ IMPLEMENT_syntaxCopy(ClassDeclaration, RD)
 
 void StructDeclaration::semantic(Scope *sc)
 {
-    // Copy pasted from ClassDeclaration::semantic, but are class templates ever non POD?
-    // POD explicit instanciations of non POD class templates are possible, so that might happen.
+    // Copy pasted from ClassDeclaration::semantic
 
     auto CRD = dyn_cast<clang::CXXRecordDecl>(RD);
     assert(CRD || !sc->parent->isTemplateInstance());
@@ -61,21 +61,20 @@ void StructDeclaration::semantic(Scope *sc)
     {
         if (auto CTD = CRD->getDescribedClassTemplate())
         {
-            auto tempinst = sc->parent->isTemplateInstance();
+            auto ti = sc->parent->isTemplateInstance();
 
-            // HACK we don't instantiate on our own for now, we reuse the specializations already in the PCH
-            assert(tempinst && isCPP(tempinst));
-            auto c_tempinst = static_cast<cpp::TemplateInstance*>(tempinst);
-            auto InstantiatedRD = cast<clang::CXXRecordDecl>(c_tempinst->Instantiated);
+            assert(ti && isCPP(ti));
+            auto c_ti = static_cast<cpp::TemplateInstance*>(ti);
+            auto InstRD = cast<clang::ClassTemplateSpecializationDecl>(c_ti->Instances[ident]);
 
             DeclMapper m(nullptr);
             m.addImplicitDecls = false;
 
-            auto tempsd = static_cast<cpp::StructDeclaration*>(
-                    m.VisitRecordDecl(InstantiatedRD)->isStructDeclaration());
-            assert(tempsd);
+            auto instsd = static_cast<cpp::StructDeclaration*>(
+                    m.VisitTemplateInstanceMember(InstRD)->isStructDeclaration());
+            assert(instsd);
 
-            tempsd->syntaxCopy(this);
+            instsd->syntaxCopy(this);
         }
     }
 
@@ -90,7 +89,7 @@ void ClassDeclaration::semantic(Scope *sc)
 //
     if (auto CTD = RD->getDescribedClassTemplate())
     {
-        auto tempinst = sc->parent->isTemplateInstance();
+        auto ti = sc->parent->isTemplateInstance();
 //
 //         clang::TemplateName TN(CTD);
 //         clang::ASTTemplateArgsPtr TemplateArgsPtr(TemplateId->getTemplateArgs(),
@@ -105,19 +104,18 @@ void ClassDeclaration::semantic(Scope *sc)
 //
 //         assert(!TagResult.isInvalid() && !TagResult.isUnset() && "Something went wrong during C++ template instanciation");
 
-        // HACK we don't instantiate on our own for now, we reuse the specializations already in the PCH
-        assert(tempinst && isCPP(tempinst));
-        auto c_tempinst = static_cast<cpp::TemplateInstance*>(tempinst);
-        auto InstantiatedRD = cast<clang::CXXRecordDecl>(c_tempinst->Instantiated);
+        assert(ti && isCPP(ti));
+        auto c_ti = static_cast<cpp::TemplateInstance*>(ti);
+        auto InstRD = cast<clang::ClassTemplateSpecializationDecl>(c_ti->Instances[ident]);
 
         DeclMapper m(nullptr);
         m.addImplicitDecls = false;
 
-        auto tempcd = static_cast<cpp::ClassDeclaration*>(
-            m.VisitRecordDecl(InstantiatedRD, DeclMapper::ForceNonPOD)->isClassDeclaration());
-        assert(tempcd);
+        auto instcd = static_cast<cpp::ClassDeclaration*>(
+            m.VisitTemplateInstanceMember(InstRD, DeclMapper::ForceNonPOD)->isClassDeclaration());
+        assert(instcd);
 
-        tempcd->syntaxCopy(this);
+        instcd->syntaxCopy(this);
     }
 
     ::ClassDeclaration::semantic(sc);
@@ -331,7 +329,7 @@ Expression *LangPlugin::getRightThis(Loc loc, Scope *sc, ::AggregateDeclaration 
               : static_cast<cpp::StructDeclaration*>(ad)->RD;
 
     auto CRD = dyn_cast<clang::CXXRecordDecl>(RD);
-    if (!CRD)
+    if (!CRD || !RD->isCompleteDefinition())
         return nullptr;
 
     if (CRD->hasTrivialDestructor())

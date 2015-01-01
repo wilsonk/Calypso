@@ -6219,6 +6219,10 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
      */
     {
         TemplateInstance *ti = tempdecl->findExistingInstance(this, fargs);
+
+        if (!ti)  // CALYPSO
+            ti = tempdecl->foreignInstance(this, sc);
+
         if (ti)
         {
             // It's a match
