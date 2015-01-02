@@ -54,25 +54,25 @@ public:
     bool addImplicitDecls = true; // this is a temporary safety for TypeMapper uses that should not add implicit decls, a simple mod == null will replace the assert and this variable later
 
     // Type conversions
-    Type *toType(const clang::QualType T);  // main type conversion method
+    Type *fromType(const clang::QualType T);
 
-    Type *toTypeUnqual(const clang::Type *T);
-    Type *toTypeBuiltin(const clang::BuiltinType *T);
-    Type *toTypeComplex(const clang::ComplexType *T);
-    Type *toTypeArray(const clang::ArrayType *T);
-    Type *toTypeTypedef(const clang::TypedefType *T);
-    Type *toTypeEnum(const clang::EnumType *T);
-    Type *toTypeRecord(const clang::RecordType *T);
-    Type *toTypeTemplateSpecialization(const clang::TemplateSpecializationType *T);
-    Type *toTypeTemplateTypeParm(const clang::TemplateTypeParmType *T);
-    Type *toTypeSubstTemplateTypeParm(const clang::SubstTemplateTypeParmType *T);
-    Type *toTypeInjectedClassName(const clang::InjectedClassNameType *T);
-    Type *toTypeDependentName(const clang::DependentNameType *T);
-    Type *toTypeDependentTemplateSpecialization(const clang::DependentTemplateSpecializationType *T);
-    Type *toTypeDecltype(const clang::DecltypeType *T);
-    TypeFunction *toTypeFunction(const clang::FunctionProtoType *T);
+    Type *fromTypeUnqual(const clang::Type *T);
+    Type *fromTypeBuiltin(const clang::BuiltinType *T);
+    Type *fromTypeComplex(const clang::ComplexType *T);
+    Type *fromTypeArray(const clang::ArrayType *T);
+    Type *fromTypeTypedef(const clang::TypedefType *T);
+    Type *fromTypeEnum(const clang::EnumType *T);
+    Type *fromTypeRecord(const clang::RecordType *T);
+    Type *fromTypeTemplateSpecialization(const clang::TemplateSpecializationType *T);
+    Type *fromTypeTemplateTypeParm(const clang::TemplateTypeParmType *T);
+    Type *fromTypeSubstTemplateTypeParm(const clang::SubstTemplateTypeParmType *T);
+    Type *fromTypeInjectedClassName(const clang::InjectedClassNameType *T);
+    Type *fromTypeDependentName(const clang::DependentNameType *T);
+    Type *fromTypeDependentTemplateSpecialization(const clang::DependentTemplateSpecializationType *T);
+    Type *fromTypeDecltype(const clang::DecltypeType *T);
+    TypeFunction *fromTypeFunction(const clang::FunctionProtoType *T);
 
-    RootObject *toTemplateArgument(const clang::TemplateArgument *Arg,
+    RootObject *fromTemplateArgument(const clang::TemplateArgument *Arg,
                 const clang::NamedDecl *Param = nullptr);  // NOTE: Param is required when the parameter type is an enum, because in the AST enum template arguments are resolved to uint while DMD expects an enum constant or it won't find the template decl. Is this a choice or a compiler bug/limitation btw?
     TypeQualified *fromNestedNameSpecifier(const clang::NestedNameSpecifier *NNS);
     TypeQualified *fromTemplateName(const clang::TemplateName Name,
@@ -95,7 +95,7 @@ protected:
     Identifier *getIdentifierForTemplateTypeParm(const clang::TemplateTypeParmType *T);
     Identifier *getIdentifierForTemplateTemplateParm(const clang::TemplateTemplateParmDecl *D);
 
-    Objects *toTemplateArguments(const clang::TemplateArgument *First,
+    Objects *fromTemplateArguments(const clang::TemplateArgument *First,
                 const clang::TemplateArgument *End,
                 const clang::TemplateDecl *TD = nullptr);
 

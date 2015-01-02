@@ -181,7 +181,7 @@ FuncDeclaration *ClassDeclaration::findMethod(const clang::CXXMethodDecl* MD)
     else if (isa<clang::CXXDestructorDecl>(MD))
         ident = Id::dtor;
     else
-        ident = toIdentifier(MD->getIdentifier());
+        ident = fromIdentifier(MD->getIdentifier());
 
     auto s = ScopeDsymbol::search(loc, ident);
     if (s)
@@ -197,7 +197,7 @@ FuncDeclaration *ClassDeclaration::findMethod(const clang::CXXMethodDecl* MD)
 
         if (auto fd = s->isFuncDeclaration())
         {
-            fd = fd->overloadExactMatch(tmap.toType(MD->getType()));
+            fd = fd->overloadExactMatch(tmap.fromType(MD->getType()));
             if (fd)
                 if (auto md = funcMatch(fd, MD))
                     return md;

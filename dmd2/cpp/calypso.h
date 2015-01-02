@@ -24,11 +24,11 @@ class Identifier;
 
 namespace clang
 {
-    class IdentifierInfo;
-    class ASTUnit;
-    class CodeGenModule;
-    class CodeGenFunction;
-    class Sema;
+class IdentifierInfo;
+class ASTUnit;
+class CodeGenModule;
+class CodeGenFunction;
+class Sema;
 }
 
 namespace cpp
@@ -36,11 +36,11 @@ namespace cpp
 
 class ClassDeclaration;
 
-Identifier *toIdentifier(const clang::IdentifierInfo* II);
+Identifier *fromIdentifier(const clang::IdentifierInfo* II);
 Identifier *getIdentifier(const clang::NamedDecl* D);
 Identifier *getIdentifierOrNull(const clang::NamedDecl* D);
 
-Loc toLoc(clang::SourceLocation L);
+Loc fromLoc(clang::SourceLocation L);
 
 struct PCH
 {

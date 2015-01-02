@@ -28,16 +28,16 @@ Objects *fromASTTemplateArgumentListInfo(
     for (unsigned i = 0; i < Args.NumTemplateArgs; i++)
     {
         auto Arg = &Args[i].getArgument();
-        tiargs->push(tymap.toTemplateArgument(Arg));
+        tiargs->push(tymap.fromTemplateArgument(Arg));
     }
 
     return tiargs;
 }
 
-Expression* ExprMapper::toUnaExp(const clang::UnaryOperator *E)
+Expression* ExprMapper::fromUnaExp(const clang::UnaryOperator *E)
 {
-    auto loc = toLoc(E->getLocStart());
-    auto sub = toExpression(E->getSubExpr());
+    auto loc = fromLoc(E->getLocStart());
+    auto sub = fromExpression(E->getSubExpr());
     switch (E->getOpcode())
     {
         case clang::UO_Plus: return sub;
@@ -49,11 +49,11 @@ Expression* ExprMapper::toUnaExp(const clang::UnaryOperator *E)
     llvm::llvm_unreachable_internal("Unhandled C++ unary operation exp");
 }
 
-Expression* ExprMapper::toBinExp(const clang::BinaryOperator* E)
+Expression* ExprMapper::fromBinExp(const clang::BinaryOperator* E)
 {
-    auto loc = toLoc(E->getLocStart());
-    auto lhs = toExpression(E->getLHS());
-    auto rhs = toExpression(E->getRHS());
+    auto loc = fromLoc(E->getLocStart());
+    auto lhs = fromExpression(E->getLHS());
+    auto rhs = fromExpression(E->getRHS());
 
     switch (E->getOpcode())
     {
@@ -85,25 +85,25 @@ Expression* ExprMapper::toBinExp(const clang::BinaryOperator* E)
     llvm::llvm_unreachable_internal("Unhandled C++ binary operation exp");
 }
 
-Expression* ExprMapper::toExpression(const clang::Expr* E, Type *t)
+Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *t)
 {
-    auto loc = toLoc(E->getLocStart());
+    auto loc = fromLoc(E->getLocStart());
 
     if (auto PE = dyn_cast<clang::ParenExpr>(E))
-        return toExpression(PE->getSubExpr());
+        return fromExpression(PE->getSubExpr());
     else if (auto ICE = dyn_cast<clang::CastExpr>(E))
-        return toExpression(ICE->getSubExpr(),
-                            tymap.toType(ICE->getType()));
+        return fromExpression(ICE->getSubExpr(),
+                            tymap.fromType(ICE->getType()));
 
     if (auto UO = dyn_cast<clang::UnaryOperator>(E))
-        return toUnaExp(UO);
+        return fromUnaExp(UO);
     else if (auto BO = dyn_cast<clang::BinaryOperator>(E))
-        return toBinExp(BO);
+        return fromBinExp(BO);
     else if (auto CO = dyn_cast<clang::ConditionalOperator>(E))
     {
-        auto econd = toExpression(CO->getCond());
-        auto e1 = toExpression(CO->getTrueExpr());
-        auto e2 = toExpression(CO->getFalseExpr());
+        auto econd = fromExpression(CO->getCond());
+        auto e1 = fromExpression(CO->getTrueExpr());
+        auto e2 = fromExpression(CO->getFalseExpr());
         
         return new CondExp(loc, econd, e1, e2);
     }
@@ -169,7 +169,7 @@ Expression* ExprMapper::toExpression(const clang::Expr* E, Type *t)
     }
     else if (auto UEOTT = dyn_cast<clang::UnaryExprOrTypeTraitExpr>(E))
     {
-        auto t = tymap.toType(UEOTT->getTypeOfArgument());
+        auto t = tymap.fromType(UEOTT->getTypeOfArgument());
         auto e1 = new TypeExp(loc, t);
 
         switch (UEOTT->getKind())
@@ -184,12 +184,12 @@ Expression* ExprMapper::toExpression(const clang::Expr* E, Type *t)
     }
     else if (auto DR = dyn_cast<clang::DeclRefExpr>(E))
     {
-        return toExpressionDeclRef(loc,
+        return fromExpressionDeclRef(loc,
                             const_cast<clang::ValueDecl*>(DR->getDecl()));
     }
     else if (auto SNTTP = dyn_cast<clang::SubstNonTypeTemplateParmExpr>(E))
     {
-        return toExpressionNonTypeTemplateParm(loc,
+        return fromExpressionNonTypeTemplateParm(loc,
                             SNTTP->getParameter());
     }
     else if (auto DSDR = dyn_cast<clang::DependentScopeDeclRefExpr>(E))
@@ -205,7 +205,7 @@ Expression* ExprMapper::toExpression(const clang::Expr* E, Type *t)
         }
 
         if (DSDR->getDeclName().isIdentifier())
-            ident = toIdentifier(DSDR->getDeclName().getAsIdentifierInfo());
+            ident = fromIdentifier(DSDR->getDeclName().getAsIdentifierInfo());
         else
             assert(false && "Unhandled DeclarationName kind");
 
@@ -250,17 +250,17 @@ Type *getAPIntDType(const llvm::APInt &i)
         return needs64bits ? Type::tuns64 : Type::tuns32;
 }
 
-Expression* APIntToExpression(const APInt& Val)
+Expression* ExprMapper::fromAPInt(const APInt& Val)
 {
     return new IntegerExp(Loc(),
             Val.isNegative() ? Val.getSExtValue() : Val.getZExtValue(),
             getAPIntDType(Val));
 }
 
-Expression* ExprMapper::toExpressionDeclRef(Loc loc, clang::NamedDecl *D)
+Expression* ExprMapper::fromExpressionDeclRef(Loc loc, clang::NamedDecl *D)
 {
     if (auto NTTP = dyn_cast<clang::NonTypeTemplateParmDecl>(D))
-        return toExpressionNonTypeTemplateParm(loc, NTTP);
+        return fromExpressionNonTypeTemplateParm(loc, NTTP);
 
     clang::NamedDecl *Parent = nullptr;
 
@@ -281,7 +281,7 @@ Expression* ExprMapper::toExpressionDeclRef(Loc loc, clang::NamedDecl *D)
         return new IdentifierExp(loc, ident);
 }
 
-Expression* ExprMapper::toExpressionNonTypeTemplateParm(Loc loc, const clang::NonTypeTemplateParmDecl* D)
+Expression* ExprMapper::fromExpressionNonTypeTemplateParm(Loc loc, const clang::NonTypeTemplateParmDecl* D)
 {
     auto ident = DeclMapper::getIdentifierForTemplateNonTypeParm(D);
     return new IdentifierExp(loc, ident);

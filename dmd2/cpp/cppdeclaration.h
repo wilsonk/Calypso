@@ -15,11 +15,11 @@
 
 namespace clang
 {
-    class ValueDecl;
-    class FunctionProtoType;
-    class FunctionDecl;
-    class CXXConstructorDecl;
-    class CXXDestructorDecl;
+class ValueDecl;
+class FunctionProtoType;
+class FunctionDecl;
+class CXXConstructorDecl;
+class CXXDestructorDecl;
 }
 
 namespace cpp
