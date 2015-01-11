@@ -9,6 +9,7 @@
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/Frontend/ASTUnit.h"
 
 namespace cpp
 {
@@ -28,7 +29,7 @@ Objects *fromASTTemplateArgumentListInfo(
     for (unsigned i = 0; i < Args.NumTemplateArgs; i++)
     {
         auto Arg = &Args[i].getArgument();
-        tiargs->push(tymap.fromTemplateArgument(Arg));
+        tiargs->push(TypeMapper::FromType(tymap).fromTemplateArgument(Arg));
     }
 
     return tiargs;
@@ -80,12 +81,19 @@ Expression* ExprMapper::fromBinExp(const clang::BinaryOperator* E)
 
         case clang::BO_EQ: return new EqualExp(TOKequal, loc, lhs, rhs);
         case clang::BO_NE: return new EqualExp(TOKnotequal, loc, lhs, rhs);
+
+        case clang::BO_Assign: return new AssignExp(loc, lhs, rhs);
+        case clang::BO_MulAssign: return new MulAssignExp(loc, lhs, rhs);
+        case clang::BO_AddAssign: return new AddAssignExp(loc, lhs, rhs);
+        case clang::BO_RemAssign: return new MinAssignExp(loc, lhs, rhs);
+        case clang::BO_DivAssign: return new DivAssignExp(loc, lhs, rhs);
     }
 
     llvm::llvm_unreachable_internal("Unhandled C++ binary operation exp");
 }
 
-Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *t)
+Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *t,
+                                            bool interpret)  // TODO implement interpret properly
 {
     auto loc = fromLoc(E->getLocStart());
 
@@ -167,6 +175,13 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *t)
         else
             return new NullExp(loc);  // TODO replace by D traits
     }
+    else if (auto SOP = dyn_cast<clang::SizeOfPackExpr>(E))
+    {
+        if (!SOP->isValueDependent())
+            return new IntegerExp(loc, SOP->getPackLength(), Type::tuns64);
+        else
+            return new NullExp(loc);  // TODO replace by D traits
+    }
     else if (auto UEOTT = dyn_cast<clang::UnaryExprOrTypeTraitExpr>(E))
     {
         auto t = tymap.fromType(UEOTT->getTypeOfArgument());
@@ -187,10 +202,17 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *t)
         return fromExpressionDeclRef(loc,
                             const_cast<clang::ValueDecl*>(DR->getDecl()));
     }
+    else if (auto PE = dyn_cast<clang::PackExpansionExpr>(E))
+    {
+        return fromExpression(PE->getPattern());
+    }
     else if (auto SNTTP = dyn_cast<clang::SubstNonTypeTemplateParmExpr>(E))
     {
-        return fromExpressionNonTypeTemplateParm(loc,
-                            SNTTP->getParameter());
+        if (!interpret || SNTTP->isValueDependent())
+            return fromExpressionNonTypeTemplateParm(loc,
+                                SNTTP->getParameter());
+        else
+            return fromExpression(SNTTP->getReplacement());
     }
     else if (auto DSDR = dyn_cast<clang::DependentScopeDeclRefExpr>(E))
     {
@@ -200,7 +222,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *t)
 
         if (auto NNS = DSDR->getQualifier())
         {
-            auto tqual = tymap.fromNestedNameSpecifier(NNS);
+            auto tqual = TypeMapper::FromType(tymap).fromNestedNameSpecifier(NNS);
             e1 = new TypeExp(loc, tqual);
         }
 
@@ -234,8 +256,14 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *t)
         }
     }
 
-    if (isa<clang::CallExpr>(E)) // TODO implement evaluation
-        return nullptr;
+    if (isa<clang::InitListExpr>(E)) //TODO
+        return new NullExp(loc);
+
+    if (isa<clang::CallExpr>(E) ||
+        isa<clang::CXXConstructExpr>(E) ||
+        isa<clang::CXXUnresolvedConstructExpr>(E) ||
+        isa<clang::CXXNewExpr>(E)) // TODO implement evaluation
+        return new NullExp(loc) /* nullptr */;
 
     llvm::llvm_unreachable_internal("Unhandled C++ expression");
 }
@@ -269,7 +297,7 @@ Expression* ExprMapper::fromExpressionDeclRef(Loc loc, clang::NamedDecl *D)
         DCParent = DCParent->getParent();
 
     Parent = cast<clang::NamedDecl>(DCParent);
-    auto t = tymap.typeQualifiedFor(Parent);
+    auto t = TypeMapper::FromType(tymap).typeQualifiedFor(Parent);
 
     auto ident = getIdentifier(D);
     if (t)
@@ -285,6 +313,42 @@ Expression* ExprMapper::fromExpressionNonTypeTemplateParm(Loc loc, const clang::
 {
     auto ident = DeclMapper::getIdentifierForTemplateNonTypeParm(D);
     return new IdentifierExp(loc, ident);
+}
+
+clang::Expr* ExprMapper::toExpression(Expression* e)
+{
+    auto& Context = calypso.pch.AST->getASTContext();
+    clang::SourceLocation Loc;
+
+    switch (e->op)
+    {
+        case TOKint64:
+        {
+            auto exp = static_cast<IntegerExp*>(e);
+            auto value = exp->getInteger();
+
+            if (e->type == Type::tbool)
+                return new (Context) clang::CXXBoolLiteralExpr(value != 0,
+                                                               Context.BoolTy, Loc);
+            else
+            {
+                unsigned IntSize = Context.getTargetInfo().getIntWidth();
+                return clang::IntegerLiteral::Create(Context,
+                                                llvm::APInt(IntSize, value),
+                                                Context.IntTy, Loc);
+            }
+        }
+        case TOKfloat64:
+        {
+            auto exp = static_cast<RealExp *>(e);
+            llvm::APFloat Val((double) exp->value);
+            return clang::FloatingLiteral::Create(Context,
+                                            Val, true,
+                                            Context.FloatTy, Loc);
+        }
+        default:
+            llvm::llvm_unreachable_internal("Unhandled D -> Clang expression conversion");
+    }
 }
 
 }

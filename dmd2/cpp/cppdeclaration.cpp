@@ -9,15 +9,16 @@ namespace cpp
 {
 
 VarDeclaration::VarDeclaration(Loc loc, Identifier *id,
-                               const clang::ValueDecl *VD, Type *t)
-    : ::VarDeclaration(loc, t, id, nullptr)
+                               const clang::ValueDecl *VD, Type *t, Initializer *init)
+    : ::VarDeclaration(loc, t, id, init)
 {
     this->VD = VD;
 }
 
 VarDeclaration::VarDeclaration(const VarDeclaration& o)
-    : VarDeclaration(o.loc, o.ident, o.VD, o.type)
+    : VarDeclaration(o.loc, o.ident, o.VD, o.type, o.init)
 {
+    storage_class = o.storage_class; // workaround for syntaxCopy because base method only assigns storage_class if the arg is null (BUG?)
 }
 
 FuncDeclaration::FuncDeclaration(Loc loc, Identifier *id, StorageClass storage_class,
@@ -56,9 +57,40 @@ DtorDeclaration::DtorDeclaration(const DtorDeclaration& o)
 {
 }
 
+EnumDeclaration::EnumDeclaration(Loc loc, Identifier* id, Type* memtype,
+                                 const clang::EnumDecl* ED)
+    : ::EnumDeclaration(loc, id, memtype)
+{
+    this->ED = ED;
+}
+
+EnumDeclaration::EnumDeclaration(const EnumDeclaration &o)
+    : EnumDeclaration(o.loc, o.ident, o.memtype, o.ED)
+{
+}
+
+AliasDeclaration::AliasDeclaration(Loc loc, Identifier* ident,
+                                Type* type, const clang::TypedefNameDecl* TND)
+    : ::AliasDeclaration(loc, ident, type)
+{
+    this->TND = TND;
+}
+
+AliasDeclaration::AliasDeclaration(const AliasDeclaration &o)
+    : AliasDeclaration(o.loc, o.ident, o.type->syntaxCopy(), o.TND)
+{
+}
+
+Dsymbol* AliasDeclaration::syntaxCopy(Dsymbol* s)
+{
+    assert(!s);
+    return new cpp::AliasDeclaration(*this); // hmm hmm
+}
+
 IMPLEMENT_syntaxCopy(VarDeclaration, VD)
 IMPLEMENT_syntaxCopy(FuncDeclaration, FD)
 IMPLEMENT_syntaxCopy(CtorDeclaration, CCD)
 IMPLEMENT_syntaxCopy(DtorDeclaration, CDD)
+IMPLEMENT_syntaxCopy(EnumDeclaration, ED)
 
 }

@@ -33,12 +33,16 @@ public:
     ExprMapper(TypeMapper &tymap)
         : tymap(tymap) {}
 
-    Expression *fromExpression(const clang::Expr *E, Type *t = nullptr);
+    // Clang -> DMD
+    Expression *fromExpression(const clang::Expr *E, Type *t = nullptr, bool interpret = false);
 
     Expression *fromExpressionDeclRef(Loc loc, clang::NamedDecl* D);
     Expression *fromExpressionNonTypeTemplateParm(Loc loc, const clang::NonTypeTemplateParmDecl* D);
 
     static Expression *fromAPInt(const llvm::APInt &Val);
+
+    // DMD -> Clang
+    clang::Expr *toExpression(Expression *e);
 
 protected:
     TypeMapper &tymap;

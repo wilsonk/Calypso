@@ -10,6 +10,7 @@
 #include "root.h"
 #include "calypso.h"
 #include "dsymbol.h"
+#include "enum.h"
 
 #include "../declaration.h"
 
@@ -33,7 +34,7 @@ public:
     const clang::ValueDecl *VD;
 
     VarDeclaration(Loc loc, Identifier *id,
-                   const clang::ValueDecl *VD, Type *t);
+                   const clang::ValueDecl *VD, Type *t, Initializer *init = nullptr);
     VarDeclaration(const VarDeclaration&);
     Dsymbol *syntaxCopy(Dsymbol *s) override;
 };
@@ -77,6 +78,32 @@ public:
     Dsymbol *syntaxCopy(Dsymbol *s) override;
 };
 
+class EnumDeclaration : public ::EnumDeclaration
+{
+public:
+    CALYPSO_LANGPLUGIN
+
+    const clang::EnumDecl *ED;
+
+    EnumDeclaration(Loc loc, Identifier *id, Type *memtype,
+            const clang::EnumDecl *ED);
+    EnumDeclaration(const EnumDeclaration&);
+    Dsymbol *syntaxCopy(Dsymbol *s) override;
+};
+
+class AliasDeclaration : public ::AliasDeclaration
+{
+public:
+    CALYPSO_LANGPLUGIN
+
+    const clang::TypedefNameDecl *TND;
+
+    AliasDeclaration(Loc loc, Identifier *ident, Type *type,
+            const clang::TypedefNameDecl *TND);
+    AliasDeclaration(const AliasDeclaration&);
+    Dsymbol *syntaxCopy(Dsymbol *s) override;
+};
+
 #define IMPLEMENT_syntaxCopy(Class, D) \
     Dsymbol* Class::syntaxCopy(Dsymbol* s) \
     { \
@@ -107,7 +134,7 @@ public:
     Dsymbol *VisitClassTemplateSpecializationDecl(const clang::ClassTemplateSpecializationDecl *D);
     Dsymbol *VisitEnumDecl(const clang::EnumDecl *D);
 
-    Dsymbol *VisitTemplateInstanceMember(const clang::ClassTemplateSpecializationDecl *D, unsigned flags = 0);
+    Dsymbol *VisitInstancedClassTemplate(const clang::ClassTemplateSpecializationDecl *D, unsigned flags = 0);
     TemplateParameter *VisitTemplateParameter(const clang::NamedDecl *Param,
                                                                     const clang::TemplateArgument *SpecArg = nullptr); // in DMD explicit specializations use parameters, whereas Clang uses args
 

@@ -8,6 +8,7 @@
 #endif /* __DMC__ */
 
 #include <map>
+#include <stack>
 #include "mars.h"
 #include "arraytypes.h"
 #include "clang/AST/Type.h"
@@ -17,6 +18,7 @@ class Module;
 class Dsymbol;
 class Identifier;
 class Import;
+class Scope;
 class Type;
 class TypeQualified;
 class TypeFunction;
@@ -24,6 +26,7 @@ class TypeFunction;
 namespace clang
 {
 class Decl;
+class ClassTemplateSpecializationDecl;
 class TemplateParameterList;
 }
 
@@ -51,39 +54,64 @@ class TypeMapper
 public:
     TypeMapper(cpp::Module *mod = nullptr);  // mod can be null if no implicit import is needed
 
-    bool addImplicitDecls = true; // this is a temporary safety for TypeMapper uses that should not add implicit decls, a simple mod == null will replace the assert and this variable later
+    bool addImplicitDecls = true;
+    ::Module *instMod = nullptr; // only used during the semantic pass for C++ template instantiations
 
-    // Type conversions
+    ::Module *getInstantiatingModule() { return instMod ? instMod : (::Module*) mod; }
+
+    std::stack<const clang::Decl *> CXXScope;
+
+    // Clang -> DMD
     Type *fromType(const clang::QualType T);
 
-    Type *fromTypeUnqual(const clang::Type *T);
-    Type *fromTypeBuiltin(const clang::BuiltinType *T);
-    Type *fromTypeComplex(const clang::ComplexType *T);
-    Type *fromTypeArray(const clang::ArrayType *T);
-    Type *fromTypeTypedef(const clang::TypedefType *T);
-    Type *fromTypeEnum(const clang::EnumType *T);
-    Type *fromTypeRecord(const clang::RecordType *T);
-    Type *fromTypeTemplateSpecialization(const clang::TemplateSpecializationType *T);
-    Type *fromTypeTemplateTypeParm(const clang::TemplateTypeParmType *T);
-    Type *fromTypeSubstTemplateTypeParm(const clang::SubstTemplateTypeParmType *T);
-    Type *fromTypeInjectedClassName(const clang::InjectedClassNameType *T);
-    Type *fromTypeDependentName(const clang::DependentNameType *T);
-    Type *fromTypeDependentTemplateSpecialization(const clang::DependentTemplateSpecializationType *T);
-    Type *fromTypeDecltype(const clang::DecltypeType *T);
-    TypeFunction *fromTypeFunction(const clang::FunctionProtoType *T);
+    class FromType // type-specific state
+    {
+    public:
+        TypeMapper &tm;
+        TypeQualified *prefix; // special case for NNS qualified types
 
-    RootObject *fromTemplateArgument(const clang::TemplateArgument *Arg,
-                const clang::NamedDecl *Param = nullptr);  // NOTE: Param is required when the parameter type is an enum, because in the AST enum template arguments are resolved to uint while DMD expects an enum constant or it won't find the template decl. Is this a choice or a compiler bug/limitation btw?
-    TypeQualified *fromNestedNameSpecifier(const clang::NestedNameSpecifier *NNS);
-    TypeQualified *fromTemplateName(const clang::TemplateName Name,
-                const clang::TemplateArgument *ArgBegin = nullptr,
-                const clang::TemplateArgument *ArgEnd = nullptr);  // returns a template or a template instance
-            // if it's a template it's not actually a type but a symbol, but that's how parsing TemplateAliasParameter works anyway
+        FromType(TypeMapper &tm, TypeQualified *prefix = nullptr);
 
-    const clang::Decl* GetImplicitImportKeyForDecl(const clang::NamedDecl* ND);
-    Type *typeQualifiedFor(clang::NamedDecl* ND,
-                        const clang::TemplateArgument* ArgBegin = nullptr,
-                        const clang::TemplateArgument* ArgEnd = nullptr);
+        Type *operator()(const clang::QualType T);
+        Type *fromTypeUnqual(const clang::Type *T);
+        Type *fromTypeBuiltin(const clang::BuiltinType *T);
+        Type *fromTypeComplex(const clang::ComplexType *T);
+        Type *fromTypeArray(const clang::ArrayType *T);
+        Type *fromTypeTypedef(const clang::TypedefType *T);
+        Type *fromTypeEnum(const clang::EnumType *T);
+        Type *fromTypeRecord(const clang::RecordType *T);
+        Type *fromTypeElaborated(const clang::ElaboratedType *T);
+        Type *fromTypeTemplateSpecialization(const clang::TemplateSpecializationType *T);
+        Type *fromTypeTemplateTypeParm(const clang::TemplateTypeParmType *T);
+        Type *fromTypeSubstTemplateTypeParm(const clang::SubstTemplateTypeParmType *T);
+        Type *fromTypeInjectedClassName(const clang::InjectedClassNameType *T);
+        Type *fromTypeDependentName(const clang::DependentNameType *T);
+        Type *fromTypeDependentTemplateSpecialization(const clang::DependentTemplateSpecializationType *T);
+        Type *fromTypeDecltype(const clang::DecltypeType *T);
+        Type *fromTypePackExpansion(const clang::PackExpansionType *T);
+        TypeFunction *fromTypeFunction(const clang::FunctionProtoType *T);
+
+        RootObject *fromTemplateArgument(const clang::TemplateArgument *Arg,
+                    const clang::NamedDecl *Param = nullptr);  // NOTE: Param is required when the parameter type is an enum, because in the AST enum template arguments are resolved to uint while DMD expects an enum constant or it won't find the template decl. Is this a choice or a compiler bug/limitation btw?
+        Objects *fromTemplateArguments(const clang::TemplateArgument *First,
+                    const clang::TemplateArgument *End,
+                    const clang::TemplateParameterList *ParamList = nullptr);
+        TypeQualified *fromNestedNameSpecifier(const clang::NestedNameSpecifier *NNS);
+        TypeQualified *fromTemplateName(const clang::TemplateName Name,
+                    const clang::TemplateArgument *ArgBegin = nullptr,
+                    const clang::TemplateArgument *ArgEnd = nullptr);  // returns a template or a template instance
+                // if it's a template it's not actually a type but a symbol, but that's how parsing TemplateAliasParameter works anyway
+
+        Type *typeQualifiedFor(clang::NamedDecl* ND,
+                            const clang::TemplateArgument* ArgBegin = nullptr,
+                            const clang::TemplateArgument* ArgEnd = nullptr);
+
+    private:
+        Type *fromType(const clang::QualType T);  // private alias
+    };
+
+    // DMD -> Clang
+    clang::QualType toType(Loc loc, Type* t, Scope *sc);
 
 protected:
     cpp::Module *mod;
@@ -95,48 +123,23 @@ protected:
     Identifier *getIdentifierForTemplateTypeParm(const clang::TemplateTypeParmType *T);
     Identifier *getIdentifierForTemplateTemplateParm(const clang::TemplateTemplateParmDecl *D);
 
-    Objects *fromTemplateArguments(const clang::TemplateArgument *First,
-                const clang::TemplateArgument *End,
-                const clang::TemplateDecl *TD = nullptr);
+    bool isInjectedClassName(clang::Decl *D); // misleading name although that's what it is
 
     void AddImplicitImportForDecl(const clang::NamedDecl* ND);
 
-    ::Import* BuildImplicitImport(const clang::Decl* ND);
-    bool BuildImplicitImportInternal(const clang::DeclContext* DC, Loc loc,
-            Identifiers* sPackages, Identifier*& sModule);
+    ::Import *BuildImplicitImport(const clang::Decl *ND);
+    bool BuildImplicitImportInternal(const clang::DeclContext *DC, Loc loc,
+                                     Identifiers *sPackages, Identifier *&sModule);
     
     bool isNonPODRecord(const clang::QualType T);
+    const clang::Decl *GetImplicitImportKeyForDecl(const clang::NamedDecl *D);
+    const clang::Decl *GetTopMostDeclContext(const clang::Decl *D);  // returns the "root" for qualified types
 
     friend class cpp::TypeQualifiedBuilder;
 };
 
-class TypeQualifiedBuilder
-{
-public:
-    TypeMapper &tm;
-
-    const clang::Decl* Root;
-    const clang::TemplateArgument *TopTempArgBegin,
-        *TopTempArgEnd;
-
-protected:
-    void addInst(TypeQualified *&tqual,
-                 clang::NamedDecl* D,
-                 const clang::TemplateArgument *TempArgBegin,
-                 const clang::TemplateArgument *TempArgEnd);
-
-public:
-    TypeQualifiedBuilder(TypeMapper &tm, const clang::Decl* Root,
-        const clang::TemplateArgument *TempArgBegin = nullptr,
-        const clang::TemplateArgument *TempArgEnd = nullptr)
-        : tm(tm), Root(Root),
-          TopTempArgBegin(TempArgBegin),
-          TopTempArgEnd(TempArgEnd) {}
-
-    TypeQualified *get(clang::NamedDecl* ND);
-};
-
 const clang::DeclContext *getDeclContextNamedOrTU(const clang::Decl *D); // to skip LinkageSpec
+const clang::NamedDecl *getTemplateSpecializedDecl(const clang::ClassTemplateSpecializationDecl *Spec);
 
 }
 

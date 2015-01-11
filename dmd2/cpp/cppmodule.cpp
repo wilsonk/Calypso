@@ -6,6 +6,7 @@
 #include "../enum.h"
 #include "../identifier.h"
 #include "../import.h"
+#include "../init.h"
 #include "../lexer.h"
 #include "../template.h"
 #include "../scope.h"
@@ -155,6 +156,7 @@ Dsymbol *DeclMapper::VisitDecl(const clang::Decl *D)
 Dsymbol *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
 {
     auto& Context = calypso.getASTContext();
+    ExprMapper expmap(*this);
 
     auto loc = fromLoc(D->getLocation());
     auto Ty = D->getType().getDesugaredType(Context);
@@ -189,6 +191,21 @@ Dsymbol *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
 
         if (Var->getTLSKind() == clang::VarDecl::TLS_Dynamic)
             a->storage_class |= STCtls;
+
+        if (Var->isStaticDataMember())
+            a->storage_class |= STCstatic;
+
+        if (Var->isConstexpr() && Var->getAnyInitializer())
+        {
+            // we avoid initializer expressions except for constexpr variables
+            auto e = expmap.fromExpression(Var->getAnyInitializer(),
+                                           nullptr, true);
+            if (e->op != TOKnull)
+            {
+                a->init = new ExpInitializer(loc, e);
+                a->storage_class |= STCimmutable;
+            }
+        }
     }
     return a;
 }
@@ -275,6 +292,8 @@ Dsymbol *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags)
     if (!isDefined)
         goto Ldeclaration;
 
+    CXXScope.push(D);
+
     for (auto I = D->field_begin(), E = D->field_end();
             I != E; ++I)
     {
@@ -334,6 +353,8 @@ Dsymbol *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags)
 
 #undef SPECIFIC_ADD
 
+    CXXScope.pop();
+
 Ldeclaration:
     if (anon)
         return new AnonDeclaration(loc, anon == 2, members);
@@ -361,7 +382,7 @@ Dsymbol* DeclMapper::VisitTypedefNameDecl(const clang::TypedefNameDecl* D)
     auto id = fromIdentifier(D->getIdentifier());
     auto t = fromType(D->getUnderlyingType());
 
-    auto a = new AliasDeclaration(loc, id, t);
+    auto a = new AliasDeclaration(loc, id, t, D);
     return a;
 }
 
@@ -372,15 +393,16 @@ Dsymbol *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 
     auto loc = fromLoc(D->getLocation());
 
-    auto FPT = cast<clang::FunctionProtoType>(D->getType().getTypePtr());
+    auto FPT = D->getType();
     auto MD = dyn_cast<clang::CXXMethodDecl>(D);
     
-    auto tf = fromTypeFunction(FPT);
+    auto tf = fromType(FPT);
     if (!tf)
     {
         fprintf(stderr, "Discarding %s, has a class value argument\n", D->getDeclName().getAsString().c_str());
         return nullptr; // FIXME function with unhandled argument types
     }
+    assert(tf->ty == Tfunction);
 
     StorageClass stc = STCundefined;
     if (MD)
@@ -424,14 +446,51 @@ Dsymbol *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     return fd;
 }
 
+// NOTE: doesn't return null if the template isn't defined. What we really want is some sort of canonical declaration to refer to for template parameters.
+static const clang::ClassTemplateDecl *getDefinition(const clang::ClassTemplateDecl *D)
+{
+    for (auto RI: D->redecls()) // find the definition if any
+    {
+        auto I = cast<clang::ClassTemplateDecl>(RI);
+        if (I->isThisDeclarationADefinition())
+            return I;
+    }
+
+    // This is more heuristical than anything else.. I'm not sure yet why templates inside
+    // specializations (e.g std::allocator::rebind) do not get defined.
+    if (auto MemberTemp = const_cast<clang::ClassTemplateDecl*>(D)->getInstantiatedFromMemberTemplate())
+        if (auto MemberDef = getDefinition(MemberTemp))
+            return MemberDef;
+
+    return D->getCanonicalDecl();
+}
+
 Dsymbol *DeclMapper::VisitRedeclarableTemplateDecl(const clang::RedeclarableTemplateDecl *D)
 {   TemplateDeclaration *a;
 
-    if (!isa<clang::ClassTemplateDecl>(D))
+    if (!isa<clang::ClassTemplateDecl>(D) && !isa<clang::TypeAliasTemplateDecl>(D)
+         && !isa<clang::FunctionTemplateDecl>(D))
         return nullptr; // temporary
 
+    if (auto FTD = dyn_cast<clang::FunctionTemplateDecl>(D))
+    {
+        if (FTD->getTemplatedDecl()->isOverloadedOperator())
+            return nullptr;
+
+        if (isa<clang::CXXConversionDecl>(FTD->getTemplatedDecl()))
+            return nullptr;
+    }
+
     auto loc = fromLoc(D->getLocation());
-    auto id = fromIdentifier(D->getIdentifier());
+    auto id = getIdentifier(D);
+
+    if (auto CTD = dyn_cast<clang::ClassTemplateDecl>(D))
+    {
+        D = CTD = getDefinition(CTD);
+
+        if (!CTD->isThisDeclarationADefinition())
+            return nullptr;
+    }
 
     auto tpl = new TemplateParameters;
     auto TPL = D->getTemplateParameters();
@@ -444,40 +503,10 @@ Dsymbol *DeclMapper::VisitRedeclarableTemplateDecl(const clang::RedeclarableTemp
         tpl->push(tp);
     }
 
-    Dsymbol *s;
-    if (auto CTD = dyn_cast<clang::ClassTemplateDecl>(D))
-    {
-        if (!CTD->isThisDeclarationADefinition())
-            for (auto RI: CTD->redecls()) // find the definition if any
-            {
-                auto I = cast<clang::ClassTemplateDecl>(RI);
-                if (I->isThisDeclarationADefinition())
-                {
-                    CTD = I;
-                    break;
-                }
-            }
+    auto s = VisitDecl(D->getTemplatedDecl()->getCanonicalDecl());
 
-        if (!CTD->isThisDeclarationADefinition())
-            return nullptr;
-
-        s = VisitRecordDecl(CTD->getTemplatedDecl());
-    }
-    else if (auto FTD = dyn_cast<clang::FunctionTemplateDecl>(D))
-    {
-//         if (!FTD->isThisDeclarationADefinition())
-            return nullptr;
-
-//         s = VisitFunctionDecl(FTD->getTemplatedDecl());
-    }
-    else if (auto VTD = dyn_cast<clang::VarTemplateDecl>(D))
-    {
+    if (!s)
         return nullptr;
-    }
-    else if (auto TATD = dyn_cast<clang::TypeAliasTemplateDecl>(D))
-    {
-        return nullptr;
-    }
 
     auto decldefs = new Dsymbols;
     decldefs->push(s);
@@ -546,6 +575,9 @@ TemplateParameter *DeclMapper::VisitTemplateParameter(const clang::NamedDecl *Pa
                     default:
                         assert(false && "Unsupported template specialization value");
                 }
+
+                tp_specvalue = isExpression(FromType(*this).fromTemplateArgument(SpecArg));
+                assert(tp_specvalue);
             }
 
             if (NTTPD->hasDefaultArgument())
@@ -574,8 +606,8 @@ TemplateParameter *DeclMapper::VisitTemplateParameter(const clang::NamedDecl *Pa
 
             if (SpecArg)
             {
-                assert(SpecArg->getKind() == clang::TemplateArgument::Type);
-                tp_spectype = fromType(SpecArg->getAsType());
+                tp_spectype = isType(FromType(*this).fromTemplateArgument(SpecArg));
+                assert(tp_spectype);
             }
 
             if (TTPD->hasDefaultArgument())
@@ -601,12 +633,12 @@ TemplateParameter *DeclMapper::VisitTemplateParameter(const clang::NamedDecl *Pa
 
             if (SpecArg)
             {
-                assert(SpecArg->getKind() == clang::TemplateArgument::Template);
-                tp_spectype = fromTemplateName(SpecArg->getAsTemplate());
+                tp_spectype = isType(FromType(*this).fromTemplateArgument(SpecArg));
+                assert(tp_spectype);
             }
 
             if (TempTemp->hasDefaultArgument())
-                tp_defaulttype = fromTemplateName(
+                tp_defaulttype = FromType(*this).fromTemplateName(
                         TempTemp->getDefaultArgument().getArgument().getAsTemplate());
 
             tp = new TemplateAliasParameter(loc, id, nullptr, tp_spectype, tp_defaulttype);
@@ -617,53 +649,71 @@ TemplateParameter *DeclMapper::VisitTemplateParameter(const clang::NamedDecl *Pa
     return tp;
 }
 
-Dsymbol *DeclMapper::VisitTemplateInstanceMember(const clang::ClassTemplateSpecializationDecl *D,
+Dsymbol *DeclMapper::VisitInstancedClassTemplate(const clang::ClassTemplateSpecializationDecl *D,
                                                  unsigned flags)
 {
     assert(!isa<clang::ClassTemplatePartialSpecializationDecl>(D));
+    auto CT = getDefinition(D->getSpecializedTemplate());
 
-    templateParameters.push_back(
-            D->getSpecializedTemplate()->getTemplateParameters());
+    templateParameters.push_back(CT->getTemplateParameters());
     auto s = VisitRecordDecl(D, flags);
     templateParameters.pop_back();
 
     return s;
 }
 
+static const clang::ClassTemplateSpecializationDecl *getDefinition(const clang::ClassTemplateSpecializationDecl *D)
+{
+    if (auto Definition = D->getDefinition())
+        return cast<clang::ClassTemplateSpecializationDecl>(Definition);
+
+    if (auto Partial = dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(D))
+        if (auto MemberInst = const_cast<clang::ClassTemplatePartialSpecializationDecl*>(Partial)->getInstantiatedFromMember()) // not the same method name..
+            if (auto MemberDef = getDefinition(MemberInst))
+                return MemberDef;
+
+    return D;
+}
+
 // Explicit specializations only
 Dsymbol *DeclMapper::VisitClassTemplateSpecializationDecl(const clang::ClassTemplateSpecializationDecl *D)
 {   TemplateDeclaration *a;
 
-    if (!D->isCompleteDefinition() && D->getDefinition())
-        D = cast<clang::ClassTemplateSpecializationDecl>(D->getDefinition());
+    D = getDefinition(D);
 
     if (!D->isExplicitSpecialization())
         return nullptr;
 
     auto Partial = dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(D);
-        // NOTE: D's partial specializations != C++'s partial specializations, the latter are more like new template declarations
+        // NOTE: D's partial specializations != C++'s partial specializations
+        // The mapping provides a "close" but not exact approximation of equivalent template specs in D (for reflection),
+        // but TemplateDeclaration::findBestMatch is skipped since the choice is done by Clang anyway.
+        //
+        // C++ template decl lookup doesn't exactly work like D's. For example:
+        //
+        //    template<typename _Iterator>
+        //    struct __iterator_traits<_Iterator, true> {};
+        //
+        // In C++ you can refer to that partial spec either by __iterator_traits<iterator> or __iterator_traits<iterator, true>
+        // whereas in D only __iterator_traits<iterator> works.
+        // Furthermore in C++ you may have multiple partial specs taking the same number of seemingly identical parameters.
+        // it's not always possible to work around that here.
 
     auto loc = fromLoc(D->getLocation());
     auto id = fromIdentifier(D->getIdentifier());
 
     auto tpl = new TemplateParameters;
 
-    const clang::TemplateParameterList *TPL;
-    const clang::TemplateArgument *AI = nullptr;
+    auto CT = getDefinition(D->getSpecializedTemplate());
+    auto TPL = CT->getTemplateParameters();
+    auto AI = D->getTemplateArgs().asArray().begin();
 
-    if (!Partial)
+    if (Partial)
     {
-        auto CT = D->getSpecializedTemplate();
-        TPL = CT->getTemplateParameters();
-
-        auto& TAL = D->getTemplateArgs();
-        AI = TAL.asArray().begin();
+        TPL = Partial->getTemplateParameters(); // SEMI-HACK #1 because we alter the tiargs to match the partial spec params
+        AI = nullptr; // SEMI-HACK #2 because partial spec args won't matter during semantic
     }
-    else
-    {
-        TPL = Partial->getTemplateParameters();
-        templateParameters.push_back(TPL);
-    }
+    templateParameters.push_back(TPL);
 
     for (auto PI = TPL->begin(), PE = TPL->end();
         PI != PE; PI++)
@@ -678,10 +728,9 @@ Dsymbol *DeclMapper::VisitClassTemplateSpecializationDecl(const clang::ClassTemp
     auto ad = VisitRecordDecl(D);
     decldefs->push(ad);
 
-    if (Partial)
-        templateParameters.pop_back();
+    templateParameters.pop_back();
 
-    a = new TemplateDeclaration(loc, id, tpl, decldefs, D->getSpecializedTemplate());
+    a = new TemplateDeclaration(loc, id, tpl, decldefs, D);
     return a;
 }
 
@@ -703,7 +752,7 @@ Dsymbol* DeclMapper::VisitEnumDecl(const clang::EnumDecl* D)
         memtype = fromType(IntType);
     }
 
-    auto e = new EnumDeclaration(loc, ident, memtype);
+    auto e = new EnumDeclaration(loc, ident, memtype, D);
 
     for (auto ECD: D->enumerators())
     {
@@ -871,7 +920,8 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *ident)
                 {
                     if (llvm::isa<clang::FunctionDecl>(*D) ||
                             llvm::isa<clang::VarDecl>(*D) ||
-                            llvm::isa<clang::TypedefNameDecl>(*D))
+                            llvm::isa<clang::TypedefNameDecl>(*D) ||
+                            llvm::isa<clang::TypeAliasTemplateDecl>(*D))
                     {
                         if (auto s = mapper.VisitDecl(*D))
                             m->members->push(s);
@@ -910,6 +960,22 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *ident)
 
         if (auto s = mapper.VisitDecl(D))
             m->members->push(s);
+
+        // Special case for class template, we need to add explicit specializations to the module as well
+        if (auto CTD = dyn_cast<clang::ClassTemplateDecl>(D))
+        {
+            llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl *, 2> PS;
+            CTD->getPartialSpecializations(PS);
+
+            for (auto PartialSpec: PS)
+                if (auto s = mapper.VisitDecl(PartialSpec->getCanonicalDecl()))
+                    m->members->push(s);
+
+            for (auto Spec: CTD->specializations())
+                if (auto s = mapper.VisitDecl(Spec->getCanonicalDecl()))
+                    m->members->push(s);
+        }
+
 //         srcFilename = AST->getSourceManager().getFilename(TD->getLocation());
     }
     

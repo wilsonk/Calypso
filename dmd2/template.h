@@ -100,7 +100,7 @@ public:
 
     bool evaluateConstraint(TemplateInstance *ti, Scope *sc, Scope *paramscope, Objects *dedtypes, FuncDeclaration *fd);
 
-    MATCH matchWithInstance(Scope *sc, TemplateInstance *ti, Objects *atypes, Expressions *fargs, int flag);
+    virtual MATCH matchWithInstance(Scope *sc, TemplateInstance *ti, Objects *atypes, Expressions *fargs, int flag); // CALYPSO
     MATCH leastAsSpecialized(Scope *sc, TemplateDeclaration *td2, Expressions *fargs);
 
     MATCH deduceFunctionTemplateMatch(TemplateInstance *ti, Scope *sc, FuncDeclaration *&fd, Type *tthis, Expressions *fargs);
@@ -360,7 +360,7 @@ public:
     char *toChars();
     char* toPrettyCharsHelper();
     void printInstantiationTrace();
-    Identifier *getIdent();
+    virtual Identifier *getIdent(); // CALYPSO made virtual to use the original tiargs for mangling
     int compare(RootObject *o);
     hash_t hashCode();
 

@@ -63,15 +63,16 @@ void StructDeclaration::semantic(Scope *sc)
         {
             auto ti = sc->parent->isTemplateInstance();
 
-            assert(ti && isCPP(ti));
-            auto c_ti = static_cast<cpp::TemplateInstance*>(ti);
+            assert(ti && isCPP(ti->inst));
+            auto c_ti = static_cast<cpp::TemplateInstance*>(ti->inst);
             auto InstRD = cast<clang::ClassTemplateSpecializationDecl>(c_ti->Instances[ident]);
 
             DeclMapper m(nullptr);
             m.addImplicitDecls = false;
+            m.instMod = sc->module;
 
             auto instsd = static_cast<cpp::StructDeclaration*>(
-                    m.VisitTemplateInstanceMember(InstRD)->isStructDeclaration());
+                    m.VisitInstancedClassTemplate(InstRD)->isStructDeclaration());
             assert(instsd);
 
             instsd->syntaxCopy(this);
@@ -104,15 +105,16 @@ void ClassDeclaration::semantic(Scope *sc)
 //
 //         assert(!TagResult.isInvalid() && !TagResult.isUnset() && "Something went wrong during C++ template instanciation");
 
-        assert(ti && isCPP(ti));
-        auto c_ti = static_cast<cpp::TemplateInstance*>(ti);
+        assert(ti && isCPP(ti->inst));
+        auto c_ti = static_cast<cpp::TemplateInstance*>(ti->inst);
         auto InstRD = cast<clang::ClassTemplateSpecializationDecl>(c_ti->Instances[ident]);
 
         DeclMapper m(nullptr);
         m.addImplicitDecls = false;
+        m.instMod = sc->module;
 
         auto instcd = static_cast<cpp::ClassDeclaration*>(
-            m.VisitTemplateInstanceMember(InstRD, DeclMapper::ForceNonPOD)->isClassDeclaration());
+            m.VisitInstancedClassTemplate(InstRD, DeclMapper::ForceNonPOD)->isClassDeclaration());
         assert(instcd);
 
         instcd->syntaxCopy(this);

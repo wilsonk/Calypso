@@ -162,8 +162,6 @@ public:
 
     BuiltinTypes builtinTypes;
 
-    clang::QualType fromType(Type *t);
-
     // settings
     const char *cachePrefix = "calypso_cache"; // prefix of cached files (list of headers, PCH)
 

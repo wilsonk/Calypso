@@ -1,4 +1,6 @@
 #include "cpp/calypso.h"
+#include "cpp/cppaggregate.h"
+#include "cpp/cppdeclaration.h"
 #include "cpp/cppexpression.h"
 #include "cpp/cppimport.h"
 #include "cpp/cppmodule.h"
@@ -68,7 +70,8 @@ void BuiltinTypes::build(clang::ASTContext &Context)
     map(Context.LongDoubleTy, Type::tfloat80);
 
         //===- Language-specific types --------------------------------------------===//
-    map(Context.NullPtrTy, Type::tnull); // or is tvoidptr?
+    map(Context.NullPtrTy, Type::tvoidptr);
+    map(Context.DependentTy, Type::tnull);  // should work?
 }
 
 // Most reliable way to determine target-dependent int type correspondances (except for char)
@@ -114,9 +117,19 @@ Type *BuiltinTypes::toInt(clang::TargetInfo::IntType intTy)
     return nullptr;
 }
 
-/***** Type mapping *****/
+/***** Clang -> DMD types *****/
 
 Type *TypeMapper::fromType(const clang::QualType T)
+{
+    return FromType(*this)(T);
+}
+
+TypeMapper::FromType::FromType(TypeMapper &tm, TypeQualified *prefix)
+    : tm(tm), prefix(prefix)
+{
+}
+
+Type *TypeMapper::FromType::operator()(const clang::QualType T)
 {
     Type *t = fromTypeUnqual(T.getTypePtr());
 
@@ -124,17 +137,19 @@ Type *TypeMapper::fromType(const clang::QualType T)
         t = t->makeConst();
 
     if (T.isVolatileQualified())
-    {
-        ::warning(Loc(), "volatile qualifier found, declaration won't be exposed (fixme?)");
-        return nullptr;
-    }
+        ::warning(Loc(), "volatile qualifier found, declaration will be exposed anyway");
 
     // restrict qualifiers are inconsequential
 
     return t;
 }
 
-Type *TypeMapper::fromTypeUnqual(const clang::Type *T)
+Type *TypeMapper::FromType::fromType(const clang::QualType T)
+{
+    return (*this)(T);
+}
+
+Type *TypeMapper::FromType::fromTypeUnqual(const clang::Type *T)
 {
     if (auto BT = dyn_cast<clang::BuiltinType>(T))
         return fromTypeBuiltin(BT);
@@ -149,8 +164,6 @@ Type *TypeMapper::fromTypeUnqual(const clang::Type *T)
         return fromType(PT->desugar());
     else if (auto AT = dyn_cast<clang::AdjustedType>(T))
         return fromType(AT->desugar());
-    else if (auto ET = dyn_cast<clang::ElaboratedType>(T))
-        return fromType(ET->desugar());
 
     if (auto MPT = dyn_cast<clang::MemberPointerType>(T)) // what is this seriously? it appears in boost/none_t.hpp and I have no idea what this is supposed to achieve, but CodeGen converts it to ptrdiff_t
         return Type::tptrdiff_t;
@@ -162,6 +175,7 @@ Type *TypeMapper::fromTypeUnqual(const clang::Type *T)
     TYPEMAP(Typedef)
     TYPEMAP(Enum)
     TYPEMAP(Record)
+    TYPEMAP(Elaborated)
     TYPEMAP(TemplateSpecialization)
     TYPEMAP(TemplateTypeParm)
     TYPEMAP(SubstTemplateTypeParm)
@@ -169,6 +183,7 @@ Type *TypeMapper::fromTypeUnqual(const clang::Type *T)
     TYPEMAP(DependentName)
     TYPEMAP(DependentTemplateSpecialization)
     TYPEMAP(Decltype)
+    TYPEMAP(PackExpansion)
 #undef TYPEMAP
 
         // NOTE: the C++ classes don't exactly map to D classes, but we can work
@@ -193,14 +208,14 @@ Type *TypeMapper::fromTypeUnqual(const clang::Type *T)
         if (isPointer)
             return pt->pointerTo();
         else
-            return isNonPODRecord(pointeeT) ? pt : pt->referenceTo();  // special case for classes
+            return tm.isNonPODRecord(pointeeT) ? pt : pt->referenceTo();  // special case for classes
     }
 
     llvm::llvm_unreachable_internal("Unrecognized C++ type");
 }
 
 
-Type *TypeMapper::fromTypeBuiltin(const clang::BuiltinType *T)
+Type *TypeMapper::FromType::fromTypeBuiltin(const clang::BuiltinType *T)
 {
     auto t = calypso.builtinTypes.toD[T];
 
@@ -208,7 +223,7 @@ Type *TypeMapper::fromTypeBuiltin(const clang::BuiltinType *T)
     return t;
 }
 
-Type *TypeMapper::fromTypeComplex(const clang::ComplexType *T)
+Type *TypeMapper::FromType::fromTypeComplex(const clang::ComplexType *T)
 {
     auto& Context = calypso.pch.AST->getASTContext();
     auto dT = T->desugar();
@@ -224,7 +239,7 @@ Type *TypeMapper::fromTypeComplex(const clang::ComplexType *T)
     return nullptr;
 }
 
-Type* TypeMapper::fromTypeArray(const clang::ArrayType* T)
+Type* TypeMapper::FromType::fromTypeArray(const clang::ArrayType* T)
 {
     auto t = fromType(T->getElementType());
 
@@ -235,7 +250,7 @@ Type* TypeMapper::fromTypeArray(const clang::ArrayType* T)
     }
     else if (auto DSAT = dyn_cast<clang::DependentSizedArrayType>(T))
     {
-        auto dim = ExprMapper(*this).fromExpression(DSAT->getSizeExpr());
+        auto dim = ExprMapper(tm).fromExpression(DSAT->getSizeExpr());
         return new TypeSArray(t, dim);
     }
     else if (auto IAT = dyn_cast<clang::IncompleteArrayType>(T))
@@ -246,10 +261,10 @@ Type* TypeMapper::fromTypeArray(const clang::ArrayType* T)
     llvm::llvm_unreachable_internal("Unrecognized C++ array type");
 }
 
-RootObject* TypeMapper::fromTemplateArgument(const clang::TemplateArgument* Arg,
+RootObject* TypeMapper::FromType::fromTemplateArgument(const clang::TemplateArgument* Arg,
                 const clang::NamedDecl *Param)
 {
-    ExprMapper expmap(*this);
+    ExprMapper expmap(tm);
 
     RootObject *tiarg = nullptr;
     switch (Arg->getKind())
@@ -290,7 +305,13 @@ RootObject* TypeMapper::fromTemplateArgument(const clang::TemplateArgument* Arg,
             tiarg = new NullExp(Loc()/*, fromType(Arg->getNullPtrType())*/);
             break;
         case clang::TemplateArgument::Type:
-            tiarg = fromType(Arg->getAsType());
+            tiarg = FromType(tm)(Arg->getAsType());
+            break;
+        case clang::TemplateArgument::Template:
+            tiarg = fromTemplateName(Arg->getAsTemplate());
+            break;
+        case clang::TemplateArgument::Pack:
+            tiarg = fromTemplateArgument(Arg->pack_begin(), Param); // WARNING: this only takes the first arg of the pack
             break;
         default:
             assert(false && "Unsupported template arg kind");
@@ -300,46 +321,132 @@ RootObject* TypeMapper::fromTemplateArgument(const clang::TemplateArgument* Arg,
     return tiarg;
 }
 
-Objects* TypeMapper::fromTemplateArguments(const clang::TemplateArgument *First,
+Objects* TypeMapper::FromType::fromTemplateArguments(const clang::TemplateArgument *First,
                                         const clang::TemplateArgument *End,
-                                        const clang::TemplateDecl *TD)
+                                        const clang::TemplateParameterList *ParamList)
 {
     auto tiargs = new Objects;
-    auto Param = TD ? TD->getTemplateParameters()->begin() : nullptr;
+    auto Param = ParamList ? ParamList->begin() : nullptr;
+
+    const clang::TemplateArgument *Pack = nullptr;
 
     for (auto Arg = First; Arg != End; Arg++)
     {
         auto P = Param ? *Param : nullptr;
         tiargs->push(fromTemplateArgument(Arg, P));
 
-        if (TD)
+        if (ParamList)
             Param++;
+
+        if (Arg->getKind() == clang::TemplateArgument::Pack)
+            Pack = Arg;
+    }
+
+    if (Pack && Pack->pack_size() > 1)
+    {
+        auto Arg = Pack->pack_begin();
+        Arg++;
+
+        for (; Arg != Pack->pack_end(); Arg++)
+            tiargs->push(fromTemplateArgument(Arg));
     }
 
     return tiargs;
 }
 
+class ScopeChecker // determines if a C++ decl is "scopingly" equivalent to another's
+{
+public:
+    const clang::Decl *ScopeDecl, *TemplateDecl;
+
+    ScopeChecker(const clang::Decl *ScopeDecl)
+        : ScopeDecl(ScopeDecl->getCanonicalDecl())
+    {
+        TemplateDecl = dyn_cast<clang::ClassTemplateDecl>(ScopeDecl); // non dependent type decls might have the template as the decl context rather than the instance
+
+        if (auto Spec = dyn_cast<clang::ClassTemplateSpecializationDecl>(ScopeDecl))
+            if (!Spec->isExplicitSpecialization())
+                TemplateDecl = getTemplateSpecializedDecl(Spec);
+
+        if (auto Temp = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(TemplateDecl))
+            TemplateDecl = Temp->getTemplatedDecl();
+
+        if (TemplateDecl)
+            TemplateDecl = TemplateDecl->getCanonicalDecl();
+    }
+
+    bool operator()(const clang::Decl *D)
+    {
+        if (auto Temp = dyn_cast<clang::ClassTemplateDecl>(D))
+            D = Temp->getTemplatedDecl();
+
+        auto Canon = D->getCanonicalDecl();
+        return Canon == ScopeDecl || Canon == TemplateDecl;
+    }
+};
+
+class TypeQualifiedBuilder
+{
+public:
+    TypeMapper::FromType &from;
+    TypeMapper &tm;
+
+    ScopeChecker RootEquals;
+    const clang::TemplateArgument *TopTempArgBegin,
+        *TopTempArgEnd;
+
+    void addIdent(TypeQualified *&tqual,
+                  Identifier *ident);
+    void addInst(TypeQualified *&tqual,
+                 clang::NamedDecl* D,
+                 const clang::TemplateArgument *TempArgBegin,
+                 const clang::TemplateArgument *TempArgEnd);
+
+    TypeQualifiedBuilder(TypeMapper::FromType &from, const clang::Decl* Root,
+        const clang::TemplateArgument *TempArgBegin = nullptr,
+        const clang::TemplateArgument *TempArgEnd = nullptr)
+        : from(from), tm(from.tm), RootEquals(Root),
+          TopTempArgBegin(TempArgBegin),
+          TopTempArgEnd(TempArgEnd) {}
+
+    TypeQualified *get(clang::NamedDecl* ND);
+};
+
+void TypeQualifiedBuilder::addIdent(TypeQualified *&tqual,
+                                    Identifier *ident)
+{
+    if (!tqual)
+        tqual = new TypeIdentifier(Loc(), ident);
+    else
+        tqual->addIdent(ident);
+}
+
 void TypeQualifiedBuilder::addInst(TypeQualified *&tqual,
                 clang::NamedDecl* D,
-                const clang::TemplateArgument *TempArgBegin,
-                const clang::TemplateArgument *TempArgEnd)
+                const clang::TemplateArgument *ArgBegin,
+                const clang::TemplateArgument *ArgEnd)
 {
     auto ident = getIdentifier(D);
     auto loc = fromLoc(D->getLocation());
-    auto CTD = dyn_cast<clang::ClassTemplateDecl>(D);
-    auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(D);
+    auto Spec = dyn_cast<clang::ClassTemplateSpecializationDecl>(D);
 
-    auto tiargs = tm.fromTemplateArguments(TempArgBegin, TempArgEnd,
-            CTSD ? CTSD->getSpecializedTemplate() : CTD);
+    const clang::TemplateDecl *Temp;
+    if (Spec)
+        Temp = Spec->getSpecializedTemplate();
+    else
+        Temp = dyn_cast<clang::TemplateDecl>(D);
+
+    auto tiargs = from.fromTemplateArguments(ArgBegin, ArgEnd,
+            Temp->getTemplateParameters());
 
     auto tempinst = new cpp::TemplateInstance(loc, ident);
     tempinst->tiargs = tiargs;
 
     // NOTE: To reduce DMD -> Clang translations to a minimum we don't instantiate ourselves whenever possible, i.e when the template instance is already declared or defined in the PCH. If it's only declared, there's a chance the specialization wasn't emitted in the C++ libraries, so we tell Sema to complete its instantiation.
-    if (CTSD)
+    if (Spec && !isa<clang::ClassTemplatePartialSpecializationDecl>(Spec))
     {
         tempinst->Instances[ident] = D;
-        tempinst->completeInst(tm.mod);
+        tempinst->completeInst(tm.getInstantiatingModule());
     }
 
     if (!tqual)
@@ -348,62 +455,117 @@ void TypeQualifiedBuilder::addInst(TypeQualified *&tqual,
         tqual->addInst(tempinst);
 }
 
-TypeQualified *TypeQualifiedBuilder::get(clang::NamedDecl* ND)
+TypeQualified *TypeQualifiedBuilder::get(clang::NamedDecl *ND)
 {
-    const clang::Decl *DCDecl = ND;
-    if (auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(ND))
-        DCDecl = CTSD->getSpecializedTemplate();
-    else if (!isa<clang::TagDecl>(ND) && !isa<clang::ClassTemplateDecl>(ND))
-        DCDecl = cast<clang::Decl>(ND->getDeclContext());
-    DCDecl = DCDecl->getCanonicalDecl();
-
     TypeQualified *tqual;
-    if (DCDecl == Root)
-        tqual = nullptr;
-    else
+
+    if (from.prefix)
     {
-        auto ParentDecl = cast<clang::Decl>(
-                ND->getDeclContext())->getCanonicalDecl();
-        tqual = get(
-                cast<clang::NamedDecl>(ParentDecl));
+        tqual = from.prefix; // special case where the prefix has already been determined from a NNS
+        goto LtqualDone;
     }
 
+    if (RootEquals(ND))
+        tqual = nullptr;
+    else if (ScopeChecker(tm.GetTopMostDeclContext(ND))
+            (ND))  // Root isn't even the implicit import key, there was a name collision => build a fully qualified type
+    {
+        // build a fake import
+        auto im = tm.BuildImplicitImport(ND);
+
+        tqual = nullptr;
+        for (size_t i = 0; i < im->packages->dim; i++)
+            addIdent(tqual, (*im->packages)[i]);
+        addIdent(tqual, im->id);
+    }
+    else
+        tqual = get(cast<clang::NamedDecl>(ND->getDeclContext()));
+
+LtqualDone:
     auto ident = getIdentifierOrNull(ND);
     if (!ident)
         return tqual;
 
-    if (auto CTD = dyn_cast<clang::ClassTemplateDecl>(ND))
-        addInst(tqual, CTD, TopTempArgBegin, TopTempArgEnd);
-    else if (auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(ND))
+    auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(ND);
+
+    if (isa<clang::ClassTemplateDecl>(ND) || isa<clang::TypeAliasTemplateDecl>(ND))
+    {
+        addInst(tqual, ND, TopTempArgBegin, TopTempArgEnd);
+        TopTempArgBegin = TopTempArgEnd = nullptr;  // just to be sure, because what happens if there are multiple TypeAliasTemplateDecl in the same qualified type?
+    }
+    else if (CTSD && !tm.isInjectedClassName(CTSD))
     {
         auto TempArgs = CTSD->getTemplateArgs().asArray();
         addInst(tqual, CTSD, TempArgs.begin(), TempArgs.end());
     }
     else
-    {
-        if (!tqual)
-            tqual = new TypeIdentifier(Loc(), ident);
-        else
-            tqual->addIdent(ident);
-    }
+        addIdent(tqual, ident);
 
     return tqual;
 }
 
-Type *TypeMapper::typeQualifiedFor(clang::NamedDecl* ND,
+Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* ND,
     const clang::TemplateArgument *TempArgBegin,
     const clang::TemplateArgument *TempArgEnd)
 {
     if (!ND->getIdentifier())
         return new TypeNull; // FIXME anonymous record or enum
 
-    AddImplicitImportForDecl(ND);
+    const clang::Decl *Root;
+    decltype(CXXScope) ScopeStack(tm.CXXScope);
 
-    auto Root = GetImplicitImportKeyForDecl(ND);
+    auto Name = ND->getDeclName();
+
+    // This is currently the only place where a "C++ scope" is used, this is
+    // especially needed for identifier lookups during template instantiations
+    while (!ScopeStack.empty())
+    {
+        auto ScopeDecl = ScopeStack.top();
+        ScopeStack.pop();
+        ScopeChecker ScopeDeclEquals(ScopeDecl);
+
+        const clang::Decl *DCDecl = ND;
+        while(!isa<clang::TranslationUnitDecl>(DCDecl))
+        {
+            if (ScopeDeclEquals(DCDecl))
+            {
+                Root = ScopeDecl;
+                goto LrootDone;
+            }
+
+            auto DC = DCDecl->getDeclContext();
+            while (!isa<clang::Decl>(DC))
+                DC = DC->getParent();
+            DCDecl = cast<clang::Decl>(DC);
+        }
+
+        auto ScopeDC = cast<clang::DeclContext>(ScopeDecl);
+        auto LookupResult = ScopeDC->lookup(Name);
+        for (auto Decl: LookupResult)
+        {
+            if (Decl->isImplicit())
+                continue;
+
+            if (ND->getCanonicalDecl() != Decl->getCanonicalDecl())
+            {
+                Root = ND->getTranslationUnitDecl(); // to avoid name collisions, we do a static import and fully qualify the type
+                goto LrootDone;
+            }
+        }
+    }
+
+    if (!isa<clang::TagDecl>(getDeclContextNamedOrTU(ND)))
+        Root = ND;
+    else
+        Root = tm.GetTopMostDeclContext(ND);
+
+LrootDone:
+    tm.AddImplicitImportForDecl(ND);
+
     return TypeQualifiedBuilder(*this, Root, TempArgBegin, TempArgEnd).get(ND);
 }
 
-Type* TypeMapper::fromTypeTypedef(const clang::TypedefType* T)
+Type* TypeMapper::FromType::fromTypeTypedef(const clang::TypedefType* T)
 {
     auto TD = T->getDecl();
     // Temporary HACK to avoid importing "_" just because of typedefs (eg size_t)
@@ -414,17 +576,38 @@ Type* TypeMapper::fromTypeTypedef(const clang::TypedefType* T)
     return typeQualifiedFor(T->getDecl());
 }
 
-Type* TypeMapper::fromTypeEnum(const clang::EnumType* T)
+Type* TypeMapper::FromType::fromTypeEnum(const clang::EnumType* T)
 {
     return typeQualifiedFor(T->getDecl());
 }
 
-Type *TypeMapper::fromTypeRecord(const clang::RecordType *T)
+Type *TypeMapper::FromType::fromTypeRecord(const clang::RecordType *T)
 {
     return typeQualifiedFor(T->getDecl());
 }
 
-TypeQualified *TypeMapper::fromTemplateName(const clang::TemplateName Name,
+Type *TypeMapper::FromType::fromTypeElaborated(const clang::ElaboratedType *T)
+{
+    // NOTE: Why must we respect NestedNameSpecifiers? Because of this situation:
+    //     template<typename _Iterator>
+    //       class reverse_iterator
+    //       : public iterator<typename iterator_traits<_Iterator>::iterator_category>
+    //
+    // When mapping the template DMD will add an import to iterator_traits, but when
+    // the instance of iterator will mapped, iterator_category will have the *base* class
+    // of the specialization of iterator_traits, __iterator_traits as its parent decl context,
+    // I.e __iterator_traits::iterator_category
+    // But iterator isn't aware of __iterator_traits so lookup error.
+    // The NNS will always be known, so use it.
+
+    TypeQualified *tqual = nullptr;
+    if (auto NNS = T->getQualifier())
+        tqual = fromNestedNameSpecifier(NNS);
+
+    return FromType(tm, tqual)(T->desugar());
+}
+
+TypeQualified *TypeMapper::FromType::fromTemplateName(const clang::TemplateName Name,
                 const clang::TemplateArgument *ArgBegin,
                 const clang::TemplateArgument *ArgEnd)
 {
@@ -438,7 +621,7 @@ TypeQualified *TypeMapper::fromTemplateName(const clang::TemplateName Name,
                 ArgBegin, ArgEnd);
 
         case clang::TemplateName::SubstTemplateTemplateParm:
-            tempIdent = getIdentifierForTemplateTemplateParm(
+            tempIdent = tm.getIdentifierForTemplateTemplateParm(
                     Name.getAsSubstTemplateTemplateParm()->getParameter());
             break;
 
@@ -456,7 +639,7 @@ TypeQualified *TypeMapper::fromTemplateName(const clang::TemplateName Name,
     {
         auto ti = new cpp::TemplateInstance(Loc(), tempIdent);
         ti->tiargs = fromTemplateArguments(ArgBegin, ArgEnd,
-                                        Name.getAsTemplateDecl());
+                                        Name.getAsTemplateDecl()->getTemplateParameters());
 
         return new TypeInstance(Loc(), ti);
     }
@@ -464,7 +647,7 @@ TypeQualified *TypeMapper::fromTemplateName(const clang::TemplateName Name,
         return new TypeIdentifier(Loc(), tempIdent);
 }
 
-Type* TypeMapper::fromTypeTemplateSpecialization(const clang::TemplateSpecializationType* T)
+Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::TemplateSpecializationType* T)
 {
     auto tqual = fromTemplateName(T->getTemplateName(),
                             T->begin(), T->end());
@@ -473,7 +656,8 @@ Type* TypeMapper::fromTypeTemplateSpecialization(const clang::TemplateSpecializa
     {
         // NOTE: To reduce DMD -> Clang translations to a minimum we don't instantiate ourselves whenever possible, i.e when the template instance is already declared or defined in the PCH. If it's only declared, there's a chance the specialization wasn't emitted in the C++ libraries, so we tell Sema to complete its instantiation.
 
-        if (auto RT = dyn_cast<clang::RecordType>(T->desugar().getTypePtr()))
+        auto RT = T->getAs<clang::RecordType>();
+        if (RT && !RT->isDependentType())
         {
             RootObject *o;
             if (tqual->idents.empty())
@@ -483,7 +667,7 @@ Type* TypeMapper::fromTypeTemplateSpecialization(const clang::TemplateSpecializa
             auto ti = (cpp::TemplateInstance*)o;
 
             ti->Instances[ti->name] = RT->getDecl();
-            ti->completeInst(mod);
+            ti->completeInst(tm.getInstantiatingModule());
         }
     }
 
@@ -497,6 +681,10 @@ Identifier *TypeMapper::getIdentifierForTemplateTypeParm(const clang::TemplateTy
     else
     {
         auto ParamList = templateParameters[T->getDepth()];
+
+        if (T->getIndex() >= ParamList->size()) // this happens when the latter parameters are unnamed and have a default argument
+            goto LgenId;
+
         auto Param = ParamList->getParam(T->getIndex());
 
         // Most of the time the identifier does exist in the TemplateTypeParmDecl
@@ -504,6 +692,7 @@ Identifier *TypeMapper::getIdentifierForTemplateTypeParm(const clang::TemplateTy
             return fromIdentifier(Id);
     }
 
+LgenId:
     // This should only ever happen in template param decl mapping
     ::warning(Loc(), "Generating identifier for anonymous C++ type template parameter");
 
@@ -531,26 +720,26 @@ Identifier *TypeMapper::getIdentifierForTemplateTemplateParm(const clang::Templa
     return Lexer::idPool(OS.str().c_str());
 }
 
-Type* TypeMapper::fromTypeTemplateTypeParm(const clang::TemplateTypeParmType* T)
+Type* TypeMapper::FromType::fromTypeTemplateTypeParm(const clang::TemplateTypeParmType* T)
 {
-    auto ident = getIdentifierForTemplateTypeParm(T);
+    auto ident = tm.getIdentifierForTemplateTypeParm(T);
     return new TypeIdentifier(Loc(), ident);
 }
 
-Type* TypeMapper::fromTypeSubstTemplateTypeParm(const clang::SubstTemplateTypeParmType* T)
+Type* TypeMapper::FromType::fromTypeSubstTemplateTypeParm(const clang::SubstTemplateTypeParmType* T)
 {
     // NOTE: it's necessary to "revert" resolved symbol names of C++ template instantiations by Sema to the parameter name because the template instance cut access to its scope to its members, and the only links that remain are the AliasDeclarations created by TemplateInstance::declareParameters
 
     return fromTypeTemplateTypeParm(T->getReplacedParameter());
 }
 
-Type* TypeMapper::fromTypeInjectedClassName(const clang::InjectedClassNameType* T) // e.g in template <...> class A { A &next; } next has an injected class name type
+Type* TypeMapper::FromType::fromTypeInjectedClassName(const clang::InjectedClassNameType* T) // e.g in template <...> class A { A &next; } next has an injected class name type
 {
     auto className = fromIdentifier(T->getDecl()->getIdentifier());
     return new TypeIdentifier(Loc(), className);
 }
 
-TypeQualified* TypeMapper::fromNestedNameSpecifier(const clang::NestedNameSpecifier* NNS)
+TypeQualified* TypeMapper::FromType::fromNestedNameSpecifier(const clang::NestedNameSpecifier* NNS)
 {
     TypeQualified *result = nullptr;
 
@@ -574,16 +763,18 @@ TypeQualified* TypeMapper::fromNestedNameSpecifier(const clang::NestedNameSpecif
         case clang::NestedNameSpecifier::TypeSpecWithTemplate:
         {
             auto t = fromTypeUnqual(NNS->getAsType());
-
-            if (t->ty == Tinstance)
-                result = (TypeInstance*) t;
-            else if (t->ty == Tident)
-                result = (TypeIdentifier*) t;
+            assert(t->ty == Tinstance || t->ty == Tident);
+            result = (TypeQualified*) t;
             break;
         }
 
+        case clang::NestedNameSpecifier::Namespace:
+        case clang::NestedNameSpecifier::NamespaceAlias:
+        case clang::NestedNameSpecifier::Global:
+            return nullptr;  // not dependent, no derived <> base decl context issue so building a TypeQualified after the NNS is unnecessary
+
         default:
-            assert(false && "Unexpected nested name specifier kind for a Dependent*****Type");
+            assert(false && "Unsupported nested name specifier kind");
     }
 
     return result;
@@ -592,7 +783,7 @@ TypeQualified* TypeMapper::fromNestedNameSpecifier(const clang::NestedNameSpecif
 // NOTE: Dependent***Type are not mandatory to get templates working because the instantiation is done by Sema
 // and then DMD simply maps the resulting class or function specialization, so we could return TypeNull and it would still work.
 // Still good for reflection.
-Type* TypeMapper::fromTypeDependentName(const clang::DependentNameType* T)
+Type* TypeMapper::FromType::fromTypeDependentName(const clang::DependentNameType* T)
 {
     TypeQualified *tqual = nullptr;
 
@@ -608,7 +799,7 @@ Type* TypeMapper::fromTypeDependentName(const clang::DependentNameType* T)
     return tqual;
 }
 
-Type* TypeMapper::fromTypeDependentTemplateSpecialization(const clang::DependentTemplateSpecializationType* T)
+Type* TypeMapper::FromType::fromTypeDependentTemplateSpecialization(const clang::DependentTemplateSpecializationType* T)
 {
     TypeQualified *tqual = nullptr;
 
@@ -629,16 +820,40 @@ Type* TypeMapper::fromTypeDependentTemplateSpecialization(const clang::Dependent
     return tqual;
 }
 
-Type* TypeMapper::fromTypeDecltype(const clang::DecltypeType* T)
+Type* TypeMapper::FromType::fromTypeDecltype(const clang::DecltypeType* T)
 {
     if (T->isSugared())  // TODO: remove this for reflection
         return fromType(T->desugar());
 
-    auto exp = ExprMapper(*this).fromExpression(T->getUnderlyingExpr());
+    auto exp = ExprMapper(tm).fromExpression(T->getUnderlyingExpr());
     if (exp) // temporary? some decltype use CallExpr, which I feel would make getting things working much harder for little gain since templates are instantiated by Sema
         return new TypeTypeof(Loc(), exp);
     else
         return new TypeNull;
+}
+
+Type* TypeMapper::FromType::fromTypePackExpansion(const clang::PackExpansionType* T)
+{
+    return fromType(T->getPattern());
+}
+
+// This is to check whether template arguments have to be omitted
+// There may be a more elegant way but for now that'll do
+bool TypeMapper::isInjectedClassName(clang::Decl *D)
+{
+    D = D->getCanonicalDecl();
+
+    decltype(TypeMapper::CXXScope) ScopeStack(CXXScope);
+    while(!ScopeStack.empty())
+    {
+        auto ScopeDecl = ScopeStack.top();
+        ScopeStack.pop();
+
+        if (D == ScopeDecl->getCanonicalDecl())
+            return true;
+    }
+
+    return false;
 }
 
 bool TypeMapper::isNonPODRecord(const clang::QualType T)
@@ -666,7 +881,7 @@ bool TypeMapper::isNonPODRecord(const clang::QualType T)
     return !CRD->isPOD();
 }
 
-TypeFunction *TypeMapper::fromTypeFunction(const clang::FunctionProtoType* T)
+TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoType* T)
 {
     auto params = new Parameters;
     params->reserve(T->getNumParams());
@@ -675,13 +890,13 @@ TypeFunction *TypeMapper::fromTypeFunction(const clang::FunctionProtoType* T)
                 I != E; I++)
     {
         // FIXME we're ignoring functions with unhandled types i.e class values
-        if (isNonPODRecord(*I))
+        if (tm.isNonPODRecord(*I))
             return nullptr;
 
-        params->push(new Parameter(STCundefined, fromType(*I), nullptr, nullptr));
+        params->push(new Parameter(STCundefined, FromType(tm)(*I), nullptr, nullptr));
     }
 
-    return new TypeFunction(params, fromType(T->getReturnType()), 0, LINKd);  // does LINK matter?
+    return new TypeFunction(params, FromType(tm)(T->getReturnType()), 0, LINKd);  // does LINK matter?
 }
 
 // In D if a class is inheriting from another module's class, then its own module has to import the base class' module.
@@ -703,31 +918,38 @@ void TypeMapper::AddImplicitImportForDecl(const clang::NamedDecl* ND)
 
     auto im = BuildImplicitImport(ND);
     implicitImports[D] = im;
-    mod->members->insert(0, im);
+    mod->members->shift(im);
+}
+
+const clang::Decl* TypeMapper::GetImplicitImportKeyForDecl(const clang::NamedDecl* D)
+{
+    auto TopMost = GetTopMostDeclContext(D);
+
+    if (auto Spec = dyn_cast<clang::ClassTemplateSpecializationDecl>(TopMost))
+        return GetImplicitImportKeyForDecl(Spec->getSpecializedTemplate());
+
+    return TopMost->getCanonicalDecl();
 }
 
 // Record -> furthest parent tagdecl
 // Other decl in namespace -> the canonical namespace decl
 // Other decl in TU -> the TU
-const clang::Decl* TypeMapper::GetImplicitImportKeyForDecl(const clang::NamedDecl* D)
+const clang::Decl *TypeMapper::GetTopMostDeclContext(const clang::Decl *D)
 {
-    auto ParentDC = getDeclContextNamedOrTU(D);
+    if (isa<clang::TranslationUnitDecl>(D))
+        return D;
+
+    auto ParentDC = cast<clang::Decl>(
+                        getDeclContextNamedOrTU(D));
 
     if (auto ParentTag = dyn_cast<clang::TagDecl>(ParentDC))
-        return GetImplicitImportKeyForDecl(ParentTag);
+        return GetTopMostDeclContext(ParentTag);
 
-    if (auto CSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(D))
-        return GetImplicitImportKeyForDecl(CSD->getSpecializedTemplate());
+    if (isa<clang::ClassTemplateDecl>(D) || isa<clang::TagDecl>(D) ||
+        isa<clang::NamespaceDecl>(D))
+        return D;
 
-    const clang::Decl *result;
-    if (isa<clang::ClassTemplateDecl>(D) || isa<clang::TagDecl>(D))
-        result = D;
-    else if (auto NS = dyn_cast<clang::NamespaceDecl>(ParentDC))
-        result = NS;
-    else
-        result = cast<clang::TranslationUnitDecl>(ParentDC);
-
-    return result->getCanonicalDecl();
+    return GetTopMostDeclContext(ParentDC);
 }
 
 ::Import *TypeMapper::BuildImplicitImport(const clang::Decl *ND)
@@ -784,6 +1006,87 @@ bool TypeMapper::BuildImplicitImportInternal(const clang::DeclContext *DC, Loc l
     return false;
 }
 
+/***** DMD -> Clang types *****/
+
+clang::QualType TypeMapper::toType(Loc loc, Type* t, Scope *sc)
+{
+    auto& Context = calypso.pch.AST->getASTContext();
+
+    if (auto builtin = calypso.builtinTypes.toClang[t])
+        return clang::QualType(builtin, 0);
+
+    switch (t->ty)
+    {
+        case Tstruct:
+        case Tclass:
+        {
+            const clang::RecordDecl *RD;
+
+            if (t->ty == Tstruct)
+            {
+                auto sd = static_cast<TypeStruct*>(t)->sym;
+                assert(isCPP(sd)); // FIXME: C++ template instanciation are supposed to happen only with types known to Clang for the time being
+                RD = static_cast<cpp::StructDeclaration*>(sd)->RD;
+            }
+            else
+            {
+                auto cd = static_cast<TypeClass*>(t)->sym;
+                assert(isCPP(cd));
+                RD = static_cast<cpp::ClassDeclaration*>(cd)->RD;
+            }
+
+            return Context.getRecordType(RD);
+        }
+        case Tenum:
+        {
+            auto ed = static_cast<TypeEnum*>(t)->sym;
+            assert(isCPP(ed));
+            auto ED = static_cast<cpp::EnumDeclaration*>(ed)->ED;
+
+            return Context.getEnumType(ED);
+        }
+        case Ttypedef:  // NOTE: these aren't the AliasDecl created by DeclMapper
+        {
+            auto td = static_cast<TypeTypedef*>(t)->sym;
+            return toType(loc, td->basetype, sc);
+        }
+        case Tident:
+        case Tinstance:
+        {
+            t = t->semantic(loc, sc);
+            return toType(loc, t, sc);
+        }
+        case Tpointer:
+        case Treference:
+        {
+            auto Pointee = toType(loc, t->nextOf(), sc);
+
+            if (t->ty == Tpointer)
+                return Context.getPointerType(Pointee);
+            else
+                return Context.getLValueReferenceType(Pointee);
+        }
+        case Tfunction:
+        {
+            auto tf = static_cast<TypeFunction*>(t);
+
+            auto ResultTy = toType(loc, tf->next, sc);
+
+            llvm::SmallVector<clang::QualType, 4> Args;
+            for (auto p: *tf->parameters)
+                Args.push_back(toType(loc, p->type, sc));
+
+            clang::FunctionProtoType::ExtProtoInfo EPI;
+            return Context.getFunctionType(ResultTy, Args, EPI);
+        }
+        // TODO arrays
+    }
+
+    llvm::llvm_unreachable_internal("Unhandled D -> Clang type conversion");
+}
+
+/***** *****/
+
 TypeMapper::TypeMapper(cpp::Module* mod)
     : mod(mod)
 {
@@ -797,6 +1100,19 @@ const clang::DeclContext *getDeclContextNamedOrTU(const clang::Decl *D)
         DC = DC->getParent();
 
     return DC;
+}
+
+const clang::NamedDecl *getTemplateSpecializedDecl(const clang::ClassTemplateSpecializationDecl *Spec)
+{
+    if (Spec->isExplicitSpecialization())
+        return Spec;
+
+    auto U = Spec->getSpecializedTemplateOrPartial();
+
+    if (U.is<clang::ClassTemplateDecl*>())
+        return U.get<clang::ClassTemplateDecl*>();
+    else
+        return U.get<clang::ClassTemplatePartialSpecializationDecl*>();
 }
 
 }

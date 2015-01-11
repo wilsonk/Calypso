@@ -1,18 +1,20 @@
 // Contributed by Elie Morisse, same license DMD uses
 
-#include "calypso.h"
-#include "cppimport.h"
-#include "cppmodule.h"
-#include "cppaggregate.h"
+#include "cpp/calypso.h"
+#include "cpp/cppimport.h"
+#include "cpp/cppmodule.h"
+#include "cpp/cppaggregate.h"
 
-#include "../aggregate.h"
-#include "../declaration.h"
-#include "../lexer.h"
-#include "../expression.h"
+#include "aggregate.h"
+#include "declaration.h"
+#include "id.h"
+#include "lexer.h"
+#include "expression.h"
 
 #include "../../driver/tool.h"
 #include "../../driver/cl_options.h"
 
+#include "clang/AST/DeclTemplate.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Frontend/ASTUnit.h"
@@ -22,6 +24,10 @@
 
 namespace cpp
 {
+
+using llvm::cast;
+using llvm::dyn_cast;
+using llvm::isa;
 
 LangPlugin calypso;
 
@@ -36,6 +42,19 @@ Identifier *fromIdentifier(const clang::IdentifierInfo *II)
 
 Identifier *getIdentifierOrNull(const clang::NamedDecl* D)
 {
+    if (auto FTD = dyn_cast<clang::FunctionTemplateDecl>(D))
+        D = FTD->getTemplatedDecl(); // same ident, can dyn_cast
+
+    if (isa<clang::CXXConstructorDecl>(D))
+        return Id::ctor;
+    else if (isa<clang::CXXDestructorDecl>(D))
+        return Id::dtor;
+    else if (auto MD = dyn_cast<clang::CXXMethodDecl>(D))
+    {
+        if (MD->isOverloadedOperator())
+            assert(false && "getIdentifierOrNull called on overloaded operator");
+    }
+
     clang::IdentifierInfo *II = nullptr;
 
     if (D->getIdentifier())
