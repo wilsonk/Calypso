@@ -508,6 +508,10 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* ND,
     const clang::TemplateArgument *TempArgBegin,
     const clang::TemplateArgument *TempArgEnd)
 {
+    if (!TempArgBegin)
+        if (auto subst = tm.trySubstitute(ND)) // HACK for correctTiargs
+            return subst;
+
     if (!ND->getIdentifier())
         return new TypeNull; // FIXME anonymous record or enum
 
@@ -563,6 +567,37 @@ LrootDone:
     tm.AddImplicitImportForDecl(ND);
 
     return TypeQualifiedBuilder(*this, Root, TempArgBegin, TempArgEnd).get(ND);
+}
+
+Type *TypeMapper::trySubstitute(const clang::Decl *D)
+{
+    if (!substsyms)
+        return nullptr;
+
+    for (auto s: *substsyms)
+    {
+#define SUBST(Kind, Sym) \
+        else if (s->is##Kind##Declaration())  \
+        { \
+            auto Known = static_cast<cpp::Kind##Declaration*>(s)->Sym; \
+            if (Known->getCanonicalDecl() != D->getCanonicalDecl()) \
+                continue; \
+            return new Type##Kind(static_cast<Kind##Declaration*>(s)); \
+        }
+
+        if (0) ;
+        SUBST(Struct, RD)
+        SUBST(Class, RD)
+        SUBST(Enum, ED)
+        else if (s->isTemplateDeclaration())
+            continue;
+        else
+            assert(false && "Unexpected symbol kind");
+
+#undef SUBST
+    }
+
+    return nullptr;
 }
 
 Type* TypeMapper::FromType::fromTypeTypedef(const clang::TypedefType* T)
@@ -657,6 +692,11 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
         // NOTE: To reduce DMD -> Clang translations to a minimum we don't instantiate ourselves whenever possible, i.e when the template instance is already declared or defined in the PCH. If it's only declared, there's a chance the specialization wasn't emitted in the C++ libraries, so we tell Sema to complete its instantiation.
 
         auto RT = T->getAs<clang::RecordType>();
+
+        if (RT)
+            if (auto subst = tm.trySubstitute(RT->getDecl())) // HACK for correctTiargs
+                return subst;
+
         if (RT && !RT->isDependentType())
         {
             RootObject *o;

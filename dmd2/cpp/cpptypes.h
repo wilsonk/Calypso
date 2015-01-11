@@ -56,6 +56,7 @@ public:
 
     bool addImplicitDecls = true;
     ::Module *instMod = nullptr; // only used during the semantic pass for C++ template instantiations
+    Dsymbols *substsyms = nullptr; // only for TempateInstance::correctTiargs (partial spec arg deduction)
 
     ::Module *getInstantiatingModule() { return instMod ? instMod : (::Module*) mod; }
 
@@ -134,6 +135,8 @@ protected:
     bool isNonPODRecord(const clang::QualType T);
     const clang::Decl *GetImplicitImportKeyForDecl(const clang::NamedDecl *D);
     const clang::Decl *GetTopMostDeclContext(const clang::Decl *D);  // returns the "root" for qualified types
+
+    Type *trySubstitute(const clang::Decl *D);
 
     friend class cpp::TypeQualifiedBuilder;
 };

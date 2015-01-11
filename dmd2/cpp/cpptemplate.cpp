@@ -3,6 +3,8 @@
 #include "cpp/cpptemplate.h"
 #include "cpp/cppdeclaration.h"
 #include "cpp/cppexpression.h"
+#include "aggregate.h"
+#include "enum.h"
 #include "scope.h"
 
 #include "clang/AST/DeclCXX.h"
@@ -276,6 +278,58 @@ void TemplateInstance::completeInst(::Module *instMod)
     }
 }
 
+// HACK-ish unfortunately.. but partial spec arg deduction isn't trivial. Can't think of a simpler way.
+struct CppSymCollector
+{
+    Dsymbols *substsyms;
+    CppSymCollector(Dsymbols *substsyms)
+        : substsyms(substsyms) {}
+
+    inline void addIfCPP(Dsymbol *s)
+    {
+        if (isCPP(s))
+            substsyms->push(s);
+    }
+
+    void collect(Dsymbol *s)
+    {
+        addIfCPP(s);
+    }
+
+    void collect(Type *t)
+    {
+        switch (t->ty)
+        {
+            case Tstruct:
+                addIfCPP(static_cast<TypeStruct*>(t)->sym);
+                break;
+            case Tclass:
+                addIfCPP(static_cast<TypeClass*>(t)->sym);
+                break;
+            case Tenum:
+                addIfCPP(static_cast<TypeEnum*>(t)->sym);
+                break;
+            case Tarray:
+            case Tsarray:
+            case Tpointer:
+            case Treference:
+                collect(static_cast<TypeNext*>(t)->next);
+                break;
+            case Tident:
+            case Tinstance:
+            default:
+//                 ::warning(Loc(), "Collecting C++ symbols unhandled for type %s:\"%s\"",
+//                           t->kind(), t->toChars());
+                break;
+        }
+    }
+
+    void collect(Expression *e)
+    {
+        // TODO DotIdExp ...
+    }
+};
+
 void TemplateInstance::correctTiargs()
 {
     auto Inst = Instances[name];
@@ -289,12 +343,30 @@ void TemplateInstance::correctTiargs()
     // Correction is only needed for instances from partial specs
     if (auto Partial = dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(TempOrSpec))
     {
-        TypeMapper tymap; tymap.addImplicitDecls = false;
         auto Args = CTSD->getTemplateInstantiationArgs().asArray();
-            // FIXME FIXME The issue here, is that the arguments are already substitued.
-            // Template arguments deduction for partial specializations do not make use of any outside type, everything is contained in one form or another in the original arguments
+            // NOTE: The issue with getTemplateInstantiationArgs() is that the arguments are already substitued.
+            // Since the deduced arguments are contained in one form or another in the original args,
+            // the trick is to reference C++ symbols inside the original args and tell TypeMapper to use them.
+
+        auto substsyms = new Dsymbols;
+        CppSymCollector collector(substsyms);
+        for (auto o: *tiargs)
+        {
+            Type *ta = isType(o);
+            Expression *ea = isExpression(o);
+            Dsymbol *sa = isDsymbol(o);
+
+            if (ta) collector.collect(ta);
+            else if (ea) collector.collect(ea);
+            else { assert(sa); collector.collect(sa); }
+        }
 
         origTiargs = tiargs;
+
+        TypeMapper tymap;
+        tymap.addImplicitDecls = false;
+        tymap.substsyms = substsyms;
+
         tiargs = TypeMapper::FromType(tymap).fromTemplateArguments(Args.begin(), Args.end(),
                         Partial->getTemplateParameters());
     }
