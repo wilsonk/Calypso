@@ -273,7 +273,7 @@ void ClassDeclaration::buildLayout()
         auto s = (*members)[i];
         
         auto vd = s->isVarDeclaration();
-        if (!vd)
+        if (!vd || !isCPP(vd)) // this might be vthis
             continue;
         
         auto c_vd = static_cast<VarDeclaration*>(vd);
