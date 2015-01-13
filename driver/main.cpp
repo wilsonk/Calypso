@@ -969,7 +969,6 @@ static void genModules(Modules &modules,
 int main(int argc, char **argv)
 {
     global.langPlugins.push_back(&cpp::calypso);
-    cpp::calypso.init();
 
     // stack trace on signals
     llvm::sys::PrintStackTraceOnErrorSignal();
@@ -1070,6 +1069,8 @@ int main(int argc, char **argv)
     initPrecedence();
     builtin_init();
     initTraitsStringTable();
+
+    cpp::calypso.init(); // CALYPSO HACK
 
     // Build import search path
     if (global.params.imppath)

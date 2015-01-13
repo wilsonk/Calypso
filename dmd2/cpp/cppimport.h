@@ -28,8 +28,7 @@ public:
     Import(Loc loc, Identifiers *packages, Identifier *id, Identifier *aliasId,
         int isstatic);
 
-    ::Module *loadModule(Loc loc, Identifiers *packages, Identifier *ident);
-//     void semantic(Scope *sc);
+    ::Module *loadModule(Loc loc, Identifiers *packages, Identifier *id);
 };
 
 struct Modmap : public ::Modmap

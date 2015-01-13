@@ -51,6 +51,7 @@ public:
 
     Import(Loc loc, Identifiers *packages, Identifier *id, Identifier *aliasId,
         int isstatic);
+    void setSymIdent(); // CALYPSO
     void addAlias(Identifier *name, Identifier *alias);
     const char *kind();
     PROT prot();
@@ -66,7 +67,7 @@ public:
     void toCBuffer(OutBuffer *buf, HdrGenState *hgs);
 
     // CALYPSO
-    virtual Module *loadModule(Loc loc, Identifiers *packages, Identifier *ident);
+    virtual Module *loadModule(Loc loc, Identifiers *packages, Identifier *id);
 
     Import *isImport() { return this; }
     void accept(Visitor *v) { v->visit(this); }

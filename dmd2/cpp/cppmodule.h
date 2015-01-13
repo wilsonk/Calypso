@@ -26,7 +26,7 @@ public:
 
     const clang::Decl *rootDecl = nullptr; // the decl we're generating the module for
 
-    static DsymbolTable *modules;   // symbol tree of all C/C++ modules
+    static Package *rootPackage;    // package to store all C++ packages/modules, avoids name clashes (e.g std)
     static Modules amodules;            // array of all modules
     static void init();
 

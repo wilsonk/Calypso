@@ -18,23 +18,24 @@ Import::Import(Loc loc, Identifiers *packages, Identifier *id, Identifier *alias
         int isstatic)
     : ::Import(loc, packages, id, aliasId, isstatic)
 {
+    // add "cpp" as leftmost package to avoid name clashes
+    if (!packages)
+        packages = new Identifiers;
+    packages->shift(Lexer::idPool("cpp"));  // any better idea ?
 
+    setSymIdent();
 }
 
-::Module* Import::loadModule(Loc loc, Identifiers* packages, Identifier* ident)
+::Module* Import::loadModule(Loc loc, Identifiers* packages, Identifier* id)
 {
     calypso.pch.update();
-    return Module::load(loc, packages, ident);
-}
 
-// void Import::semantic(Scope *sc)
-// {
-// }
+    return Module::load(loc, packages, id);
+}
 
 Modmap::Modmap(Loc loc, StringExp *arg)
     : ::Modmap(loc, arg)
 {
-
 }
 
 void Modmap::importAll(Scope *sc)

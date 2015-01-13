@@ -42,12 +42,15 @@ using llvm::isa;
 
 /********************************/
 
-DsymbolTable *Module::modules;
+Package *Module::rootPackage;
 Modules Module::amodules;
 
 void Module::init()
 {
-    modules = new DsymbolTable();
+    rootPackage = new Package(Lexer::idPool("cpp"));
+    rootPackage->symtab = new DsymbolTable;
+
+    modules->insert(rootPackage);
 }
 
 static void combine(char *&objfn, Identifier *id)
@@ -75,7 +78,7 @@ Module::Module(const char* filename, Identifier* ident, Identifiers *packages)
     char *objfn = strdup(objPrefix);
 
     // e.g __cpp_package_package_module.o
-    for (size_t i = 0; i < packages->dim; i++)
+    for (size_t i = 1; i < packages->dim; i++)
     {
         Identifier *pid = (*packages)[i];
         combine(objfn, pid);
@@ -777,7 +780,7 @@ Dsymbol* DeclMapper::VisitEnumDecl(const clang::EnumDecl* D)
 std::string moduleName(Identifiers *packages, Identifier *ident)
 {
     std::string result = "__cpp/";
-    for (size_t i = 0; i < packages->dim; i++)
+    for (size_t i = 1; i < packages->dim; i++)
     {
         Identifier *pid = (*packages)[i];
         result.append(pid->string, pid->len);
@@ -837,62 +840,50 @@ clang::DeclContext::lookup_const_result wideLookup(Loc loc,
 // would add many further obstacles to get Calypso working, so I've decided to stick to one big PCH for the
 // time being. Once Calypso is working fixing C++ modules should be a TODO.
 
-Module *Module::load(Loc loc, Identifiers *packages, Identifier *ident)
+Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
 {
     auto& Context = calypso.getASTContext();
 
     const clang::DeclContext *DC = Context.getTranslationUnitDecl();
-    auto dst = modules;
+    auto dst = rootPackage->symtab;
 
-    if (packages && packages->dim)
+    assert(packages && packages->dim);
+
+    for (size_t i = 1; i < packages->dim; i++)
     {
-        for (size_t i = 0; i < packages->dim; i++)
+        Identifier *pid = (*packages)[i];
+
+        auto R = wideLookup(loc, DC, pid);
+        if (R.empty())
         {
-            Identifier *pid = (*packages)[i];
-
-            auto R = wideLookup(loc, DC, pid);
-            if (R.empty())
-            {
-                ::error(loc, "no C++ package named %s", pid->toChars());
-                fatal();
-            }
-
-            auto NSN = dyn_cast<clang::NamespaceDecl>(R[0]);
-            if (!NSN)
-            {
-                ::error(loc, "only namespaces can be C++ packages");
-                fatal();
-            }
-
-            DC = NSN;
-
-            if (auto NDC = dyn_cast<clang::NamedDecl>(DC))
-            {
-                auto id = fromIdentifier(NDC->getIdentifier());
-
-                auto pkg = static_cast<Package*>(dst->lookup(id));
-                if (!pkg)
-                {
-                    pkg = new Package(id);
-                    pkg->symtab = new DsymbolTable();
-
-                    dst->insert(pkg);
-                }
-
-                dst = pkg->symtab;
-            }
+            ::error(loc, "no C++ package named %s", pid->toChars());
+            fatal();
         }
+
+        auto NSN = dyn_cast<clang::NamespaceDecl>(R[0]);
+        if (!NSN)
+        {
+            ::error(loc, "only namespaces can be C++ packages");
+            fatal();
+        }
+        auto ident = fromIdentifier(NSN->getIdentifier());
+
+        auto pkg = static_cast<Package*>(dst->lookup(ident));
+        assert(pkg);
+
+        DC = NSN;
+        dst = pkg->symtab;
     }
 
-    auto m = new Module(moduleName(packages, ident).c_str(),
-                        ident, packages);
+    auto m = new Module(moduleName(packages, id).c_str(),
+                        id, packages);
     m->members = new Dsymbols;
     m->loc = loc;
 
     DeclMapper mapper(m);
 
     // HACK « hardcoded modules »
-    if (strcmp(ident->string, "_") == 0)
+    if (strcmp(id->string, "_") == 0)
     {
         // All non-tag declarations inside the namespace go in _ (this is horrible for C functions of course, this will be fixed by the switch to Clang module system)
         auto NS = dyn_cast<clang::NamespaceDecl>(DC);
@@ -932,10 +923,10 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *ident)
     }
     else
     {
-        auto R = wideLookup(loc, DC, ident);
+        auto R = wideLookup(loc, DC, id);
         if (R.empty())
         {
-            ::error(loc, "no C++ module named %s", ident->toChars());
+            ::error(loc, "no C++ module named %s", id->toChars());
             fatal();
         }
 
@@ -980,7 +971,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *ident)
     }
     
     amodules.push_back(m);
-    modules->insert(m);
+    dst->insert(m);
     return m;
 }
 

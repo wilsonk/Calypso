@@ -52,6 +52,11 @@ Import::Import(Loc loc, Identifiers *packages, Identifier *id, Identifier *alias
     this->pkg = NULL;
     this->mod = NULL;
 
+    setSymIdent();
+}
+
+void Import::setSymIdent()
+{
     // Set symbol name (bracketed)
     if (aliasId)
     {
@@ -107,9 +112,9 @@ Dsymbol *Import::syntaxCopy(Dsymbol *s)
 }
 
 // CALYPSO
-Module *Import::loadModule(Loc loc, Identifiers *packages, Identifier *ident)
+Module *Import::loadModule(Loc loc, Identifiers *packages, Identifier *id)
 {
-    d::Module::load(loc, packages, ident);
+    return d::Module::load(loc, packages, id);
 }
 
 void Import::load(Scope *sc)
