@@ -56,7 +56,7 @@ public:
     const char *kind();
     PROT prot();
     Dsymbol *syntaxCopy(Dsymbol *s);    // copy only syntax trees
-    void load(Scope *sc);
+    virtual void load(Scope *sc); // CALYPSO
     void importAll(Scope *sc);
     void semantic(Scope *sc);
     void semantic2(Scope *sc);

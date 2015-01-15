@@ -458,30 +458,30 @@ void TypeQualifiedBuilder::addInst(TypeQualified *&tqual,
 TypeQualified *TypeQualifiedBuilder::get(clang::NamedDecl *ND)
 {
     TypeQualified *tqual;
+    bool fullyQualified = false;
 
     if (from.prefix)
-    {
         tqual = from.prefix; // special case where the prefix has already been determined from a NNS
-        goto LtqualDone;
-    }
-
-    if (RootEquals(ND))
-        tqual = nullptr;
-    else if (ScopeChecker(tm.GetTopMostDeclContext(ND))
-            (ND))  // Root isn't even the implicit import key, there was a name collision => build a fully qualified type
+    else if (RootEquals(ND->getTranslationUnitDecl()))  // There was a name collision => build a fully qualified type
     {
         // build a fake import
-        auto im = tm.BuildImplicitImport(ND);
+        auto im = tm.BuildImplicitImport(tm.GetNonNestedContext(ND));
 
         tqual = nullptr;
-        for (size_t i = 0; i < im->packages->dim; i++)
+        for (size_t i = 1; i < im->packages->dim; i++)
             addIdent(tqual, (*im->packages)[i]);
-        addIdent(tqual, im->id);
-    }
-    else
-        tqual = get(cast<clang::NamedDecl>(ND->getDeclContext()));
 
-LtqualDone:
+        if (!isa<clang::NamespaceDecl>(ND))
+            addIdent(tqual, im->id);
+
+        fullyQualified = true;
+    }
+    else if (RootEquals(ND))
+        tqual = nullptr;
+    else
+        tqual = get(cast<clang::NamedDecl>(
+                ND->getDeclContext()));
+
     auto ident = getIdentifierOrNull(ND);
     if (!ident)
         return tqual;
@@ -499,7 +499,14 @@ LtqualDone:
         addInst(tqual, CTSD, TempArgs.begin(), TempArgs.end());
     }
     else
+    {
+        if (tqual && !fullyQualified &&
+                isa<clang::TypedefNameDecl>(ND) &&
+                isa<clang::NamespaceDecl>(ND->getDeclContext()))
+            addIdent(tqual, Lexer::idPool("_"));
+
         addIdent(tqual, ident);
+    }
 
     return tqual;
 }
@@ -552,7 +559,7 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* ND,
 
             if (ND->getCanonicalDecl() != Decl->getCanonicalDecl())
             {
-                Root = ND->getTranslationUnitDecl(); // to avoid name collisions, we do a static import and fully qualify the type
+                Root = ND->getTranslationUnitDecl(); // to avoid name collisions, we fully qualify the type
                 goto LrootDone;
             }
         }
@@ -561,7 +568,7 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* ND,
     if (!isa<clang::TagDecl>(getDeclContextNamedOrTU(ND)))
         Root = ND;
     else
-        Root = tm.GetTopMostDeclContext(ND);
+        Root = tm.GetNonNestedContext(ND);
 
 LrootDone:
     tm.AddImplicitImportForDecl(ND);
@@ -623,13 +630,13 @@ Type *TypeMapper::FromType::fromTypeRecord(const clang::RecordType *T)
 
 Type *TypeMapper::FromType::fromTypeElaborated(const clang::ElaboratedType *T)
 {
-    // NOTE: Why must we respect NestedNameSpecifiers? Because of this situation:
+    // NOTE: Why must we sometimes respect NestedNameSpecifiers? Because of this situation:
     //     template<typename _Iterator>
     //       class reverse_iterator
     //       : public iterator<typename iterator_traits<_Iterator>::iterator_category>
     //
     // When mapping the template DMD will add an import to iterator_traits, but when
-    // the instance of iterator will mapped, iterator_category will have the *base* class
+    // the instance of iterator will be mapped, iterator_category will have the *base* class
     // of the specialization of iterator_traits, __iterator_traits as its parent decl context,
     // I.e __iterator_traits::iterator_category
     // But iterator isn't aware of __iterator_traits so lookup error.
@@ -637,7 +644,11 @@ Type *TypeMapper::FromType::fromTypeElaborated(const clang::ElaboratedType *T)
 
     TypeQualified *tqual = nullptr;
     if (auto NNS = T->getQualifier())
-        tqual = fromNestedNameSpecifier(NNS);
+    {
+        if (NNS->getKind() == clang::NestedNameSpecifier::TypeSpec ||
+                NNS->getKind() == clang::NestedNameSpecifier::TypeSpecWithTemplate)
+            tqual = fromNestedNameSpecifier(NNS);
+    }
 
     return FromType(tm, tqual)(T->desugar());
 }
@@ -963,7 +974,11 @@ void TypeMapper::AddImplicitImportForDecl(const clang::NamedDecl* ND)
 
 const clang::Decl* TypeMapper::GetImplicitImportKeyForDecl(const clang::NamedDecl* D)
 {
-    auto TopMost = GetTopMostDeclContext(D);
+    auto TopMost = GetNonNestedContext(D);
+
+    if (auto Class = dyn_cast<clang::CXXRecordDecl>(TopMost))
+        if (auto Temp = Class->getDescribedClassTemplate())
+            return GetImplicitImportKeyForDecl(Temp);
 
     if (auto Spec = dyn_cast<clang::ClassTemplateSpecializationDecl>(TopMost))
         return GetImplicitImportKeyForDecl(Spec->getSpecializedTemplate());
@@ -974,7 +989,7 @@ const clang::Decl* TypeMapper::GetImplicitImportKeyForDecl(const clang::NamedDec
 // Record -> furthest parent tagdecl
 // Other decl in namespace -> the canonical namespace decl
 // Other decl in TU -> the TU
-const clang::Decl *TypeMapper::GetTopMostDeclContext(const clang::Decl *D)
+const clang::Decl *TypeMapper::GetNonNestedContext(const clang::Decl *D)
 {
     if (isa<clang::TranslationUnitDecl>(D))
         return D;
@@ -983,13 +998,13 @@ const clang::Decl *TypeMapper::GetTopMostDeclContext(const clang::Decl *D)
                         getDeclContextNamedOrTU(D));
 
     if (auto ParentTag = dyn_cast<clang::TagDecl>(ParentDC))
-        return GetTopMostDeclContext(ParentTag);
+        return GetNonNestedContext(ParentTag);
 
     if (isa<clang::ClassTemplateDecl>(D) || isa<clang::TagDecl>(D) ||
         isa<clang::NamespaceDecl>(D))
         return D;
 
-    return GetTopMostDeclContext(ParentDC);
+    return GetNonNestedContext(ParentDC);
 }
 
 ::Import *TypeMapper::BuildImplicitImport(const clang::Decl *ND)

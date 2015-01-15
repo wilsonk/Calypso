@@ -9,6 +9,7 @@
 
 #include "root.h"
 #include "dsymbol.h"
+#include "cpp/calypso.h"
 
 #include "../import.h"
 
@@ -25,8 +26,13 @@ using clang::ASTUnit;
 class Import : public ::Import
 {
 public:
+    CALYPSO_LANGPLUGIN
+
+    bool fromCpp;
+
     Import(Loc loc, Identifiers *packages, Identifier *id, Identifier *aliasId,
-        int isstatic);
+        int isstatic, bool fromCpp = true);
+    void load(Scope *sc) override;
 
     ::Module *loadModule(Loc loc, Identifiers *packages, Identifier *id);
 };
@@ -34,6 +40,8 @@ public:
 struct Modmap : public ::Modmap
 {
 public:
+    CALYPSO_LANGPLUGIN
+
     Modmap(Loc loc, StringExp *arg);
 
     void importAll(Scope *sc);

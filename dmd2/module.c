@@ -222,7 +222,7 @@ const char *Module::kind()
     return "module";
 }
 
-::Module *d::Module::load(Loc loc, Identifiers *packages, Identifier *ident)
+Module *Module::load(Loc loc, Identifiers *packages, Identifier *ident)
 {
     //printf("Module::load(ident = '%s')\n", ident->toChars());
 

@@ -15,7 +15,7 @@ namespace cpp
 {
 
 Import::Import(Loc loc, Identifiers *packages, Identifier *id, Identifier *aliasId,
-        int isstatic)
+        int isstatic, bool fromCpp)
     : ::Import(loc, packages, id, aliasId, isstatic)
 {
     // add "cpp" as leftmost package to avoid name clashes
@@ -23,13 +23,28 @@ Import::Import(Loc loc, Identifiers *packages, Identifier *id, Identifier *alias
         packages = new Identifiers;
     packages->shift(Lexer::idPool("cpp"));  // any better idea ?
 
-    setSymIdent();
+    this->fromCpp = fromCpp;
+    if (!fromCpp) // do not change the ident to "cpp" if the import is inside a C++ module as this makes symbol mapping a lot more complicated
+        setSymIdent();
+}
+
+void Import::load(Scope *sc)
+{
+    ::Import::load(sc);
+
+    if (fromCpp)
+    {
+        auto leftmost = packages->dim > 1 ? (*packages)[1] : id;
+        pkg = static_cast<Package*>(
+                pkg->symtab->lookup(leftmost));
+        assert(pkg);
+    }
 }
 
 ::Module* Import::loadModule(Loc loc, Identifiers* packages, Identifier* id)
 {
     calypso.pch.update();
-
+    
     return Module::load(loc, packages, id);
 }
 

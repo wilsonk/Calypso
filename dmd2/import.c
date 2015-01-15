@@ -114,7 +114,7 @@ Dsymbol *Import::syntaxCopy(Dsymbol *s)
 // CALYPSO
 Module *Import::loadModule(Loc loc, Identifiers *packages, Identifier *id)
 {
-    return d::Module::load(loc, packages, id);
+    return Module::load(loc, packages, id);
 }
 
 void Import::load(Scope *sc)

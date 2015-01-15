@@ -147,6 +147,7 @@ public:
 #else
     void parse();       // syntactic parse
 #endif
+    static Module *load(Loc loc, Identifiers *packages, Identifier *ident); // CALYPSO
     void importAll(Scope *sc);
     void semantic();    // semantic analysis
     void semantic2();   // pass 2 semantic analysis
@@ -216,15 +217,6 @@ public:
     Module *isModule() { return this; }
     void accept(Visitor *v) { v->visit(this); }
 };
-
-namespace d
-{
-namespace Module
-{
-    ::Module *load(Loc loc, Identifiers *packages, Identifier *ident);
-};
-}
-
 
 struct ModuleDeclaration
 {

@@ -134,7 +134,7 @@ protected:
     
     bool isNonPODRecord(const clang::QualType T);
     const clang::Decl *GetImplicitImportKeyForDecl(const clang::NamedDecl *D);
-    const clang::Decl *GetTopMostDeclContext(const clang::Decl *D);  // returns the "root" for qualified types
+    const clang::Decl *GetNonNestedContext(const clang::Decl *D);  // returns the "root" for qualified types
 
     Type *trySubstitute(const clang::Decl *D);
 
