@@ -88,6 +88,19 @@ Module::Module(const char* filename, Identifier* ident, Identifiers *packages)
     arg = objfn;
 }
 
+void Module::addPreambule()
+{
+    // Only import "object.object".
+    // TODO This still makes "object" susceptible to collide with C++ names.
+    // We could eventually choose a random unused name if necessary.
+    if (members->dim == 0 || ((*members)[0])->ident != Id::object)
+    {
+        ::Import *im = new ::Import(Loc(), NULL, Id::object, NULL, 0);
+        im->addAlias(Id::object, nullptr);
+        members->shift(im);
+    }
+}
+
 /************************************/
 
 // DeclMapper::DeclMapper(Module* mod)

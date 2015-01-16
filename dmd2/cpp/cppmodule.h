@@ -33,6 +33,7 @@ public:
     Module(const char *filename, Identifier *ident, Identifiers *packages);
 
     static Module *load(Loc loc, Identifiers *packages, Identifier *ident);
+    void addPreambule() override;
 };
 
 }

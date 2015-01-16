@@ -148,6 +148,7 @@ public:
     void parse();       // syntactic parse
 #endif
     static Module *load(Loc loc, Identifiers *packages, Identifier *ident); // CALYPSO
+    virtual void addPreambule(); // CALYPSO
     void importAll(Scope *sc);
     void semantic();    // semantic analysis
     void semantic2();   // pass 2 semantic analysis

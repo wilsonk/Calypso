@@ -719,6 +719,19 @@ void Module::parse()
     }
 }
 
+void Module::addPreambule()
+{
+    // Add import of "object", even for the "object" module.
+    // If it isn't there, some compiler rewrites, like
+    //    classinst == classinst -> .object.opEquals(classinst, classinst)
+    // would fail inside object.d.
+    if (members->dim == 0 || ((*members)[0])->ident != Id::object)
+    {
+        Import *im = new Import(Loc(), NULL, Id::object, NULL, 0);
+        members->shift(im);
+    }
+}
+
 void Module::importAll(Scope *prevsc)
 {
     //printf("+Module::importAll(this = %p, '%s'): parent = %p\n", this, toChars(), parent);
@@ -739,15 +752,7 @@ void Module::importAll(Scope *prevsc)
      */
     Scope *sc = Scope::createGlobal(this);      // create root scope
 
-    // Add import of "object", even for the "object" module.
-    // If it isn't there, some compiler rewrites, like
-    //    classinst == classinst -> .object.opEquals(classinst, classinst)
-    // would fail inside object.d.
-    if (members->dim == 0 || ((*members)[0])->ident != Id::object)
-    {
-        Import *im = new Import(Loc(), NULL, Id::object, NULL, 0);
-        members->shift(im);
-    }
+    addPreambule();
 
     if (!symtab)
     {
