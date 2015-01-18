@@ -223,9 +223,7 @@ FuncDeclaration *ClassDeclaration::findMethod(const clang::CXXMethodDecl* MD)
     return nullptr;
 }
 
-// NOTE since this might be confusing a bit:
-// the "D" vtbl isn't used unless a D class inherits from a C++ one
-// So we're free to ignore the base classes' vtbl and get a "final" C++ vtbl
+// NOTE: the "D" vtbl isn't used unless a D class inherits from a C++ one
 // Note that Func::semantic will re-set methods redundantly (although it's useful as a sanity check and it also sets vtblIndex),
 // but vanilla doesn't know how to deal with multiple inheritance hence the need to query Clang.
 
@@ -233,13 +231,12 @@ FuncDeclaration *ClassDeclaration::findMethod(const clang::CXXMethodDecl* MD)
 // to take C++ multiple inheritance into account. No change to FuncDeclaration::semantic needed.
 void ClassDeclaration::initVtbl()
 {
-    vtbl.setDim(0);
-    if (vtblOffset())
-        vtbl.push(this);
+    ::ClassDeclaration::initVtbl();
 
     clang::CXXFinalOverriderMap FinaOverriders;
     RD->getFinalOverriders(FinaOverriders);
 
+    auto cb = isClassDeclarationOrNull(baseClass);
     llvm::DenseSet<const clang::CXXMethodDecl*> inVtbl;
 
     for (auto I = FinaOverriders.begin(), E = FinaOverriders.end();
@@ -259,8 +256,18 @@ void ClassDeclaration::initVtbl()
             continue;
 #endif
 
-        vtbl.push(md);
         inVtbl.insert(OverMD);
+
+        if (cb)
+        {
+            auto vi = md->findVtblIndex(&cb->vtbl, cb->vtbl.dim);
+            if (vi >= 0)
+            {
+                vtbl[vi] = md;
+                continue;
+            }
+        }
+        vtbl.push(md);
     }
 }
 
