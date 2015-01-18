@@ -230,7 +230,7 @@ void LangPlugin::emitAdditionalClassSymbols(::ClassDeclaration *cd)
             continue;   // md isn't overriding a C++ method
 
         auto MD = llvm::cast<clang::CXXMethodDecl>(
-            cxxmd->FD->getCanonicalDecl());
+            getFD(cxxmd)->getCanonicalDecl());
 
         // Replace calls to MD with calls to md properly adjusted by thunks
         auto Components = VTLayout->vtable_component_begin();

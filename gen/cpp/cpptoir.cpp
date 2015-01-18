@@ -209,9 +209,8 @@ LLValue *LangPlugin::toVirtualFunctionPointer(DValue* inst,
                                               ::FuncDeclaration* fdecl, char* name)
 {
     auto& CGM = *AB->CGM();
-    auto c_fd = static_cast<FuncDeclaration*>(fdecl);
     
-    auto MD = llvm::cast<const clang::CXXMethodDecl>(c_fd->FD);
+    auto MD = llvm::cast<const clang::CXXMethodDecl>(getFD(fdecl));
 
     // get instance
     LLValue* vthis = inst->getRVal();
@@ -239,7 +238,7 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
     updateCGFInsertPoint();
     
     DFuncValue* dfnval = fnval->isFunc();
-    auto c_fd = static_cast<FuncDeclaration*>(dfnval->func);
+    auto fd = dfnval->func;
 
     // get function type info
     IrFuncTy &irFty = DtoIrTypeFunction(fnval);
@@ -254,7 +253,7 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
     clang::CodeGen::ReturnValueSlot ReturnValue(retvar, false);
     clang::CodeGen::CallArgList Args;
 
-    auto FD = c_fd->FD;
+    auto FD = getFD(fd);
     auto MD = llvm::dyn_cast<const clang::CXXMethodDecl>(FD);
 
     auto This = MD ? dfnval->vthis : nullptr;
@@ -289,7 +288,7 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
         DValue* argval = DtoArgument(fnarg,
                         static_cast<::Expression*>(arguments->data[i]));
         Args.add(clang::CodeGen::RValue::get(argval->getRVal()),
-                 TypeMapper().toType(loc, fnarg->type, c_fd->scope));
+                 TypeMapper().toType(loc, fnarg->type, fd->scope));
     }
     
     if (MD && !MD->isStatic())
@@ -317,7 +316,7 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
 void LangPlugin::toResolveFunction(::FuncDeclaration* fdecl)
 {
     auto CGM = AB->CGM();
-    auto FD = static_cast<FuncDeclaration*>(fdecl)->FD;
+    auto FD = getFD(fdecl);
 
     DtoFunctionType(fdecl);
 

@@ -104,6 +104,8 @@ public:
     Dsymbol *syntaxCopy(Dsymbol *s) override;
 };
 
+const clang::FunctionDecl *getFD(::FuncDeclaration *f);
+
 #define IMPLEMENT_syntaxCopy(Class, D) \
     Dsymbol* Class::syntaxCopy(Dsymbol* s) \
     { \

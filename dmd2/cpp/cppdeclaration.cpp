@@ -93,4 +93,16 @@ IMPLEMENT_syntaxCopy(CtorDeclaration, CCD)
 IMPLEMENT_syntaxCopy(DtorDeclaration, CDD)
 IMPLEMENT_syntaxCopy(EnumDeclaration, ED)
 
+const clang::FunctionDecl *getFD(::FuncDeclaration *f)
+{
+    assert(isCPP(f));
+
+    if (f->isCtorDeclaration())
+        return static_cast<CtorDeclaration*>(f)->CCD;
+    else if (f->isDtorDeclaration())
+        return static_cast<DtorDeclaration*>(f)->CDD;
+    else
+        return static_cast<FuncDeclaration*>(f)->FD;
+}
+
 }
