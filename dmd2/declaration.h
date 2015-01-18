@@ -721,6 +721,7 @@ public:
     virtual bool isFinalFunc();
     virtual bool addPreInvariant();
     virtual bool addPostInvariant();
+    virtual bool allowFinalOverride() { return false; } // CALYPSO D does not allow a derived class to have a method with the same signature than a final method from a base class, C++ does
     const char *kind();
     FuncDeclaration *isUnique();
     void checkNestedReference(Scope *sc, Loc loc);

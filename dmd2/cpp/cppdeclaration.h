@@ -50,6 +50,7 @@ public:
                     Type* type, const clang::FunctionDecl *FD);
     FuncDeclaration(const FuncDeclaration&);
     Dsymbol *syntaxCopy(Dsymbol *s) override;
+    bool allowFinalOverride() override { return true; }
 };
 
 class CtorDeclaration : public ::CtorDeclaration
@@ -76,6 +77,7 @@ public:
                     Identifier *id, const clang::CXXDestructorDecl *CDD);
     DtorDeclaration(const DtorDeclaration&);
     Dsymbol *syntaxCopy(Dsymbol *s) override;
+    bool allowFinalOverride() override { return true; }
 };
 
 class EnumDeclaration : public ::EnumDeclaration

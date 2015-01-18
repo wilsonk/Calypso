@@ -162,12 +162,13 @@ void ClassDeclaration::interfaceSemantic(Scope *sc)
 
 static FuncDeclaration *funcMatch(Dsymbol *s, const clang::CXXMethodDecl* MD)
 {
-    auto md = static_cast<cpp::FuncDeclaration *>(
-        s->isFuncDeclaration());
-    assert(md);
+    auto md = s->isFuncDeclaration();
+    if (!md || !isCPP(md))
+        return nullptr;
 
-    if (md->FD->getCanonicalDecl() == MD->getCanonicalDecl())
-        return md;
+    auto FD = getFD(md);
+    if (FD->getCanonicalDecl() == MD->getCanonicalDecl())
+        return static_cast<FuncDeclaration*>(md);
 
     return nullptr;
 }
@@ -209,7 +210,10 @@ FuncDeclaration *ClassDeclaration::findMethod(const clang::CXXMethodDecl* MD)
     // search in base classes
     for (auto *b: *baseclasses)
     {
-        auto base = static_cast<cpp::ClassDeclaration*>(b->base);
+        if (!b->base->isClassDeclaration() || !isCPP(b->base)) // skip Object
+            continue;
+
+        auto base = static_cast<ClassDeclaration*>(b->base);
 
         auto result = base->findMethod(MD);
         if (result)

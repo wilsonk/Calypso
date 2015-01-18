@@ -784,7 +784,7 @@ void FuncDeclaration::semantic(Scope *sc)
                  */
 
                 // Verify this doesn't override previous final function
-                if (cd->baseClass)
+                if (!allowFinalOverride() && cd->baseClass) // CALYPSO
                 {
                     Dsymbol *s = cd->baseClass->search(loc, ident);
                     if (s)
@@ -932,8 +932,12 @@ void FuncDeclaration::semantic(Scope *sc)
         for (size_t i = 0; i < cd->interfaces_dim; i++)
         {
             BaseClass *b = cd->interfaces[i];
-            InterfaceDeclaration *ib = (InterfaceDeclaration *)b->base;  // CALYPSO
-            vi = findVtblIndex((Dsymbols *)&ib->vtbl, (int)ib->vtbl.dim);
+            ClassDeclaration *icd = b->base->isClassDeclaration();  // CALYPSO
+
+            if (!icd)
+                continue;
+
+            vi = findVtblIndex((Dsymbols *)&icd->vtbl, (int)icd->vtbl.dim);
             switch (vi)
             {
                 case -1:
@@ -945,7 +949,7 @@ void FuncDeclaration::semantic(Scope *sc)
                     return;
 
                 default:
-                {   FuncDeclaration *fdv = (FuncDeclaration *)ib->vtbl[vi];
+                {   FuncDeclaration *fdv = (FuncDeclaration *)icd->vtbl[vi];
                     Type *ti = NULL;
 
                     /* Remember which functions this overrides
