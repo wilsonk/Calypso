@@ -435,6 +435,9 @@ Dsymbol *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
         if (MD->begin_overridden_methods()
                 != MD->end_overridden_methods())
             stc |= STCoverride;
+
+        if (isa<clang::CXXDestructorDecl>(D))
+            stc &= ~STCoverride; // dtors aren't added to D's VTBLs
     }
     tf->addSTC(stc);
     
