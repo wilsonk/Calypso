@@ -14,13 +14,6 @@ First you need a LLVM + Clang 3.5 source tree, built libraries and the Clang bin
 
 Then build and install Clang as described in the rest of:
 http://clang.llvm.org/get_started.html
-    
-After cloning the Calypso repository and initializing the submodules, revert them to the commits Calypso is known to work with (until Calypso catches up with upstream):
-
-    $ cd runtime/druntime
-    $ git checkout d12cc013df9dd8dbe9f40b6cd60ffcfc8d164870
-    $ cd ../phobos
-    $ git checkout da5549e7a67b29a8860878f4f700cfc59c1df478
 
 Finally tell CMake where to find the LLVM source tree:
 
