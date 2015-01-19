@@ -56,6 +56,7 @@ public:
     
     bool allowMultipleInheritance() override { return true; }
     bool allowInheritFromStruct() override { return true; }
+    void makeNested() override;
     void initVtbl() override;
     void buildLayout() override; // determine the agg size and field offsets
 

@@ -223,6 +223,11 @@ FuncDeclaration *ClassDeclaration::findMethod(const clang::CXXMethodDecl* MD)
     return nullptr;
 }
 
+void ClassDeclaration::makeNested()
+{
+    // do not add vthis
+}
+
 // NOTE: the "D" vtbl isn't used unless a D class inherits from a C++ one
 // Note that Func::semantic will re-set methods redundantly (although it's useful as a sanity check and it also sets vtblIndex),
 // but vanilla doesn't know how to deal with multiple inheritance hence the need to query Clang.
@@ -284,8 +289,10 @@ void ClassDeclaration::buildLayout()
         auto s = (*members)[i];
         
         auto vd = s->isVarDeclaration();
-        if (!vd || !isCPP(vd)) // this might be vthis
+        if (!vd)
             continue;
+
+        assert(isCPP(vd));
         
         auto c_vd = static_cast<VarDeclaration*>(vd);
         auto FD = dyn_cast<clang::FieldDecl>(c_vd->VD);

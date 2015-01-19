@@ -114,7 +114,7 @@ public:
     int numFieldsInUnion(int firstIndex); // #fields in union starting at index
     bool isDeprecated();         // is aggregate deprecated?
     bool isNested();
-    void makeNested();
+    virtual void makeNested();  // CALYPSO
     bool isExport();
     Dsymbol *searchCtor();
 
