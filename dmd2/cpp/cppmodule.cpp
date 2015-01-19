@@ -382,17 +382,8 @@ Ldeclaration:
 
 Dsymbol* DeclMapper::VisitTypedefNameDecl(const clang::TypedefNameDecl* D)
 {
-    auto& Context = calypso.getASTContext();
-
-    if (auto TagTy = dyn_cast<clang::TagType>
-            (D->getUnderlyingType().getDesugaredType(Context)))
-    {
-        // special case for typedef class/struct/enum { ...anon record... } SymbolName
-        auto Tag = TagTy->getDecl();
-
-        if (Tag->getTypedefNameForAnonDecl())
-            return nullptr;
-    }
+    if (isAnonTagTypedef(D))
+        return nullptr;  // the anon tag will be mapped by VisitRecordDecl to an aggregate named after the typedef identifier
 
     auto loc = fromLoc(D->getLocation());
     auto id = fromIdentifier(D->getIdentifier());

@@ -609,13 +609,13 @@ Type *TypeMapper::trySubstitute(const clang::Decl *D)
 
 Type* TypeMapper::FromType::fromTypeTypedef(const clang::TypedefType* T)
 {
-    auto TD = T->getDecl();
+    auto Typedef = T->getDecl();
     // Temporary HACK to avoid importing "_" just because of typedefs (eg size_t)
     // which doesn't even work atm
-    if (getDeclContextNamedOrTU(TD)->isTranslationUnit())
+    if (getDeclContextNamedOrTU(Typedef)->isTranslationUnit())
         return fromType(T->desugar());
 
-    return typeQualifiedFor(T->getDecl());
+    return typeQualifiedFor(Typedef);
 }
 
 Type* TypeMapper::FromType::fromTypeEnum(const clang::EnumType* T)
@@ -986,6 +986,22 @@ const clang::Decl* TypeMapper::GetImplicitImportKeyForDecl(const clang::NamedDec
     return TopMost->getCanonicalDecl();
 }
 
+// typedef class/struct/enum { ...anon record... } SymbolName
+// are special cases, they're mapped to D aggregates instead of aliases
+const clang::TagDecl *isAnonTagTypedef(const clang::TypedefNameDecl* D)
+{
+    if (auto TagTy = dyn_cast<clang::TagType>
+            (D->getUnderlyingType()))
+    {
+        auto Tag = TagTy->getDecl();
+
+        if (Tag->getTypedefNameForAnonDecl())
+            return Tag;
+    }
+
+    return nullptr;
+}
+
 // Record -> furthest parent tagdecl
 // Other decl in namespace -> the canonical namespace decl
 // Other decl in TU -> the TU
@@ -993,6 +1009,10 @@ const clang::Decl *TypeMapper::GetNonNestedContext(const clang::Decl *D)
 {
     if (isa<clang::TranslationUnitDecl>(D))
         return D;
+
+    if (auto Typedef = dyn_cast<clang::TypedefNameDecl>(D))
+        if (auto AnonTag = isAnonTagTypedef(Typedef))
+            D = AnonTag;
 
     auto ParentDC = cast<clang::Decl>(
                         getDeclContextNamedOrTU(D));
