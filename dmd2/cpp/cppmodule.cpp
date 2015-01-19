@@ -504,12 +504,7 @@ Dsymbol *DeclMapper::VisitRedeclarableTemplateDecl(const clang::RedeclarableTemp
     auto id = getIdentifier(D);
 
     if (auto CTD = dyn_cast<clang::ClassTemplateDecl>(D))
-    {
         D = CTD = getDefinition(CTD);
-
-        if (!CTD->isThisDeclarationADefinition())
-            return nullptr;
-    }
 
     auto tpl = new TemplateParameters;
     auto TPL = D->getTemplateParameters();
