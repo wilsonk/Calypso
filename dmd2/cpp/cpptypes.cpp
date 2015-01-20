@@ -46,18 +46,16 @@ void BuiltinTypes::build(clang::ASTContext &Context)
     else
         map(Context.WCharTy, Type::tdchar);
 
-    map(Context.Char16Ty, toInt(targetInfo.getChar16Type()));
-    map(Context.Char32Ty, toInt(targetInfo.getChar32Type()));
+    map(Context.Char16Ty, Type::twchar); // WARNING: this overrides D -> Clang mapping to WCharTy, a one-to-one correspondance would be safer for template partial specializations
+    map(Context.Char32Ty, Type::tdchar);
     map(Context.UnsignedShortTy, toInt(clang::TargetInfo::UnsignedShort));
     map(Context.UnsignedIntTy, toInt(clang::TargetInfo::UnsignedInt));
     map(Context.UnsignedLongTy, toInt(clang::TargetInfo::UnsignedLong));
     map(Context.UnsignedLongLongTy, toInt(clang::TargetInfo::UnsignedLongLong));
-    map(Context.UnsignedInt128Ty, Type::tuns128);
+    map(Context.UnsignedInt128Ty, Type::tuns128); // WARNING: same problem with tuns128 and tint128
 
         //===- Signed Types -------------------------------------------------------===//
-//     map(Context.CharTy, Type::tint8);
     map(Context.SignedCharTy, Type::tint8);
-//     map(Context.WCharTy, toInt(targetInfo.getWIntType()));
     map(Context.ShortTy, toInt(clang::TargetInfo::SignedShort));
     map(Context.IntTy, toInt(clang::TargetInfo::SignedInt));
     map(Context.LongTy, toInt(clang::TargetInfo::SignedLong));
