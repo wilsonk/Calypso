@@ -1085,6 +1085,15 @@ clang::QualType TypeMapper::toType(Loc loc, Type* t, Scope *sc)
 {
     auto& Context = calypso.pch.AST->getASTContext();
 
+    if (t->isConst())
+    {
+        t = t->nullAttributes();
+        t->mod &= ~MODconst;
+        return toType(loc, t, sc).withConst();
+    }
+
+    t = t->merge2();
+
     if (auto builtin = calypso.builtinTypes.toClang[t])
         return clang::QualType(builtin, 0);
 
