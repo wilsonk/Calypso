@@ -22,14 +22,14 @@ Finally tell CMake where to find the LLVM source tree:
     
 The rest of the build process is identical to LDC.
 
-Specific flags
+Specific flags and building the "showcase" example
 -------
 
-Calypso adds the -cpp-flags option to LDC to pass arguments to Clang during the PCH generation, e.g:
+Calypso adds the -cpp-flags option to LDC to pass arguments to Clang during the PCH generation, e.g to enable C++11 required to build tests/calypso/showcase.d:
 
+    $ clang++ -std=c++11 -c showcase.cpp -o showcase.cpp.o
+    $ ar rcs libshowcase.a showcase.cpp.o
     $ ldc2 -cpp-args -std=c++11 -Llibshowcase.a -L-lstdc++ showcase.d
-
-will enable C++11.
 
 LDC – the LLVM-based D Compiler
 ===============================
