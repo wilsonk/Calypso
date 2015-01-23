@@ -90,13 +90,13 @@ Module::Module(const char* filename, Identifier* ident, Identifiers *packages)
 
 void Module::addPreambule()
 {
-    // Only import "object.object".
+    // Statically import object.d for object and size_t (used by buildXtoHash)
+
     // TODO This still makes "object" susceptible to collide with C++ names.
-    // We could eventually choose a random unused name if necessary.
+    // We could eventually choose a random unused alias name if necessary.
     if (members->dim == 0 || ((*members)[0])->ident != Id::object)
     {
-        ::Import *im = new ::Import(Loc(), NULL, Id::object, NULL, 0);
-        im->addAlias(Id::object, nullptr);
+        ::Import *im = new ::Import(Loc(), NULL, Id::object, NULL, true);
         members->shift(im);
     }
 }

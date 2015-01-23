@@ -759,8 +759,9 @@ FuncDeclaration *buildXtoHash(StructDeclaration *sd, Scope *sc)
     Identifier *id = Id::xtoHash;
     FuncDeclaration *fop = new FuncDeclaration(declLoc, Loc(), id, STCstatic, tf);
 
+    // CALYPSO qualify size_t
     const char *code =
-        "size_t h = 0;"
+        "object.size_t h = 0;"
         "foreach (i, T; typeof(p.tupleof))"
         "    h += typeid(T).getHash(cast(const void*)&p.tupleof[i]);"
         "return h;";
