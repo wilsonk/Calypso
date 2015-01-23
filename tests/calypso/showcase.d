@@ -14,13 +14,6 @@ import (C++) test.char_arrayten;
 
 void testEcho(int o) { writeln("Echo ", o); }
 
-// struct testStruct
-// {
-//     float f;
-//     char c;
-//     uint n;
-// };
-
 class testDClass
 {
 public:
@@ -52,14 +45,14 @@ public:
     static bool thunkTest(testMultipleInherit cppthis, bool who)
     {
        void* __tmp1723 = cast(void*) cppthis;
-        __tmp1723 += -16L;
+        __tmp1723 += -(void*).sizeof * 2;
         return (cast(DCXXclass)__tmp1723).hello(who);
     }
 }
 
 void main()
 {
-    writeln("Simple C++ function call test");
+    std.stdio.writeln("Simple C++ function call test");
     writeln(testFunc('a'));
     writeln(testFunc('b'));
     writeln(testFunc('c'));
