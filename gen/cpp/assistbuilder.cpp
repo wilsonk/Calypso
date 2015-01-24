@@ -7,6 +7,7 @@ namespace cpp
 {
 
 using namespace clang;
+using namespace clang::CodeGen;
 
 AssistBuilder::AssistBuilder(DiagnosticsEngine &diags,
                     llvm::Module *M,
@@ -19,7 +20,7 @@ void AssistBuilder::Initialize(ASTContext &Context) {
     Ctx = &Context;
 
     TD.reset(new llvm::DataLayout(Ctx->getTargetInfo().getTargetDescription()));
-    Builder.reset(new CodeGen::CodeGenModule(Context, CodeGenOpts, *M, *TD,
+    Builder.reset(new CodeGenModule(Context, CodeGenOpts, *M, *TD,
                                             Diags));
 
     for (size_t i = 0, e = CodeGenOpts.DependentLibraries.size(); i < e; ++i)
@@ -71,7 +72,7 @@ void AssistBuilder::HandleTagDeclRequiredDefinition(const TagDecl *D) {
     if (Diags.hasErrorOccurred())
         return;
 
-    if (CodeGen::CGDebugInfo *DI = Builder->getModuleDebugInfo())
+    if (CGDebugInfo *DI = Builder->getModuleDebugInfo())
     if (const RecordDecl *RD = dyn_cast<RecordDecl>(D))
         DI->completeRequiredType(RD);
 }

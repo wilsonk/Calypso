@@ -26,7 +26,6 @@ namespace clang
 {
 class IdentifierInfo;
 class ASTUnit;
-class CodeGenModule;
 class CodeGenFunction;
 class Sema;
 }
