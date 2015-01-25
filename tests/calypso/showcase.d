@@ -8,17 +8,27 @@
  */
 
 modmap (C++) "showcase.hpp";
+    // « modmap » is a new keyword introduced to specify the C++ headers.
+    // It doesn't import anything, its only role is to tell Clang which C++ headers this module depends upon.
+    //
+    // Currently Calypso makes Clang gathers all the headers togehter into one precompiled header, which is
+    // then lazily loaded by the import (C++) directives.
 
 import std.stdio, std.conv, std.string;
-import (C++) test._;
-import (C++) test.testStruct;
-import (C++) test.testClass;
-import (C++) test.testInherit;
+import (C++) test._; // « _ » is a special module that contains all the global variables, global functions
+                // and typedefs of a namespace (the ones which aren't nested inside a struct or a class,
+                // or another namespace).
+import (C++) test.testStruct; // imports test::testStruct
+import (C++) test.testClass; // imports test::testClass
+import (C++) test.testInherit; // etc. each struct/class/enum template or not is placed in a module named after it
 import (C++) test.anotherClass;
 import (C++) test.testMultipleInherit;
 import (C++) test.enumTest;
 import (C++) test.arrayOfTen;
-import (C++) test.tempWithPartialSpecs;
+import (C++) test.tempWithPartialSpecs; // imports the primary class template as well as all its partial and explicit specializations
+
+// NOTE: The imports (C++) only take the AST into consideration, the header file where the symbols are
+//       declared doesn't matter as long as they are in the precompiled header.
 
 class testDClass
 {
