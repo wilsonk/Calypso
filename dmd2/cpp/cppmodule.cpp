@@ -475,6 +475,18 @@ static const clang::ClassTemplateDecl *getDefinition(const clang::ClassTemplateD
     return D->getCanonicalDecl();
 }
 
+bool isTemplateParameterPack(const clang::NamedDecl *Param)
+{
+    if (auto NTTPD = dyn_cast<clang::NonTypeTemplateParmDecl>(Param))
+        return NTTPD->isParameterPack();
+    else if (auto TTPD = dyn_cast<clang::TemplateTypeParmDecl>(Param))
+        return TTPD->isParameterPack();
+    else if (auto TempTemp = dyn_cast<clang::TemplateTemplateParmDecl>(Param))
+        return TempTemp->isParameterPack();
+
+    llvm::llvm_unreachable_internal();
+}
+
 Dsymbol *DeclMapper::VisitRedeclarableTemplateDecl(const clang::RedeclarableTemplateDecl *D)
 {   TemplateDeclaration *a;
 
@@ -502,8 +514,19 @@ Dsymbol *DeclMapper::VisitRedeclarableTemplateDecl(const clang::RedeclarableTemp
 
     templateParameters.push_back(TPL);
 
+    // FIXME: C++ templates may have multiple parameter packs, which isn't supported by D
+    // Since this is a rare occurence ignore them for now
+    bool packFound = false;
+
     for (auto P: *TPL)
     {
+        if (packFound)
+        {
+            ::warning(loc, "Template %s has more than one parameter pack, ignore for now", id->toChars());
+            return nullptr;
+        }
+        packFound = isTemplateParameterPack(P);
+
         auto tp = VisitTemplateParameter(P);
         tpl->push(tp);
     }
