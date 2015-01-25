@@ -18,12 +18,12 @@ int testFunc(char c)
 
 int testClass::echo(int a, int b)
 {
-    return 0;
+    return -1;
 }
 
 float testClass::echo2(float f)
 {
-    return 0;
+    return -1.0;
 }
 
 int testInherit::echo(int a, int b)
@@ -36,22 +36,14 @@ float testInherit::echo2(float f)
     return 0.5 * f;
 }
 
-bool anotherClass::hello(bool who)
+const char *anotherClass::hello(bool ceres)
 {
-    return !who;
+    return ceres ? "Ceres is true" : "Ceres is false";
 }
 
-bool testMultipleInherit::hello(bool who)
+const char *testMultipleInherit::hello(bool pluto)
 {
-    return anotherClass::hello(who);
-}
-
-int implicitSpecPlease(char_arrayten<char> &o)
-{
-    if (o.FifthChar() == 'p')
-        return 1;
-
-    return 0;
+    return pluto ? "Pluto => true" : "Pluto => false";
 }
 
 }

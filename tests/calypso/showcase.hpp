@@ -1,10 +1,10 @@
 #pragma once
 
-// #include "OGRE/Ogre.h"
-
 namespace test {
+    // C++ function
     int testFunc(char c);
 
+    // Struct
     struct testStruct
     {
         float f;
@@ -12,9 +12,11 @@ namespace test {
         unsigned n;
     };
 
+    // Global variables
     extern double testDoubleVar;
     extern testStruct testVar;
     
+    // Simple class with virtual functions
     class testClass
     {
     protected:
@@ -26,6 +28,7 @@ namespace test {
         virtual float echo2(float f);
     };
     
+    // Derived class
     class testInherit : public testClass
     {
     public:
@@ -36,6 +39,7 @@ namespace test {
         virtual float echo2(float f) override;
     };
 
+    // Multiple inheritance
     class anotherClass
     {
     public:
@@ -43,7 +47,7 @@ namespace test {
         float floating;
         double doubling;
 
-        virtual bool hello(bool who);
+        virtual const char *hello(bool ceres);
     };
 
     class testMultipleInherit : public anotherClass,
@@ -52,9 +56,10 @@ namespace test {
     public:
         testStruct *pointerToStruct;
 
-        virtual bool hello(bool who) override;
+        virtual const char *hello(bool pluto) override;
     };
 
+    // Enum
     enum enumTest
     {
         ENUM_FIRSTVAL = 2,
@@ -62,12 +67,43 @@ namespace test {
         ENUM_LASTVAL
     };
 
-    template<typename _CharT>
-    struct char_arrayten
+    // Class template and array
+    template<typename T>
+     class arrayOfTen
     {
-        _CharT someCharArray[10];
-        _CharT FifthChar() { return someCharArray[4]; }
+    public:
+        T someArray[10];
+        T FifthChar() { return someArray[4]; }
     };
 
-    int implicitSpecPlease(char_arrayten<char> &o);
+    // Partial and explicit template specializations
+    template<typename T = unsigned, int N = 1>
+     struct tempWithPartialSpecs
+    {
+        const char *toChars() { return "Primary template"; }
+    };
+
+    template<typename T>
+     struct tempWithPartialSpecs<T, 0>
+    {
+        const char *toChars() { return "Partial spec (N = 0)"; }
+    };
+
+    template<typename T>
+     struct tempWithPartialSpecs<T, 5>
+    {
+        const char *toChars() { return "Partial spec (N = 5)"; }
+    };
+
+    template<int N>
+     struct tempWithPartialSpecs<char, N>
+    {
+        const char *toChars() { return "Partial spec (T = char)"; }
+    };
+
+    template<>
+     class tempWithPartialSpecs<bool, 5> // explicit spec
+    {
+        const char *toChars() { return "Explicit spec (T = wchar, N = 5)"; }
+    };
 }
