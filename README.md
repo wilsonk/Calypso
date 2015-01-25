@@ -1,9 +1,11 @@
 Special Calypso notes
 ------------
 
-Interested in the prototype that might turn D overnight into the huge time saver for C++ developers it is promised to be?
+Calypso creates a bridge between DMD/LDC and Clang, both at the AST level (DMD <=> Clang's AST, Sema, ...) and at the code generation level (LDC <=> Clang's Codegen) to make D interface directly with the almost full set of C++ features, and without having to write bindings:
 
-First you need a LLVM + Clang 3.5 source tree, built libraries and the Clang binaries. Installing binary packages from your distribution isn't enough since the include/ files aren't exposing many symbols, so the source packages are needed as well. Or if you want or need to build Clang yourself, make sure to get the 3.5 branch:
+> http://forum.dlang.org/thread/nsjafpymezlqdknmnkhi@forum.dlang.org
+
+In order to build it you need a LLVM + Clang 3.5 source tree, built libraries and the Clang binaries. Installing binary packages from your distribution isn't enough since the include/ files aren't exposing many symbols, so the source packages are needed as well. Or if you want or need to build Clang yourself, make sure to get the 3.5 branch:
 
     $ svn co http://llvm.org/svn/llvm-project/llvm/branches/release_35 llvm
     $ cd llvm/tool
@@ -22,10 +24,10 @@ Finally tell CMake where to find the LLVM source tree:
     
 The rest of the build process is identical to LDC.
 
-Specific flags and building the "showcase" example
+Specific flags and building the [showcase](tests/calypso/showcase.d) example
 -------
 
-Calypso adds the -cpp-flags option to LDC to pass arguments to Clang during the PCH generation, e.g to enable C++11 required to build tests/calypso/showcase.d:
+Calypso adds the -cpp-flags option to LDC to pass arguments to Clang during the PCH generation, e.g to enable C++11 required to build [tests/calypso/showcase.d](tests/calypso/showcase.d):
 
     $ clang++ -std=c++11 -c showcase.cpp -o showcase.cpp.o
     $ ar rcs libshowcase.a showcase.cpp.o
