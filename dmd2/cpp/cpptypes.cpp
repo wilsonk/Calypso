@@ -548,6 +548,8 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* ND,
             DCDecl = cast<clang::Decl>(DC);
         }
 
+        bool fullyQualify = false;
+
         auto ScopeDC = cast<clang::DeclContext>(ScopeDecl);
         auto LookupResult = ScopeDC->lookup(Name);
         for (auto Decl: LookupResult)
@@ -557,9 +559,19 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* ND,
 
             if (ND->getCanonicalDecl() != Decl->getCanonicalDecl())
             {
-                Root = ND->getTranslationUnitDecl(); // to avoid name collisions, we fully qualify the type
-                goto LrootDone;
+                fullyQualify = true;
+                break;
             }
+        }
+
+        if (auto Named = dyn_cast<clang::NamedDecl>(ScopeDecl))
+            if (clang::DeclarationName::compare(Named->getDeclName(), Name) == 0)
+                fullyQualify = true;
+
+        if (fullyQualify)
+        {
+            Root = ND->getTranslationUnitDecl(); // to avoid name collisions, we fully qualify the type
+            goto LrootDone;
         }
     }
 
