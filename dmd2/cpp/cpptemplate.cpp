@@ -98,7 +98,9 @@ clang::RedeclarableTemplateDecl *TemplateDeclaration::getPrimaryTemplate()
         if (!ti->semanticTiargs(sc))
             assert(false && "foreignInstance semanticTiargs failed");
 
-        llvm::SmallVector<clang::TemplateArgument, 4> Args;
+        clang::TemplateArgumentListInfo Args;
+
+        // See translateTemplateArgument() in SemaTemplate.cpp
         for (auto o: *ti->tiargs)
         {
             Type *ta = isType(o);
@@ -106,62 +108,47 @@ clang::RedeclarableTemplateDecl *TemplateDeclaration::getPrimaryTemplate()
             Dsymbol *sa = isDsymbol(o);
 
             if (ta)
-                Args.push_back(clang::TemplateArgument(tymap.toType(ti->loc, ta, sc)));
+            {
+                auto T = tymap.toType(ti->loc, ta, sc);
+                auto DI = Context.getTrivialTypeSourceInfo(T);
+
+                clang::TemplateArgumentLoc Loc(clang::TemplateArgument(T), DI);
+                Args.addArgument(Loc);
+            }
             else if (ea)
-                Args.push_back(clang::TemplateArgument(expmap.toExpression(ea)));
+            {
+                auto E = expmap.toExpression(ea);
+
+                clang::TemplateArgumentLoc Loc(clang::TemplateArgument(E), E);
+                Args.addArgument(Loc);
+            }
             else if (sa)
             {
                 auto tempdecl = sa->isTemplateDeclaration();
                 assert(tempdecl && isCPP(tempdecl));
 
                 auto c_td = static_cast<cpp::TemplateDeclaration *>(tempdecl);
-                clang::TemplateName Name(c_td->getPrimaryTemplate());
-                Args.push_back(clang::TemplateArgument(Name));
+                auto Temp = c_td->getPrimaryTemplate();
+                clang::TemplateName Name(Temp);
+
+                clang::TemplateArgumentLoc Loc(clang::TemplateArgument(Name),
+                                        clang::NestedNameSpecifierLoc(),
+                                        Temp->getLocation(), clang::SourceLocation());
+                Args.addArgument(Loc);
             }
             else
                 assert(false && "unhandled template arg C++ -> D conversion");
         }
 
-        // from Sema::CheckTemplateIdType
-        clang::QualType CanonType;
-        if (clang::ClassTemplateDecl *ClassTemplate
-                    = dyn_cast<clang::ClassTemplateDecl>(Temp)) {
-            // Find the class template specialization declaration that
-            // corresponds to these arguments.
-            void *InsertPos = nullptr;
-            clang::ClassTemplateSpecializationDecl *Decl
-                = ClassTemplate->findSpecialization(Args, InsertPos);
-            if (!Decl) {
-                // This is the first time we have referenced this class template
-                // specialization. Create the canonical declaration and add it to
-                // the set of specializations.
-                Decl = clang::ClassTemplateSpecializationDecl::Create(Context,
-                                        ClassTemplate->getTemplatedDecl()->getTagKind(),
-                                        ClassTemplate->getDeclContext(),
-                                        ClassTemplate->getTemplatedDecl()->getLocStart(),
-                                        ClassTemplate->getLocation(),
-                                        ClassTemplate,
-                                        Args.data(),
-                                        Args.size(), nullptr);
-                ClassTemplate->AddSpecialization(Decl, InsertPos);
-                if (ClassTemplate->isOutOfLine())
-                    Decl->setLexicalDeclContext(ClassTemplate->getLexicalDeclContext());
-            }
-
-            CanonType = Context.getTypeDeclType(Decl);
-            assert(isa<clang::RecordType>(CanonType) &&
-                "type of non-dependent specialization is not a RecordType");
-        }
-
         clang::TemplateName Name(Temp);
-        auto Ty = Context.getTemplateSpecializationType(Name, Args.data(),
-                                                        Args.size(), CanonType);
+        auto Ty = S.CheckTemplateIdType(Name, Temp->getLocation(), Args); // NOTE: this also substitutes the argument types
+                                            // to TemplateTypeParmType, which is needed for partial specializations to work.
 
         if (auto RT = Ty->getAs<clang::RecordType>())
         {
             auto CTSD = cast<clang::ClassTemplateSpecializationDecl>(RT->getDecl());
             ti->Instances[ti->name] = CTSD;
-            ti->completeInst(sc->module);
+            ti->completeInst();
         }
         else
             assert(false);
@@ -224,7 +211,7 @@ TemplateInstance::TemplateInstance(const TemplateInstance& o)
     : TemplateInstance(o.loc, o.name)
 {
     Instances = o.Instances;
-    instantiatingModuleCpp = o.instantiatingModuleCpp;
+    instantiatedByD = o.instantiatedByD;
 }
 
 Dsymbol *TemplateInstance::syntaxCopy(Dsymbol *s)
@@ -235,7 +222,7 @@ Dsymbol *TemplateInstance::syntaxCopy(Dsymbol *s)
     {
         auto ti = static_cast<cpp::TemplateInstance*>(s);
         ti->Instances = Instances;
-        ti->instantiatingModuleCpp = instantiatingModuleCpp;
+        ti->instantiatedByD = instantiatedByD;
     }
 
     return ::TemplateInstance::syntaxCopy(s);
@@ -253,14 +240,14 @@ Identifier *TemplateInstance::getIdent()
     return result;
 }
 
-void TemplateInstance::completeInst(::Module *instMod)
+void TemplateInstance::completeInst()
 {
     auto& Context = calypso.pch.AST->getASTContext();
     auto& S = calypso.pch.AST->getSema();
 
-    for (auto D: Instances)
+    for (auto I: Instances)
     {
-        auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(D.second);
+        auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(I.second);
 
         if (CTSD && !CTSD->hasDefinition() &&
             CTSD->getSpecializedTemplate()->getTemplatedDecl()->hasDefinition()) // unused forward template specialization decls will exist but as empty aggregates
@@ -272,8 +259,15 @@ void TemplateInstance::completeInst(::Module *instMod)
 
             // if the definition of the class template specialization wasn't present in the PCH
             // there's a chance the code wasn't emitted in the C++ libraries, so we do it ourselves.
-            instantiatingModuleCpp = instMod;
-            assert(instantiatingModuleCpp);
+            instantiatedByD = true;
+
+            // Force instantiation of method definitions
+            for (auto *D : CTSD->decls())
+            {
+                if (auto Function = dyn_cast<clang::FunctionDecl>(D))
+                    if (!Function->isDefined() && Function->getInstantiatedFromMemberFunction())
+                        S.InstantiateFunctionDefinition(CTSD->getLocation(), Function, true, true);
+            }
         }
     }
 }

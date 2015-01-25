@@ -45,7 +45,7 @@ public:
     CALYPSO_LANGPLUGIN
 
     llvm::SmallDenseMap<Identifier*, clang::Decl*, 1> Instances; // NOTE: not sure how cpp::TemplateInstance would ever get more than one member though
-    ::Module *instantiatingModuleCpp; // Clang is lazier than DMD when it comes to template instantiation, a PCH might have references or pointers to a template specialization but that specialization although declared might not be defined and codegen'd, whereas DMD expects template specializations to be defined anywhere they appear even as pointers/refs
+    bool instantiatedByD = false; // Clang is lazier than DMD when it comes to template instantiation, a PCH might have references or pointers to a template specialization but that specialization although declared might not be defined and codegen'd, whereas DMD expects template specializations to be defined anywhere they appear even as pointers/refs
 
     Objects *origTiargs = nullptr; // needed for deco mangling
 
@@ -54,7 +54,7 @@ public:
     Dsymbol *syntaxCopy(Dsymbol *) override;
     Identifier *getIdent() override;
 
-    void completeInst(::Module* instMod);
+    void completeInst();
     void correctTiargs();
 };
 

@@ -68,6 +68,7 @@ void LangPlugin::enterFunc(::FuncDeclaration *fd)
     
     auto& CGM = *(AB->CGM());
     CGF = new clang::CodeGen::CodeGenFunction(CGM, true);
+    CGF->CurCodeDecl = nullptr;
 }
 
 void LangPlugin::leaveFunc()
@@ -408,15 +409,29 @@ void LangPlugin::toDeclareVariable(::VarDeclaration* vd)
 
 void LangPlugin::toDefineTemplateInstance(::TemplateInstance *inst)
 {
+    auto& Context = getASTContext();
+    auto& CGM = *AB->CGM();
+
     auto c_ti = static_cast<cpp::TemplateInstance *>(inst);
 
-    if (c_ti->instantiatingModuleCpp != gIR->dmodule) // hmm this just works but the whole thing still is a fragile HACK to avoid duplicate instances
+    if (!c_ti->instantiatedByD)
         return;
 
     for (auto D: c_ti->Instances)
     {
-        auto CTSD = llvm::cast<clang::ClassTemplateSpecializationDecl>(D.second);
-        AB->HandleTagDeclDefinition(CTSD);
+        auto Instance = D.second;
+
+        if (auto CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(Instance))
+        {
+            CGM.UpdateCompletedType(CTSD);
+
+            if (Context.getLangOpts().CPlusPlus)
+                for (auto M = CTSD->decls_begin(), MEnd = CTSD->decls_end();
+                        M != MEnd; ++M)
+                    if (auto Method = llvm::dyn_cast<clang::CXXMethodDecl>(*M))
+                        if (Method->doesThisDeclarationHaveABody())
+                            CGM.EmitTopLevelDecl(Method);
+        }
     }
 }
 

@@ -444,7 +444,7 @@ void TypeQualifiedBuilder::addInst(TypeQualified *&tqual,
     if (Spec && !isa<clang::ClassTemplatePartialSpecializationDecl>(Spec))
     {
         tempinst->Instances[ident] = D;
-        tempinst->completeInst(tm.getInstantiatingModule());
+        tempinst->completeInst();
     }
 
     if (!tqual)
@@ -716,7 +716,7 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
             auto ti = (cpp::TemplateInstance*)o;
 
             ti->Instances[ti->name] = RT->getDecl();
-            ti->completeInst(tm.getInstantiatingModule());
+            ti->completeInst();
         }
     }
 
@@ -1085,10 +1085,10 @@ clang::QualType TypeMapper::toType(Loc loc, Type* t, Scope *sc)
 {
     auto& Context = calypso.pch.AST->getASTContext();
 
-    if (t->isConst())
+    if (t->isConst() || t->isImmutable())
     {
         t = t->nullAttributes();
-        t->mod &= ~MODconst;
+        t->mod &= ~(MODconst|MODimmutable);
         return toType(loc, t, sc).withConst();
     }
 

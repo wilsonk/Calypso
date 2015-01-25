@@ -52,31 +52,27 @@ IMPLEMENT_syntaxCopy(ClassDeclaration, RD)
 
 void StructDeclaration::semantic(Scope *sc)
 {
-    // Copy pasted from ClassDeclaration::semantic
-
     auto CRD = dyn_cast<clang::CXXRecordDecl>(RD);
     assert(CRD || !sc->parent->isTemplateInstance());
 
-    if (CRD)
+    if (CRD && (CRD->getDescribedClassTemplate() ||
+                isa<clang::ClassTemplatePartialSpecializationDecl>(CRD)))
     {
-        if (auto CTD = CRD->getDescribedClassTemplate())
-        {
-            auto ti = sc->parent->isTemplateInstance();
+        auto ti = sc->parent->isTemplateInstance();
 
-            assert(ti && isCPP(ti->inst));
-            auto c_ti = static_cast<cpp::TemplateInstance*>(ti->inst);
-            auto InstRD = cast<clang::ClassTemplateSpecializationDecl>(c_ti->Instances[ident]);
+        assert(ti && isCPP(ti->inst));
+        auto c_ti = static_cast<cpp::TemplateInstance*>(ti->inst);
+        auto InstRD = cast<clang::ClassTemplateSpecializationDecl>(c_ti->Instances[ident]);
 
-            DeclMapper m(nullptr);
-            m.addImplicitDecls = false;
-            m.instMod = sc->module;
+        DeclMapper m(nullptr);
+        m.addImplicitDecls = false;
+        m.instMod = sc->module;
 
-            auto instsd = static_cast<cpp::StructDeclaration*>(
-                    m.VisitInstancedClassTemplate(InstRD)->isStructDeclaration());
-            assert(instsd);
+        auto instsd = static_cast<cpp::StructDeclaration*>(
+                m.VisitInstancedClassTemplate(InstRD)->isStructDeclaration());
+        assert(instsd);
 
-            instsd->syntaxCopy(this);
-        }
+        instsd->syntaxCopy(this);
     }
 
     ::StructDeclaration::semantic(sc);
@@ -86,24 +82,10 @@ void ClassDeclaration::semantic(Scope *sc)
 {
     // Basically a hook at the beginning of semantic(), to change RD from the template decl
     // to the instantation decl if needed.
-//     auto& S = calypso.getASTUnit()->getSema();
-//
-    if (auto CTD = RD->getDescribedClassTemplate())
+    if (RD->getDescribedClassTemplate() ||
+            isa<clang::ClassTemplatePartialSpecializationDecl>(RD))
     {
         auto ti = sc->parent->isTemplateInstance();
-//
-//         clang::TemplateName TN(CTD);
-//         clang::ASTTemplateArgsPtr TemplateArgsPtr(TemplateId->getTemplateArgs(),
-//                                         TemplateId->NumArgs);
-//
-//         clang::CXXScopeSpec CSS;
-//         auto TagResult = S.ActOnExplicitInstantiation(nullptr,
-//             clang::SourceLocation(), clang::SourceLocation(),
-//             clang::DeclSpec::TST_class, clang::SourceLocation(),
-//             CSS, clang::Sema::TemplateTy::make(TN), clang::SourceLocation(), clang::SourceLocation(),
-//             TemplateArgsPtr, clang::SourceLocation());
-//
-//         assert(!TagResult.isInvalid() && !TagResult.isUnset() && "Something went wrong during C++ template instanciation");
 
         assert(ti && isCPP(ti->inst));
         auto c_ti = static_cast<cpp::TemplateInstance*>(ti->inst);
