@@ -243,7 +243,12 @@ Identifier *TemplateInstance::getIdent()
 void TemplateInstance::completeInst()
 {
     auto& Context = calypso.pch.AST->getASTContext();
+    auto& Diags = calypso.pch.Diags;
     auto& S = calypso.pch.AST->getSema();
+
+    // Clang BUG? TUScope isn't set when no Parser is used, but required by template instantiations (e.g LazilyCreateBuiltin)
+    if (!S.TUScope)
+        S.TUScope = new clang::Scope(nullptr, clang::Scope::DeclScope, *Diags);
 
     for (auto I: Instances)
     {
@@ -266,7 +271,7 @@ void TemplateInstance::completeInst()
             {
                 if (auto Function = dyn_cast<clang::FunctionDecl>(D))
                     if (!Function->isDefined() && Function->getInstantiatedFromMemberFunction())
-                        S.InstantiateFunctionDefinition(CTSD->getLocation(), Function, true, true);
+                        S.InstantiateFunctionDefinition(CTSD->getLocation(), Function);
             }
         }
     }
