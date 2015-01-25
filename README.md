@@ -5,7 +5,22 @@ Calypso creates a bridge between DMD/LDC and Clang, both at the AST level (DMD <
 
 > http://forum.dlang.org/thread/nsjafpymezlqdknmnkhi@forum.dlang.org
 
-In order to build it you need a LLVM + Clang 3.5 source tree, built libraries and the Clang binaries. Installing binary packages from your distribution isn't enough since the include/ files aren't exposing many symbols, so the source packages are needed as well. Or if you want or need to build Clang yourself, make sure to get the 3.5 branch:
+It introduces a new keyword, « modmap », along with the concept of language plugins which are queried by DMD's parser when it encounters special « import (ABC) xxx.yyy; » symbols.
+
+    modmap (C++) "cppheader.h";      // tells Clang to load cppheader.h but do not import anything
+
+    import (C++) NamespaceA.Class1;  // imports NamespaceA::Class1
+    import (C++) NamespaceA._;       // special module per namespace, imports every global variables,
+                                     // global functions and typedefs whose direct parent is NamespaceA::
+
+The resulting imported symbols can be used like their D counterparts, although their implementation differs a lot. For more detailed examples and explanations on Calypso's inner workings see [tests/calypso/showcase.d](tests/calypso/showcase.d).
+
+Although Calypso is currently soldered to LDC, separating the two and placing Calypso and its bulky Clang dependency in an optional shared library should be easy. In this way, D compilers won't have to depend on a C/C++ compiler, and wider C++ support than what D currently supports won't result in too cumbersome intrusions in core DMD/LDC.
+
+Installation notes
+-------
+
+First you need a LLVM + Clang 3.5 source tree, built libraries and the Clang binaries. Installing binary packages from your distribution isn't enough since the include/ files aren't exposing many symbols, so the source packages are needed as well. Or if you want or need to build Clang yourself, make sure to get the 3.5 branch:
 
     $ svn co http://llvm.org/svn/llvm-project/llvm/branches/release_35 llvm
     $ cd llvm/tool
