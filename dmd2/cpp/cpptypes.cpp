@@ -789,7 +789,30 @@ Type* TypeMapper::FromType::fromTypeTemplateTypeParm(const clang::TemplateTypePa
 
 Type* TypeMapper::FromType::fromTypeSubstTemplateTypeParm(const clang::SubstTemplateTypeParmType* T)
 {
-    // NOTE: it's necessary to "revert" resolved symbol names of C++ template instantiations by Sema to the parameter name because the template instance cut access to its scope to its members, and the only links that remain are the AliasDeclarations created by TemplateInstance::declareParameters
+    // NOTE: it's necessary to "revert" resolved symbol names of C++ template instantiations by Sema to the parameter name because D severes the link between the template instance scope and its members, and the only links that remain are the AliasDeclarations created by TemplateInstance::declareParameters
+
+    // One exception is the type managed to escape the template declaration, e.g with decltype(). In this fairly rare case T has to be desugared.
+    bool isEscaped = false;
+
+    auto ParmDecl = T->getReplacedParameter()->getDecl();
+    auto Temp = cast<clang::Decl>(ParmDecl->getDeclContext());
+
+    decltype(CXXScope) ScopeStack(tm.CXXScope);
+    while (!ScopeStack.empty())
+    {
+        auto ScopeDecl = ScopeStack.top();
+        ScopeStack.pop();
+        ScopeChecker ScopeDeclEquals(ScopeDecl);
+
+        if (ScopeDeclEquals(Temp))
+        {
+            isEscaped = true;
+            break;
+        }
+    }
+
+    if (isEscaped)
+        return fromType(T->getReplacementType());
 
     return fromTypeTemplateTypeParm(T->getReplacedParameter());
 }
