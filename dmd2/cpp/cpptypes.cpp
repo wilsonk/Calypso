@@ -800,7 +800,7 @@ Type* TypeMapper::FromType::fromTypeInjectedClassName(const clang::InjectedClass
     return new TypeIdentifier(Loc(), className);
 }
 
-TypeQualified* TypeMapper::FromType::fromNestedNameSpecifier(const clang::NestedNameSpecifier* NNS)
+TypeQualified *TypeMapper::FromType::fromNestedNameSpecifierImpl(const clang::NestedNameSpecifier *NNS)
 {
     TypeQualified *result = nullptr;
 
@@ -809,14 +809,7 @@ TypeQualified* TypeMapper::FromType::fromNestedNameSpecifier(const clang::Nested
         case clang::NestedNameSpecifier::Identifier:
         {
             auto ident = fromIdentifier(NNS->getAsIdentifier());
-            if (auto Prefix = NNS->getPrefix())
-            {
-                result = fromNestedNameSpecifier(Prefix);
-                result->addIdent(ident);
-            }
-            else
-                result = new TypeIdentifier(Loc(), ident);
-
+            result = new TypeIdentifier(Loc(), ident);
             break;
         }
 
@@ -839,6 +832,15 @@ TypeQualified* TypeMapper::FromType::fromNestedNameSpecifier(const clang::Nested
     }
 
     return result;
+}
+
+TypeQualified* TypeMapper::FromType::fromNestedNameSpecifier(const clang::NestedNameSpecifier* NNS)
+{
+    if (auto Prefix = NNS->getPrefix())
+        if (auto tqual = fromNestedNameSpecifier(Prefix))
+            return FromType(tm, tqual).fromNestedNameSpecifierImpl(NNS);
+
+    return fromNestedNameSpecifierImpl(NNS);
 }
 
 // NOTE: Dependent***Type are not mandatory to get templates working because the instantiation is done by Sema

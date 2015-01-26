@@ -109,6 +109,8 @@ public:
 
     private:
         Type *fromType(const clang::QualType T);  // private alias
+
+        TypeQualified *fromNestedNameSpecifierImpl(const clang::NestedNameSpecifier *NNS);
     };
 
     // DMD -> Clang
