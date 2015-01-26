@@ -672,9 +672,21 @@ TypeQualified *TypeMapper::FromType::fromTemplateName(const clang::TemplateName 
     switch (Name.getKind())
     {
         case clang::TemplateName::Template:
-        case clang::TemplateName::QualifiedTemplate:
             return (TypeQualified *) typeQualifiedFor(Name.getAsTemplateDecl(),
                 ArgBegin, ArgEnd);
+
+        case clang::TemplateName::QualifiedTemplate:
+        {
+            TypeQualified *tqual = nullptr;
+            auto NNS = Name.getAsQualifiedTemplateName()->getQualifier();
+
+            if (NNS->getKind() == clang::NestedNameSpecifier::TypeSpec ||
+                    NNS->getKind() == clang::NestedNameSpecifier::TypeSpecWithTemplate)
+                tqual = fromNestedNameSpecifier(NNS);
+
+            return static_cast<TypeQualified *>(FromType(tm, tqual).typeQualifiedFor(Name.getAsTemplateDecl(),
+                ArgBegin, ArgEnd)); // FIXME the cast is temporary, typeQualifiedFor should return TypeQualified
+        }
 
         case clang::TemplateName::SubstTemplateTemplateParm:
             tempIdent = tm.getIdentifierForTemplateTemplateParm(
