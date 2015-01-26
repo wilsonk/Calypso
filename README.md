@@ -5,7 +5,9 @@ Calypso creates a bridge between DMD/LDC and Clang, both at the AST level (DMD <
 
 > http://forum.dlang.org/thread/nsjafpymezlqdknmnkhi@forum.dlang.org
 
-It introduces a new keyword, **modmap**, along with the concept of language plugins which are queried by DMD's parser when it encounters special « **import** *(ABC)* xxx.yyy; » symbols. Interfacing with C++ symbols comes down to:
+It's not a separate tool, but a fork of LDC which allows you to directly import/include a C/C++ header and use the declarations from within D. No intermediate files are necessary.
+
+Calypso introduces a new keyword, **modmap**, along with the concept of language plugins which are queried by DMD's parser when it encounters special « **import** *(ABC)* xxx.yyy; » symbols. Interfacing with C++ declarations comes down to:
 
 ```D
 modmap (C++) "cppheader.h";      // tells Clang to load cppheader.h but do not import anything
@@ -15,7 +17,7 @@ import (C++) NamespaceA._;       // special module per namespace, imports every 
                                  // global functions and typedefs whose direct parent is NamespaceA::
 ```
 
-The resulting imported symbols are usable like their D counterparts, although their implementation differs a lot. For more detailed examples and explanations on Calypso's inner workings see [tests/calypso/showcase.d](tests/calypso/showcase.d).
+The resulting imported symbols are usable like their D counterparts, although their implementation differs a lot. For more detailed examples and explanations on Calypso's features see [tests/calypso/showcase.d](tests/calypso/showcase.d).
 
 Although Calypso is currently soldered to LDC, separating the two and placing Calypso and its bulky Clang dependency in an optional shared library should be easy. In this way, D compilers won't have to depend on a C/C++ compiler, and wider C++ support than what D currently has won't result in too cumbersome intrusions in core DMD/LDC.
 
