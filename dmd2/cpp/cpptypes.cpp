@@ -803,8 +803,8 @@ Type* TypeMapper::FromType::fromTypeSubstTemplateTypeParm(const clang::SubstTemp
 {
     // NOTE: it's necessary to "revert" resolved symbol names of C++ template instantiations by Sema to the parameter name because D severes the link between the template instance scope and its members, and the only links that remain are the AliasDeclarations created by TemplateInstance::declareParameters
 
-    // One exception is the type managed to escape the template declaration, e.g with decltype(). In this fairly rare case T has to be desugared.
-    bool isEscaped = false;
+    // One exception is when the type managed to escape the template declaration, e.g with decltype(). In this fairly rare case T has to be desugared.
+    bool isEscaped = true;
 
     auto ParmDecl = T->getReplacedParameter()->getDecl();
     auto Temp = cast<clang::Decl>(ParmDecl->getDeclContext());
@@ -818,7 +818,7 @@ Type* TypeMapper::FromType::fromTypeSubstTemplateTypeParm(const clang::SubstTemp
 
         if (ScopeDeclEquals(Temp))
         {
-            isEscaped = true;
+            isEscaped = false;
             break;
         }
     }
