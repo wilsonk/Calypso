@@ -372,4 +372,9 @@ void TemplateInstance::correctTiargs()
 
 }
 
+clang::Decl *TemplateInstance::mainInst()
+{
+    return Instances[name];
+}
+
 }

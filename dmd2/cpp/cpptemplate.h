@@ -47,6 +47,8 @@ public:
     llvm::SmallDenseMap<Identifier*, clang::Decl*, 1> Instances; // NOTE: not sure how cpp::TemplateInstance would ever get more than one member though
     bool instantiatedByD = false; // Clang is lazier than DMD when it comes to template instantiation, a PCH might have references or pointers to a template specialization but that specialization although declared might not be defined and codegen'd, whereas DMD expects template specializations to be defined anywhere they appear even as pointers/refs
 
+    clang::Decl* mainInst(); // for gdb
+
     Objects *origTiargs = nullptr; // needed for deco mangling
 
     TemplateInstance(Loc loc, Identifier *temp_id);
