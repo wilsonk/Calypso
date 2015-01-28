@@ -267,6 +267,8 @@ Dsymbol *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags)
             (CRD && isDefined && !CRD->isPOD()))
         isPOD = false;
 
+    CXXScope.push(D);
+
     AggregateDeclaration *a;
     if (!anon)
     {
@@ -307,8 +309,6 @@ Dsymbol *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags)
 
     if (!isDefined)
         goto Ldeclaration;
-
-    CXXScope.push(D);
 
     for (auto I = D->field_begin(), E = D->field_end();
             I != E; ++I)
@@ -369,9 +369,9 @@ Dsymbol *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags)
 
 #undef SPECIFIC_ADD
 
+Ldeclaration:
     CXXScope.pop();
 
-Ldeclaration:
     if (anon)
         return new AnonDeclaration(loc, anon == 2, members);
 
