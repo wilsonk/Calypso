@@ -660,7 +660,7 @@ Type *TypeMapper::FromType::fromTypeElaborated(const clang::ElaboratedType *T)
             tqual = fromNestedNameSpecifier(NNS);
     }
 
-    return FromType(tm, tqual)(T->desugar());
+    return FromType(tm, tqual)(T->getNamedType());
 }
 
 TypeQualified *TypeMapper::FromType::fromTemplateName(const clang::TemplateName Name,
