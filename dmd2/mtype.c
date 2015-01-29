@@ -156,10 +156,15 @@ const char *Type::kind()
     return NULL;
 }
 
+unsigned short Type::sizeType()
+{
+    return sizeTy[ty];
+}
+
 Type *Type::copy()
 {
-    Type *t = (Type *)mem.malloc(sizeTy[ty]);
-    memcpy((void*)t, (void*)this, sizeTy[ty]);
+    Type *t = (Type *)mem.malloc(sizeType());
+    memcpy((void*)t, (void*)this, sizeType());
     return t;
 }
 
@@ -396,7 +401,7 @@ Type *Type::trySemantic(Loc loc, Scope *sc)
 
 Type *Type::nullAttributes()
 {
-    unsigned sz = sizeTy[ty];
+    unsigned sz = sizeType();
     Type *t = (Type *)mem.malloc(sz);
     memcpy((void*)t, (void*)this, sz);
     // t->mod = NULL;  // leave mod unchanged

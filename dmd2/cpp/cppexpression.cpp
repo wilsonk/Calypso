@@ -327,7 +327,7 @@ clang::Expr* ExprMapper::toExpression(Expression* e)
             auto exp = static_cast<IntegerExp*>(e);
             auto value = exp->getInteger();
 
-            if (e->type == Type::tbool)
+            if (e->type->ty == Tbool)
                 return new (Context) clang::CXXBoolLiteralExpr(value != 0,
                                                                Context.BoolTy, Loc);
             else

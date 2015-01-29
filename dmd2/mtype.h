@@ -258,6 +258,7 @@ public:
 
     // CALYPSO
     virtual LangPlugin *langPlugin();
+    virtual unsigned short sizeType();
 
     #define SIZE_INVALID (~(d_uns64)0)
     d_uns64 size();

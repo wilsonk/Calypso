@@ -7,7 +7,6 @@
 #pragma once
 #endif /* __DMC__ */
 
-#include "cpp/cpptypes.h"
 #include "../mars.h"
 #include "../import.h"
 #include "../gen/cgforeign.h"
@@ -34,6 +33,7 @@ namespace cpp
 {
 
 class ClassDeclaration;
+class BuiltinTypes;
 
 Identifier *fromIdentifier(const clang::IdentifierInfo* II);
 Identifier *getIdentifier(const clang::NamedDecl* D);
@@ -159,13 +159,14 @@ public:
     // ==== ==== ====
     PCH pch;
 
-    BuiltinTypes builtinTypes;
+    BuiltinTypes &builtinTypes;
 
     // settings
     const char *cachePrefix = "calypso_cache"; // prefix of cached files (list of headers, PCH)
 
     std::unique_ptr<AssistBuilder> AB;  // selective emit external C++ declarations, expressions, template instances, ...
 
+    LangPlugin();
     void init();
     clang::ASTUnit *getASTUnit() { return pch.AST; }
     clang::ASTContext &getASTContext();

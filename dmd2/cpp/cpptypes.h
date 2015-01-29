@@ -9,7 +9,9 @@
 
 #include <map>
 #include <stack>
+#include "cpp/calypso.h"
 #include "mars.h"
+#include "mtype.h"
 #include "arraytypes.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/TargetInfo.h"
@@ -34,6 +36,24 @@ namespace cpp
 {
 class Module;
 class TypeQualifiedBuilder;
+
+// "Sugared" types remembering their original C++ type.
+// NOTE: It's especially important for templates argument matching.
+//   There are a few D builtin types that are mapped to several C++ ones, such as wchar_t/dchar <=> wchar_t. Even though they're the same, we have to differentiate them (e.g char_traits<wchar_t>char_traits<char32>) or else two template instances might have different tempdecl while their aggregate member get the same Deco
+// FIXME: the mangle chars might collide with other plugins'
+class TypeBasic : public ::TypeBasic
+{
+public:
+    CALYPSO_LANGPLUGIN
+
+    const clang::BuiltinType *T;
+
+    static TypeBasic *twchar_t;
+
+    TypeBasic(TY ty, const clang::BuiltinType *T = nullptr);
+    void toDecoBuffer(OutBuffer *buf, int flag = 0) override;
+    unsigned short sizeType() override;
+};
 
 class BuiltinTypes
 {

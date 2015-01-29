@@ -368,14 +368,14 @@ void emitABIReturnAsmStmt(IRAsmBlock* asmblock, Loc& loc, FuncDeclaration* fdecl
         }
         else if (rt->isfloating())
         {
-            if (rt == Type::tcomplex80) {
+            if (rt->ty == Tcomplex80) { // CALYPSO, basic types might be sugared, do not compare basic types addresses
                 // On x87 stack, re=st, im=st(1)
                 as->out_c = "={st},={st(1)},";
                 asmblock->retn = 2;
-            } else if (rt == Type::tfloat80 || rt == Type::timaginary80) {
+            } else if (rt->ty == Tfloat80 || rt->ty == Timaginary80) {
                 // On x87 stack
                 as->out_c = "={st},";
-            } else if (l != LINKd && rt == Type::tcomplex32) {
+            } else if (l != LINKd && rt->ty == Tcomplex32) {
                 // LLVM and GCC disagree on how to return {float, float}.
                 // For compatibility, use the GCC/LLVM-GCC way for extern(C/Windows)
                 // extern(C) cfloat -> %xmm0 (extract two floats)

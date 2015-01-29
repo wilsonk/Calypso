@@ -4,6 +4,7 @@
 #include "cpp/cppimport.h"
 #include "cpp/cppmodule.h"
 #include "cpp/cppaggregate.h"
+#include "cpp/cpptypes.h"
 
 #include "aggregate.h"
 #include "declaration.h"
@@ -30,6 +31,7 @@ using llvm::dyn_cast;
 using llvm::isa;
 
 LangPlugin calypso;
+BuiltinTypes builtinTypes;
 
 static inline clang::ASTUnit* ast() { return calypso.pch.AST; }
 
@@ -284,6 +286,12 @@ int LangPlugin::doesHandleModmap(const utf8_t* lang)
 {
     return new Modmap(loc,
                 static_cast<StringExp*>(arg));
+}
+
+LangPlugin::LangPlugin()
+    : builtinTypes(cpp::builtinTypes)
+{
+
 }
 
 void LangPlugin::init()

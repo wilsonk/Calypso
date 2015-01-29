@@ -217,7 +217,7 @@ struct X86TargetABI : TargetABI
             // RETURN VALUE
 
             // cfloat -> i64
-            if (tf->next->toBasetype() == Type::tcomplex32)
+            if (tf->next->toBasetype()->ty == Tcomplex32) // CALYPSO
             {
                 fty.ret->rewrite = &cfloatToInt;
                 fty.ret->ltype = LLType::getInt64Ty(gIR->context());

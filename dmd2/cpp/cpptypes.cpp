@@ -20,6 +20,33 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
+TypeBasic *TypeBasic::twchar_t;
+
+TypeBasic::TypeBasic(TY ty, const clang::BuiltinType *T)
+    : ::TypeBasic(ty), T(T)
+{
+}
+
+void TypeBasic::toDecoBuffer(OutBuffer *buf, int flag)
+{
+    Type::toDecoBuffer(buf, flag);
+
+    switch(T->getKind())
+    {
+        case clang::BuiltinType::WChar_S:
+        case clang::BuiltinType::WChar_U: // do the same for long/tint128 too?
+            buf->writeByte('#');
+            break;
+        default:
+            break;
+    }
+}
+
+unsigned short TypeBasic::sizeType()
+{
+    return sizeof(cpp::TypeBasic);
+}
+
 void BuiltinTypes::map(clang::CanQualType &CQT, Type* t)
 {
     auto T = CQT.getTypePtr()->castAs<clang::BuiltinType>();
@@ -40,19 +67,34 @@ void BuiltinTypes::build(clang::ASTContext &Context)
     map(Context.CharTy, Type::tchar);
     map(Context.UnsignedCharTy, Type::tuns8);    // getCharWidth() always returns 8
 
-    clang::TargetInfo::IntType wcharTy = targetInfo.getWCharType();
-    if (targetInfo.getTypeWidth(wcharTy) == 16)
-        map(Context.WCharTy, Type::twchar);
-    else
-        map(Context.WCharTy, Type::tdchar);
+    {
+        clang::TargetInfo::IntType wcharTy = targetInfo.getWCharType();
+        bool isSigned = targetInfo.isTypeSigned(wcharTy);
+        TY ty_wchar_t;
 
-    map(Context.Char16Ty, Type::twchar); // WARNING: this overrides D -> Clang mapping to WCharTy, a one-to-one correspondance would be safer for template partial specializations
+        if (targetInfo.getTypeWidth(wcharTy) == 16)
+            ty_wchar_t = isSigned ? Tint16 : Twchar;
+        else
+            ty_wchar_t = isSigned ? Tint32 : Tdchar;
+
+        auto BT = cast<clang::BuiltinType>(Context.WCharTy.getTypePtr());
+        if (!TypeBasic::twchar_t)
+            TypeBasic::twchar_t = new TypeBasic(ty_wchar_t, BT);
+        else
+        {
+            assert(ty_wchar_t == TypeBasic::twchar_t->ty);
+            TypeBasic::twchar_t->T = BT;
+        }
+    }
+    map(Context.WCharTy, TypeBasic::twchar_t);
+
+    map(Context.Char16Ty, Type::twchar);
     map(Context.Char32Ty, Type::tdchar);
     map(Context.UnsignedShortTy, toInt(clang::TargetInfo::UnsignedShort));
     map(Context.UnsignedIntTy, toInt(clang::TargetInfo::UnsignedInt));
     map(Context.UnsignedLongTy, toInt(clang::TargetInfo::UnsignedLong));
     map(Context.UnsignedLongLongTy, toInt(clang::TargetInfo::UnsignedLongLong));
-    map(Context.UnsignedInt128Ty, Type::tuns128); // WARNING: same problem with tuns128 and tint128
+    map(Context.UnsignedInt128Ty, Type::tuns128); // WARNING: a one-to-one correspondance would be safer for template partial specializations
 
         //===- Signed Types -------------------------------------------------------===//
     map(Context.SignedCharTy, Type::tint8);

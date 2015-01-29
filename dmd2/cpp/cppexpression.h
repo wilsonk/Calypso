@@ -8,8 +8,9 @@
 #endif /* __DMC__ */
 
 #include "root.h"
-#include "calypso.h"
-#include "../expression.h"
+#include "expression.h"
+#include "cpp/calypso.h"
+#include "cpp/cpptypes.h"
 
 // NOTE: We're focusing on literal expressions, since expression conversion
 // is needed for default function and template args.

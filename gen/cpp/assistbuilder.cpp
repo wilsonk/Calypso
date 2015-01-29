@@ -1,5 +1,6 @@
 #include "cpp/calypso.h"
 
+#include "clang/Basic/TargetInfo.h"
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/lib/CodeGen/CGDebugInfo.h"
 

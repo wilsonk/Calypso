@@ -510,7 +510,7 @@ bool X86_64TargetABI::passByVal(Type* t) {
                 //       http://llvm.org/bugs/show_bug.cgi?id=3741
                 return true;
             } else {
-                assert((t == Type::tfloat80 || t == Type::timaginary80 || t->ty == Tsarray || t->size() <= 8)
+                assert((t->ty == Tfloat80 || t->ty == Timaginary80 || t->ty == Tsarray || t->size() <= 8) // CALYPSO
                     && "What other big types are there?");
                 // In any case, they shouldn't be represented as structs in LLVM:
                 assert(!isaStruct(DtoType(t)));
@@ -529,7 +529,7 @@ void X86_64TargetABI::fixup(IrFuncTyArg& arg) {
     LLType* abiTy = getAbiType(arg.type);
 
     if (abiTy && abiTy != arg.ltype) {
-        assert(arg.type == Type::tcomplex32 || arg.type->ty == Tstruct);
+        assert(arg.type->ty == Tcomplex32 || arg.type->ty == Tstruct);
         arg.ltype = abiTy;
         arg.rewrite = &struct_rewrite;
     }
