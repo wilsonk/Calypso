@@ -63,6 +63,9 @@ public:
     inline FuncDeclaration *findMethod(const clang::CXXMethodDecl *MD);
 };
 
+const clang::RecordDecl *getRecordDecl(::AggregateDeclaration *ad);
+const clang::RecordDecl *getRecordDecl(::Type *t);
+
 }
 
 #endif /* DMD_CPP_CPPAGGREGATE_H */

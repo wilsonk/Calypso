@@ -80,9 +80,12 @@ llvm::Constant * IrAggr::getDefaultInit()
 
     DtoType(type);
     VarInitMap noExplicitInitializers;
+    
     if (auto lp = type->langPlugin()) // CALYPSO
-        constInit = lp->codegen()->createInitializerConstant(this, noExplicitInitializers, init_type);
-    else
+        constInit = lp->codegen()->createInitializerConstant(
+                this, noExplicitInitializers, init_type);
+
+    if (!constInit)
         constInit = createInitializerConstant(noExplicitInitializers, init_type);
     return constInit;
 }

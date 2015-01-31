@@ -119,11 +119,12 @@ IrTypeClass* IrTypeClass::get(ClassDeclaration* cd)
 
     // CALYPSO
     if (auto lp = cd->langPlugin())
-    {
-        t->type = lp->codegen()->toType(cd->type);
-        lp->codegen()->buildGEPIndices(t, t->varGEPIndices);
-        return t;
-    }
+        if (auto ty = lp->codegen()->toType(cd->type))
+        {
+            t->type = ty;
+            lp->codegen()->buildGEPIndices(t, t->varGEPIndices);
+            return t;
+        }
 
     AggrTypeBuilder builder(t->packed);
 

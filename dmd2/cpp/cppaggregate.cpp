@@ -351,4 +351,35 @@ Expression *LangPlugin::getRightThis(Loc loc, Scope *sc, ::AggregateDeclaration 
     return dd;
 }
 
+const clang::RecordDecl *getRecordDecl(::AggregateDeclaration *ad)
+{
+    assert(isCPP(ad));
+
+    if (auto sd = ad->isStructDeclaration())
+        return static_cast<StructDeclaration*>(sd)->RD;
+    else if (auto cd = ad->isClassDeclaration())
+        return static_cast<ClassDeclaration*>(cd)->RD;
+
+   llvm_unreachable("Unknown aggregate decl type?");
+}
+
+const clang::RecordDecl *getRecordDecl(::Type *t)
+{
+    ::AggregateDeclaration *ad;
+
+    switch(t->ty)
+    {
+        case Tstruct:
+            ad = static_cast<TypeStruct*>(t)->sym;
+            break;
+        case Tclass:
+            ad = static_cast<TypeClass*>(t)->sym;
+            break;
+        default:
+            llvm_unreachable("Non-aggregate type");
+    }
+
+    return getRecordDecl(ad);
+}
+
 }

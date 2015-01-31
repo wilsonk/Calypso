@@ -62,12 +62,13 @@ IrTypeStruct* IrTypeStruct::get(StructDeclaration* sd)
 
     // CALYPSO
     if (auto lp = sd->langPlugin())
-    {
-        t->type = lp->codegen()->toType(sd->type);
-                // what about default_fields
-        lp->codegen()->buildGEPIndices(t, t->varGEPIndices);
-        return t;
-    }
+        if (auto ty = lp->codegen()->toType(sd->type))
+        {
+            t->type = ty;
+                    // what about default_fields
+            lp->codegen()->buildGEPIndices(t, t->varGEPIndices);
+            return t;
+        }
 
     AggrTypeBuilder builder(t->packed);
     builder.addAggregate(sd);

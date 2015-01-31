@@ -91,27 +91,13 @@ llvm::Type *LangPlugin::toType(::Type *t)
     auto CGM = AB->CGM();
     auto& Context = getASTContext();
 
-    switch(t->ty)
-    {
-        case Tstruct:
-        {
-            auto ts = static_cast<TypeStruct*>(t);
-            auto c_sd = static_cast<StructDeclaration*>(ts->sym);
-            return CGM->getTypes().ConvertTypeForMem(
-                Context.getRecordType(c_sd->RD));
-        }
-        case Tclass:
-        {
-            auto tc = static_cast<TypeClass*>(t);
-            auto c_cd = static_cast<ClassDeclaration*>(tc->sym);
-            return CGM->getTypes().ConvertTypeForMem(
-                Context.getRecordType(c_cd->RD));
-        }
-        default:
-            assert(false && "Unhandled");
-    }
+    auto RD = getRecordDecl(t);
 
-    return nullptr;
+    if (!RD->getDefinition())
+        return nullptr;
+    else
+        return CGM->getTypes().ConvertTypeForMem(
+                    Context.getRecordType(RD));
 }
 
 llvm::Constant *LangPlugin::createInitializerConstant(IrAggr *irAggr,
@@ -121,13 +107,10 @@ llvm::Constant *LangPlugin::createInitializerConstant(IrAggr *irAggr,
     auto& Context = getASTContext();
     auto CGM = AB->CGM();
 
-    const clang::RecordDecl *RD;
-    if (auto sd = irAggr->aggrdecl->isStructDeclaration())
-        RD = static_cast<StructDeclaration*>(sd)->RD;
-    else if (auto cd = irAggr->aggrdecl->isClassDeclaration())
-        RD = static_cast<ClassDeclaration*>(cd)->RD;
-     else
-        assert(false && "Unknown aggregate decl type?");
+    auto RD = getRecordDecl(irAggr->aggrdecl);
+
+    if (!RD->getDefinition())
+        return nullptr;
 
     auto DestType = Context.getRecordType(RD).withConst();
     llvm::Constant *c;
@@ -154,7 +137,7 @@ llvm::Constant *LangPlugin::createInitializerConstant(IrAggr *irAggr,
                                                              irSt->element_end()),
                                                              irSt->isPacked());
     }
-    
+
     c->mutateType(initializerType);  // dangerous?
     return c;
 }
@@ -167,20 +150,14 @@ void LangPlugin::buildGEPIndices(IrTypeAggr *irTyAgrr,
     
     auto t = irTyAgrr->getDType();
     AggregateDeclaration *ad;
-    const clang::RecordDecl *RD;
     
     if (t->ty == Tstruct)
-    {
-        auto ts = static_cast<TypeStruct*>(t);
-        ad = ts->sym;
-        RD = static_cast<cpp::StructDeclaration*>(ts->sym)->RD;
-    }
+        ad = static_cast<TypeStruct*>(t)->sym;
     else if (t->ty == Tclass)
-    {
-        auto tc = static_cast<TypeClass*>(t);
-        ad = tc->sym;
-        RD = static_cast<cpp::ClassDeclaration*>(tc->sym)->RD;
-    }
+        ad = static_cast<TypeClass*>(t)->sym;
+
+    auto RD = getRecordDecl(ad);
+    assert(RD->getDefinition());
     
     auto& CGRL = CGTypes.getCGRecordLayout(RD);
     
