@@ -345,6 +345,18 @@ public:
         result = id;
     }
 
+    void visit(Module *m) // CALYPSO
+    {
+        OutBuffer buf;
+        mangleParent(&buf, m);
+
+        if (const char *prefix = m->manglePrefix())
+            buf.writestring(prefix);
+        toBuffer(&buf, m->ident->toChars(), m);
+
+        result = buf.extractString();
+    }
+
     void visit(Dsymbol *s)
     {
     #if 0

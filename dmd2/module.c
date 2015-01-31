@@ -250,7 +250,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *ident)
         filename = (char *)buf.extractData();
     }
 
-    ::Module *m = new ::Module(filename, ident, 0, 0);
+    Module *m = new Module(filename, ident, 0, 0);
     m->loc = loc;
 
     /* Look for the source file

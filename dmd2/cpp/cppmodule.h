@@ -34,6 +34,7 @@ public:
 
     static Module *load(Loc loc, Identifiers *packages, Identifier *ident);
     void addPreambule() override;
+    const char *manglePrefix() override { return "Cpp"; }
 };
 
 }

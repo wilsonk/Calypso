@@ -147,8 +147,6 @@ public:
 #else
     void parse();       // syntactic parse
 #endif
-    static Module *load(Loc loc, Identifiers *packages, Identifier *ident); // CALYPSO
-    virtual void addPreambule(); // CALYPSO
     void importAll(Scope *sc);
     void semantic();    // semantic analysis
     void semantic2();   // pass 2 semantic analysis
@@ -168,6 +166,11 @@ public:
     static void runDeferredSemantic3();
     static void clearCache();
     int imports(Module *m);
+
+    // CALYPSO
+    static Module *load(Loc loc, Identifiers *packages, Identifier *ident);
+    virtual void addPreambule();
+    virtual const char *manglePrefix() { return NULL; }
 
     bool isRoot() { return this->importedFrom == this; }
                                 // true if the module source file is directly
