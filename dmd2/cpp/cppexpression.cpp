@@ -255,12 +255,46 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *t,
                 return new IdentifierExp(loc, ident);
         }
     }
+    else if (auto C = dyn_cast<clang::CallExpr>(E))
+    {
+        if (!enableCallExpr)
+            return new NullExp(loc);
+
+        auto e = fromExpression(C->getCallee());
+
+        auto args = new Expressions;
+        for (auto Arg: C->arguments())
+            args->push(fromExpression(Arg));
+
+        return new CallExp(loc, e, args);
+    }
+    else if (auto UL = dyn_cast<clang::UnresolvedLookupExpr>(E))
+    {
+        if (!UL->getName().isIdentifier())
+        {
+            ::warning(loc, "Unsupported DeclarationName for UnresolvedLookupExpr");
+            return new NullExp(loc);
+        }
+
+        // FIXME NNS
+        auto id = fromIdentifier(UL->getName().getAsIdentifierInfo());
+
+        if (UL->getNumTemplateArgs())
+        {
+            auto& ExplicitTempArgs = UL->getExplicitTemplateArgs();
+
+            auto tempinst = new TemplateInstance(loc, id);
+            tempinst->tiargs = fromASTTemplateArgumentListInfo(ExplicitTempArgs, tymap);
+            return new ScopeExp(loc, tempinst);
+        }
+        else
+            return new IdentifierExp(loc, id);
+    }
 
     if (isa<clang::InitListExpr>(E)) //TODO
         return new NullExp(loc);
 
-    if (isa<clang::CallExpr>(E) ||
-        isa<clang::CXXConstructExpr>(E) ||
+    if (isa<clang::CXXConstructExpr>(E) ||
         isa<clang::CXXUnresolvedConstructExpr>(E) ||
         isa<clang::CXXNewExpr>(E)) // TODO implement evaluation
         return new NullExp(loc) /* nullptr */;

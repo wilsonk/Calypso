@@ -91,6 +91,8 @@ public:
         TypeMapper &tm;
         TypeQualified *prefix; // special case for NNS qualified types
 
+        const clang::Expr *DecltypeExpr = nullptr;
+
         FromType(TypeMapper &tm, TypeQualified *prefix = nullptr);
 
         Type *operator()(const clang::QualType T);

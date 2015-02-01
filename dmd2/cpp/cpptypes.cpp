@@ -866,7 +866,30 @@ Type* TypeMapper::FromType::fromTypeSubstTemplateTypeParm(const clang::SubstTemp
     }
 
     if (isEscaped)
+    {
+        // If the substitued argument comes from decltype(some function template call), then the fragile link that makes perfect C++ template mapping possible (type sugar) is broken.
+        // Clang has lost the template instance at this point, so first we get it back from the decltype expr.
+        if (auto CE = llvm::dyn_cast_or_null<clang::CallExpr>(DecltypeExpr))
+            if (auto Callee = CE->getDirectCallee())
+                if (Callee->isTemplateInstantiation())
+                {
+                    // Secondly the substitued template argument is the one of the function template arg, but if the argument was deduced from the call args then type sugar is lost forever (either typedef, subst template arg, and maybe other kinds of sugar), this is where it gets complicated.
+                    // The laziest and "should work in most cases" solution is to use DMD's own overloading and template argument deduction from the original decltype expression.
+
+                    ExprMapper em(tm);
+                    em.enableCallExpr = true;
+
+                    auto e = em.fromExpression(DecltypeExpr);
+                    auto loc = fromLoc(DecltypeExpr->getExprLoc());
+
+                    return new TypeTypeof(loc, e);
+
+                    // NOTE: Sugar can't be preserved because Clang could have call arg with typedef types where the typedef decl isn't usable to get back the template arg sugar, e.g template<T> void Func(T *a); decltype(Func(someTypedef));
+                    // Another possible solution would be to make a deduction listener that records the deduction actions to apply them on the call arg types, but it's much more complex.
+                }
+
         return fromType(T->getReplacementType());
+    }
 
     return fromTypeTemplateTypeParm(T->getReplacedParameter());
 }
@@ -894,7 +917,7 @@ TypeQualified *TypeMapper::FromType::fromNestedNameSpecifierImpl(const clang::Ne
         case clang::NestedNameSpecifier::TypeSpecWithTemplate:
         {
             auto t = fromTypeUnqual(NNS->getAsType());
-            assert(t->ty == Tinstance || t->ty == Tident);
+            assert(t->ty == Tinstance || t->ty == Tident || t->ty == Ttypeof);
             result = (TypeQualified*) t;
             break;
         }
@@ -962,8 +985,13 @@ Type* TypeMapper::FromType::fromTypeDependentTemplateSpecialization(const clang:
 
 Type* TypeMapper::FromType::fromTypeDecltype(const clang::DecltypeType* T)
 {
-    if (T->isSugared())  // TODO: remove this for reflection
-        return fromType(T->desugar());
+    if (T->isSugared())  // TODO: remove this for reflection?
+    {
+        FromType underlying(tm);
+        underlying.DecltypeExpr = T->getUnderlyingExpr(); // needed for SubstTemplateTypeParm
+
+        return underlying(T->desugar());
+    }
 
     auto exp = ExprMapper(tm).fromExpression(T->getUnderlyingExpr());
     if (exp) // temporary? some decltype use CallExpr, which I feel would make getting things working much harder for little gain since templates are instantiated by Sema

@@ -34,6 +34,8 @@ public:
     ExprMapper(TypeMapper &tymap)
         : tymap(tymap) {}
 
+    bool enableCallExpr = false; // temporary
+
     // Clang -> DMD
     Expression *fromExpression(const clang::Expr *E, Type *t = nullptr, bool interpret = false);
 
