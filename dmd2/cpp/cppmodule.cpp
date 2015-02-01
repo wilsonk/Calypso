@@ -691,6 +691,24 @@ Dsymbol *DeclMapper::VisitInstancedClassTemplate(const clang::ClassTemplateSpeci
     assert(!isa<clang::ClassTemplatePartialSpecializationDecl>(D));
     auto CT = getDefinition(D->getSpecializedTemplate());
 
+    // Recreate the scope stack, esp. important for nested template instances
+    struct CXXScopeRebuilder
+    {
+        decltype(CXXScope) &S;
+        CXXScopeRebuilder(decltype(S) &S) : S(S) {}
+
+        void build(const clang::Decl *D, bool push = false)
+        {
+            auto Parent = cast<clang::Decl>(D->getDeclContext());
+            if (!isa<clang::TranslationUnitDecl>(Parent))
+                build(Parent, true);
+
+            if (push && isa<clang::CXXRecordDecl>(D))
+                S.push(D);
+        }
+    };
+    CXXScopeRebuilder(CXXScope).build(D);
+
     templateParameters.push_back(CT->getTemplateParameters());
     auto s = VisitRecordDecl(D, flags);
     templateParameters.pop_back();

@@ -139,7 +139,7 @@ public:
     Dsymbol *VisitClassTemplateSpecializationDecl(const clang::ClassTemplateSpecializationDecl *D);
     Dsymbol *VisitEnumDecl(const clang::EnumDecl *D);
 
-    Dsymbol *VisitInstancedClassTemplate(const clang::ClassTemplateSpecializationDecl *D, unsigned flags = 0);
+    Dsymbol *VisitInstancedClassTemplate(const clang::ClassTemplateSpecializationDecl *D, unsigned flags = 0); // entry point when mapping instances during semantic()
     TemplateParameter *VisitTemplateParameter(const clang::NamedDecl *Param,
                                                                     const clang::TemplateArgument *SpecArg = nullptr); // in DMD explicit specializations use parameters, whereas Clang uses args
 
