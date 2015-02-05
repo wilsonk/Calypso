@@ -410,6 +410,9 @@ void LangPlugin::toDefineTemplateInstance(::TemplateInstance *inst)
                             CGM.EmitTopLevelDecl(Method);
         }
     }
+
+    for (auto D: c_ti->Dependencies)
+        CGM.EmitTopLevelDecl(D);
 }
 
 }

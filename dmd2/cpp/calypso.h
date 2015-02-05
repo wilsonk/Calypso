@@ -24,7 +24,6 @@ class Identifier;
 namespace clang
 {
 class IdentifierInfo;
-class ASTUnit;
 class CodeGenFunction;
 class Sema;
 }
@@ -34,6 +33,10 @@ namespace cpp
 
 class ClassDeclaration;
 class BuiltinTypes;
+class TemplateInstance;
+
+namespace reclang { class ASTUnit; }
+using reclang::ASTUnit;
 
 Identifier *fromIdentifier(const clang::IdentifierInfo* II);
 Identifier *getIdentifier(const clang::NamedDecl* D);
@@ -41,13 +44,22 @@ Identifier *getIdentifierOrNull(const clang::NamedDecl* D);
 
 Loc fromLoc(clang::SourceLocation L);
 
+// This collects the *new* function instances that a template instance depends upon, they need to be emitted
+struct InstantiationCollector : public clang::ASTConsumer
+{
+    TemplateInstance *ti = nullptr;
+
+    bool HandleTopLevelDecl(clang::DeclGroupRef DG) override;
+};
+
 struct PCH
 {
     Strings headers; // array of all C/C++ header names with the "" or <>, required as long as we're using a PCH
             // the array is initialized at the first Modmap::semantic and kept in sync with a cache file named 'fringed_cache.list'
             // TODO: it's currently pretty basic and dumb and doesn't check whether the same header might be named differently or is already included by another
     bool needEmit = false;
-    clang::ASTUnit *AST = nullptr;
+    ASTUnit *AST = nullptr;
+    InstantiationCollector instCollector;
     clang::IntrusiveRefCntPtr<clang::DiagnosticsEngine> Diags;
 
     void init(); // load the list of headers already cached in the PCH
@@ -95,7 +107,7 @@ public:
     llvm::Constant *GetAddrOfGlobal(clang::GlobalDecl GD);
 };
 
-class LangPlugin : public ::LangPlugin, public CodeGen
+class LangPlugin : public ::LangPlugin, public ::CodeGen
 {
 public:
     // ==== LangPlugin ====
@@ -168,7 +180,7 @@ public:
 
     LangPlugin();
     void init();
-    clang::ASTUnit *getASTUnit() { return pch.AST; }
+    ASTUnit *getASTUnit() { return pch.AST; }
     clang::ASTContext &getASTContext();
     
 private:

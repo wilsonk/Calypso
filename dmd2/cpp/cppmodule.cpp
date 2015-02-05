@@ -1,5 +1,6 @@
 // Contributed by Elie Morisse, same license DMD uses
 
+#include "cpp/astunit.h"
 #include "../aggregate.h"
 #include "../attrib.h"
 #include "../declaration.h"
@@ -30,7 +31,6 @@
 #include "clang/AST/DeclTemplate.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/Preprocessor.h"
-#include "clang/Frontend/ASTUnit.h"
 #include "clang/Sema/Sema.h"
 
 namespace cpp

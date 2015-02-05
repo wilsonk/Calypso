@@ -1,7 +1,9 @@
 // Contributed by Elie Morisse, same license DMD uses
 
+#include "cpp/astunit.h"
 #include "cpp/cppexpression.h"
 #include "cpp/cppdeclaration.h"
+#include "cpp/cpptemplate.h"
 #include "cpp/cpptypes.h"
 #include "id.h"
 #include "template.h"
@@ -9,7 +11,6 @@
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
-#include "clang/Frontend/ASTUnit.h"
 
 namespace cpp
 {
@@ -218,7 +219,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *t,
     {
         Expression *e1 = nullptr;
         Identifier *ident;
-        TemplateInstance *tempinst = nullptr;
+        ::TemplateInstance *tempinst = nullptr;
 
         if (auto NNS = DSDR->getQualifier())
         {
@@ -283,7 +284,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *t,
         {
             auto& ExplicitTempArgs = UL->getExplicitTemplateArgs();
 
-            auto tempinst = new TemplateInstance(loc, id);
+            auto tempinst = new ::TemplateInstance(loc, id);
             tempinst->tiargs = fromASTTemplateArgumentListInfo(ExplicitTempArgs, tymap);
             return new ScopeExp(loc, tempinst);
         }

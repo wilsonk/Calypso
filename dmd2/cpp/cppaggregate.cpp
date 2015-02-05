@@ -1,5 +1,6 @@
 // Contributed by Elie Morisse, same license DMD uses
 
+#include "cpp/astunit.h"
 #include "cpp/calypso.h"
 #include "cpp/cppaggregate.h"
 #include "cpp/cppdeclaration.h"
@@ -13,7 +14,6 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/RecordLayout.h"
-#include "clang/Frontend/ASTUnit.h"
 #include "clang/Sema/Sema.h"
 
 namespace cpp

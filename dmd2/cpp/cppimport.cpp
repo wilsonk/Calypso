@@ -1,7 +1,10 @@
-#include "cppimport.h"
-#include "cppmodule.h"
-#include "calypso.h"
-#include "../expression.h"
+// Contributed by Elie Morisse, same license DMD uses
+
+#include "cpp/astunit.h"
+#include "cpp/cppimport.h"
+#include "cpp/cppmodule.h"
+#include "cpp/calypso.h"
+#include "expression.h"
 
 #include <unistd.h>
 #include <stdlib.h>
@@ -9,7 +12,6 @@
 
 #include "llvm/Support/FileSystem.h" // shall be replaced by std.file
 #include "clang/Basic/Diagnostic.h"
-#include "clang/Frontend/ASTUnit.h"
 
 namespace cpp
 {

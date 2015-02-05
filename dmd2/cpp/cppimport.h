@@ -13,15 +13,7 @@
 
 #include "../import.h"
 
-namespace clang
-{
-    class TranslationUnitDecl;
-    class ASTUnit;
-}
-
 namespace cpp {
-
-using clang::ASTUnit;
 
 class Import : public ::Import
 {

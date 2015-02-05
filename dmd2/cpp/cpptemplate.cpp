@@ -1,5 +1,6 @@
 // Contributed by Elie Morisse, same license DMD uses
 
+#include "cpp/astunit.h"
 #include "cpp/cpptemplate.h"
 #include "cpp/cppdeclaration.h"
 #include "cpp/cppexpression.h"
@@ -11,7 +12,6 @@
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
-#include "clang/Frontend/ASTUnit.h"
 #include "clang/Sema/Sema.h"
 
 namespace cpp
@@ -148,7 +148,7 @@ clang::RedeclarableTemplateDecl *TemplateDeclaration::getPrimaryTemplate()
         {
             auto CTSD = cast<clang::ClassTemplateSpecializationDecl>(RT->getDecl());
             ti->Instances[ti->name] = CTSD;
-            ti->completeInst();
+            ti->completeInst(true);
         }
         else
             assert(false);
@@ -212,6 +212,7 @@ TemplateInstance::TemplateInstance(const TemplateInstance& o)
 {
     Instances = o.Instances;
     instantiatedByD = o.instantiatedByD;
+    Dependencies = o.Dependencies;
 }
 
 Dsymbol *TemplateInstance::syntaxCopy(Dsymbol *s)
@@ -223,6 +224,7 @@ Dsymbol *TemplateInstance::syntaxCopy(Dsymbol *s)
         auto ti = static_cast<cpp::TemplateInstance*>(s);
         ti->Instances = Instances;
         ti->instantiatedByD = instantiatedByD;
+        ti->Dependencies = Dependencies;
     }
 
     return ::TemplateInstance::syntaxCopy(s);
@@ -240,7 +242,18 @@ Identifier *TemplateInstance::getIdent()
     return result;
 }
 
-void TemplateInstance::completeInst()
+bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
+{
+    if (!ti)
+        return true;
+
+    for (auto I = DG.begin(), E = DG.end(); I != E; ++I)
+        ti->Dependencies.push_back(*I);
+
+    return true;
+}
+
+void TemplateInstance::completeInst(bool foreignInstance)
 {
     auto& Context = calypso.pch.AST->getASTContext();
     auto& Diags = calypso.pch.Diags;
@@ -259,20 +272,25 @@ void TemplateInstance::completeInst()
         {
             auto Ty = Context.getRecordType(CTSD);
 
-            if (S.RequireCompleteType(CTSD->getLocation(), Ty, 0))
-                assert(false && "Sema::RequireCompleteType() failed on template specialization");
-
             // if the definition of the class template specialization wasn't present in the PCH
             // there's a chance the code wasn't emitted in the C++ libraries, so we do it ourselves.
             instantiatedByD = true;
+
+            calypso.pch.instCollector.ti = this;
+
+            if (S.RequireCompleteType(CTSD->getLocation(), Ty, 0))
+                assert(false && "Sema::RequireCompleteType() failed on template specialization");
 
             // Force instantiation of method definitions
             for (auto *D : CTSD->decls())
             {
                 if (auto Function = dyn_cast<clang::FunctionDecl>(D))
                     if (!Function->isDefined() && Function->getInstantiatedFromMemberFunction())
-                        S.InstantiateFunctionDefinition(CTSD->getLocation(), Function);
+                        S.InstantiateFunctionDefinition(CTSD->getLocation(),
+                                                        Function, foreignInstance);
             }
+
+            calypso.pch.instCollector.ti = nullptr;
         }
     }
 }

@@ -1,5 +1,6 @@
 // Contributed by Elie Morisse, same license DMD uses
 
+#include "cpp/astunit.h"
 #include "cpp/calypso.h"
 #include "cpp/cppimport.h"
 #include "cpp/cppmodule.h"
@@ -18,7 +19,6 @@
 #include "clang/AST/DeclTemplate.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
-#include "clang/Frontend/ASTUnit.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "llvm/Support/Program.h"
 #include "llvm/IR/LLVMContext.h"
@@ -33,7 +33,7 @@ using llvm::isa;
 LangPlugin calypso;
 BuiltinTypes builtinTypes;
 
-static inline clang::ASTUnit* ast() { return calypso.pch.AST; }
+static inline ASTUnit* ast() { return calypso.pch.AST; }
 
 Identifier *fromIdentifier(const clang::IdentifierInfo *II)
 {
@@ -247,8 +247,8 @@ void PCH::update()
     Diags = new clang::DiagnosticsEngine(DiagID,
                                          &*DiagOpts, DiagClient);
 
-    AST = clang::ASTUnit::LoadFromASTFile(pchFilename,
-                                          Diags, FileSystemOpts);
+    AST = ASTUnit::LoadFromASTFile(pchFilename,
+                                Diags, FileSystemOpts, &instCollector);
 
     // Build the builtin type map
     calypso.builtinTypes.build(AST->getASTContext());
