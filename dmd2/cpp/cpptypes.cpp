@@ -1051,10 +1051,15 @@ bool TypeMapper::isNonPODRecord(const clang::QualType T)
     return !CRD->isPOD();
 }
 
-TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoType* T)
+TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoType* T,
+        const clang::FunctionDecl *FD)
 {
     auto params = new Parameters;
     params->reserve(T->getNumParams());
+
+    decltype(FD->param_begin()) PI;
+    if (FD)
+        PI = FD->param_begin();
 
     for (auto I = T->param_type_begin(), E = T->param_type_end();
                 I != E; I++)
@@ -1063,7 +1068,27 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
         if (tm.isNonPODRecord(*I))
             return nullptr;
 
-        params->push(new Parameter(STCundefined, FromType(tm)(*I), nullptr, nullptr));
+        StorageClass stc = STCundefined;
+
+        auto at = FromType(tm)(*I);
+        if (at->ty == Treference)
+        {
+            at = static_cast<TypeReference*>(at)->nextOf();
+            stc |= STCref;
+        }
+
+        Identifier *ident = nullptr;
+        Expression *defaultArg = nullptr;
+
+        if (FD)
+        {
+            ident = getIdentifierOrNull(*PI);
+
+            if ((*PI)->hasDefaultArg())
+                defaultArg = ExprMapper(tm).fromExpression((*PI)->getDefaultArg());
+        }
+
+        params->push(new Parameter(stc, at, ident, defaultArg));
     }
 
     return new TypeFunction(params, FromType(tm)(T->getReturnType()), 0, LINKd);  // does LINK matter?
@@ -1202,9 +1227,12 @@ bool TypeMapper::BuildImplicitImportInternal(const clang::DeclContext *DC, Loc l
 
 /***** DMD -> Clang types *****/
 
-clang::QualType TypeMapper::toType(Loc loc, Type* t, Scope *sc)
+clang::QualType TypeMapper::toType(Loc loc, Type* t, Scope *sc, StorageClass stc)
 {
     auto& Context = calypso.pch.AST->getASTContext();
+
+    if (stc & STCref)
+        t = new TypeReference(t);
 
     if (t->isConst() || t->isImmutable())
     {

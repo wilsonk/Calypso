@@ -112,7 +112,8 @@ public:
         Type *fromTypeDependentTemplateSpecialization(const clang::DependentTemplateSpecializationType *T);
         Type *fromTypeDecltype(const clang::DecltypeType *T);
         Type *fromTypePackExpansion(const clang::PackExpansionType *T);
-        TypeFunction *fromTypeFunction(const clang::FunctionProtoType *T);
+        TypeFunction *fromTypeFunction(const clang::FunctionProtoType *T,
+                        const clang::FunctionDecl *FD = nullptr);
 
         RootObject *fromTemplateArgument(const clang::TemplateArgument *Arg,
                     const clang::NamedDecl *Param = nullptr);  // NOTE: Param is required when the parameter type is an enum, because in the AST enum template arguments are resolved to uint while DMD expects an enum constant or it won't find the template decl. Is this a choice or a compiler bug/limitation btw?
@@ -136,7 +137,7 @@ public:
     };
 
     // DMD -> Clang
-    clang::QualType toType(Loc loc, Type* t, Scope *sc);
+    clang::QualType toType(Loc loc, Type* t, Scope *sc, StorageClass stc = STCundefined);
 
 protected:
     cpp::Module *mod;

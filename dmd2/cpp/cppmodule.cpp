@@ -400,10 +400,10 @@ Dsymbol *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 
     auto loc = fromLoc(D->getLocation());
 
-    auto FPT = D->getType();
+    auto FPT = cast<clang::FunctionProtoType>(D->getType().getTypePtr());
     auto MD = dyn_cast<clang::CXXMethodDecl>(D);
     
-    auto tf = fromType(FPT);
+    auto tf = FromType(*this).fromTypeFunction(FPT, D);
     if (!tf)
     {
         fprintf(stderr, "Discarding %s, has a class value argument\n", D->getDeclName().getAsString().c_str());

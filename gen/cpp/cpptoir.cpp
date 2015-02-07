@@ -266,7 +266,8 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
         DValue* argval = DtoArgument(fnarg,
                         static_cast<::Expression*>(arguments->data[i]));
         Args.add(clang::CodeGen::RValue::get(argval->getRVal()),
-                 TypeMapper().toType(loc, fnarg->type, fd->scope));
+                 TypeMapper().toType(loc, fnarg->type,
+                                     fd->scope, fnarg->storageClass));
     }
     
     if (MD && !MD->isStatic())
