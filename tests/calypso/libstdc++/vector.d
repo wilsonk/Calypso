@@ -12,7 +12,7 @@ import (C++) std.vector;
 
 void main()
 {
-    vector!char v;
+    auto v = new vector!char;
 
     v.reserve(10);
 
