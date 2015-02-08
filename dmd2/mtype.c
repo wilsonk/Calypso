@@ -5644,6 +5644,16 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
         sc = sc->push();
         sc->stc &= ~(STC_TYPECTOR | STC_FUNCATTR);
         tf->next = tf->next->semantic(loc,sc);
+
+        // CALYPSO this isn't specific to C++. Since « ref » is equivalent to TypeReference, it seems wiser
+        // to use only ref whenever possible, in order to avoid having some functions taking TypeReference
+        // parameters while others use STCref.
+        if (tf->next->ty == Treference)
+        {
+            tf->next = tf->next->nextOf();
+            tf->isref = true;
+        }
+
         sc = sc->pop();
         Type *tb = tf->next->toBasetype();
         if (tb->ty == Tfunction)
@@ -5700,6 +5710,13 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
             {
                 errors = true;
                 continue;
+            }
+
+            // CALYPSO
+            if (fparam->type->ty == Treference)
+            {
+                fparam->type = fparam->type->nextOf();
+                fparam->storageClass |= STCref;
             }
 
             fparam->type = fparam->type->addStorageClass(fparam->storageClass);

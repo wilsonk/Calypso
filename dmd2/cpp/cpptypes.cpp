@@ -1069,14 +1069,7 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
             return nullptr;
 
         StorageClass stc = STCundefined;
-
-        auto at = FromType(tm)(*I);
-        if (at->ty == Treference)
-        {
-            at = static_cast<TypeReference*>(at)->nextOf();
-            stc |= STCref;
-        }
-
+        auto at = tm.fromType(*I);
         Identifier *ident = nullptr;
         Expression *defaultArg = nullptr;
 

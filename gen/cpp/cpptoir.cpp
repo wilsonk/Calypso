@@ -284,6 +284,9 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
                     callable, ReturnValue, Args, FD);
     }
 
+    if (tf->isref)
+        return new DVarValue(resulttype, RV.getScalarVal());
+
     return new DImValue(resulttype, RV.getScalarVal());
 }
 
