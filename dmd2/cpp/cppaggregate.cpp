@@ -43,8 +43,8 @@ ClassDeclaration::ClassDeclaration(Loc loc, Identifier *id, BaseClasses *basecla
 }
 
 ClassDeclaration::ClassDeclaration(const ClassDeclaration& o)
-    : ClassDeclaration(o.loc, o.ident, o.baseclasses, o.RD)
-{
+    : ClassDeclaration(o.loc, o.ident, nullptr, o.RD)
+{ // NOTE: baseclasses will be duplicated by syntaxCopy, but this makes the copy constructor not doing what it should be doing
 }
 
 IMPLEMENT_syntaxCopy(StructDeclaration, RD)

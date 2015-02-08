@@ -43,12 +43,8 @@ void DtoResolveClass(ClassDeclaration* cd)
     LOG_SCOPE;
 
     // make sure the base classes are processed first
-    for (BaseClasses::iterator I = cd->baseclasses->begin(),
-                               E = cd->baseclasses->end();
-                               I != E; ++I)
-    {
-        DtoResolveAggregate((*I)->base);  // CALYPSO
-    }
+    for (auto b: *(cd->baseclasses))
+        DtoResolveAggregate(b->base);  // CALYPSO
 
     // make sure type exists
     DtoType(cd->type);
@@ -85,10 +81,7 @@ void DtoResolveAggregate(AggregateDeclaration* ad) // CALYPSO
     if (auto cd = ad->isClassDeclaration())
         DtoResolveClass(cd);
     else
-    {
-        auto sd = ad->isStructDeclaration();
-        DtoResolveStruct(sd);
-    }
+        DtoResolveStruct(static_cast<StructDeclaration*>(ad));
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -689,7 +682,7 @@ LLConstant* DtoDefineClassInfo(ClassDeclaration* cd)
     // base classinfo
     // interfaces never get a base , just the interfaces[]
     if (isClassDeclarationOrNull(cd->baseClass) && !cd->isInterfaceDeclaration()) // CALYPSO
-        b.push_classinfo(isClassDeclarationOrNull(cd->baseClass));
+        b.push_classinfo(static_cast<ClassDeclaration*>(cd->baseClass));
     else
         b.push_null(cinfo->type);
 
