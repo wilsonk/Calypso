@@ -1,3 +1,10 @@
+/**
+ * std::vector example.
+ *
+ * Build with:
+ *   $ ldc2 -L-lstdc++ vector.d
+ */
+
 modmap (C++) "vector";
 
 import std.stdio, std.conv, std.string;
