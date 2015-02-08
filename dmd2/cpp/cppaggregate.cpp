@@ -302,7 +302,7 @@ Expression *LangPlugin::getRightThis(Loc loc, Scope *sc, ::AggregateDeclaration 
     auto cd = static_cast<cpp::ClassDeclaration*>(ad);
 
     Type *t = e1->type->toBasetype();
-    if (t->equals(ad->getType()))
+    if (ad->getType()->constConv(t) > MATCHnomatch)
         return e1;
 
     ::ClassDeclaration *tcd = t->isClassHandle();

@@ -1091,7 +1091,14 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
         params->push(new Parameter(stc, at, ident, defaultArg));
     }
 
-    return new TypeFunction(params, FromType(tm)(T->getReturnType()), 0, LINKd);  // does LINK matter?
+    StorageClass stc = STCundefined;
+    if (T->isConst())
+        stc |= STCconst;
+
+    auto tf = new TypeFunction(params, FromType(tm)(T->getReturnType()),
+                               0, LINKd, stc);
+    tf = static_cast<TypeFunction*>(tf->addSTC(stc));
+    return tf;
 }
 
 // In D if a class is inheriting from another module's class, then its own module has to import the base class' module.
