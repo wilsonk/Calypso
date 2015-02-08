@@ -1,4 +1,5 @@
 // Contributed by Elie Morisse, same license DMD uses
+#include "cpp/astunit.h"
 #include "cpp/calypso.h"
 #include "cpp/cppdeclaration.h"
 #include "cpp/cppaggregate.h"
@@ -28,7 +29,6 @@
 #include "clang/Basic/ABI.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/TargetInfo.h"
-#include "clang/Frontend/ASTUnit.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/LLVMContext.h"
@@ -400,16 +400,7 @@ void LangPlugin::toDefineTemplateInstance(::TemplateInstance *inst)
         auto Instance = D.second;
 
         if (auto CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(Instance))
-        {
             CGM.UpdateCompletedType(CTSD);
-
-            if (Context.getLangOpts().CPlusPlus)
-                for (auto M = CTSD->decls_begin(), MEnd = CTSD->decls_end();
-                        M != MEnd; ++M)
-                    if (auto Method = llvm::dyn_cast<clang::CXXMethodDecl>(*M))
-                        if (Method->doesThisDeclarationHaveABody())
-                            CGM.EmitTopLevelDecl(Method);
-        }
     }
 
     for (auto D: c_ti->Dependencies)

@@ -244,11 +244,16 @@ Identifier *TemplateInstance::getIdent()
 
 bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
 {
+    auto& Context = calypso.pch.AST->getASTContext();
+
     if (!ti)
         return true;
 
     for (auto I = DG.begin(), E = DG.end(); I != E; ++I)
+    {
         ti->Dependencies.push_back(*I);
+        (*I)->addAttr(clang::UsedAttr::CreateImplicit(Context));
+    }
 
     return true;
 }
