@@ -896,7 +896,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
     auto& Context = calypso.getASTContext();
 
     const clang::DeclContext *DC = Context.getTranslationUnitDecl();
-    auto dst = rootPackage->symtab;
+    Package *pkg = rootPackage;
 
     assert(packages && packages->dim);
 
@@ -919,16 +919,16 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
         }
         auto ident = fromIdentifier(NSN->getIdentifier());
 
-        auto pkg = static_cast<Package*>(dst->lookup(ident));
+        pkg = static_cast<Package*>(pkg->symtab->lookup(ident));
         assert(pkg);
 
         DC = NSN;
-        dst = pkg->symtab;
     }
 
     auto m = new Module(moduleName(packages, id).c_str(),
                         id, packages);
     m->members = new Dsymbols;
+    m->parent = pkg;
     m->loc = loc;
 
     DeclMapper mapper(m);
@@ -1022,7 +1022,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
     }
     
     amodules.push_back(m);
-    dst->insert(m);
+    pkg->symtab->insert(m);
     return m;
 }
 
