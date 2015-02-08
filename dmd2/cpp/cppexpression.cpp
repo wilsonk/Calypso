@@ -103,6 +103,8 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *t,
     else if (auto ICE = dyn_cast<clang::CastExpr>(E))
         return fromExpression(ICE->getSubExpr(),
                             tymap.fromType(ICE->getType()));
+    else if (auto CDA = dyn_cast<clang::CXXDefaultArgExpr>(E))
+        return fromExpression(CDA->getExpr());
 
     if (auto UO = dyn_cast<clang::UnaryOperator>(E))
         return fromUnaExp(UO);
