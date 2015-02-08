@@ -52,6 +52,9 @@ IMPLEMENT_syntaxCopy(ClassDeclaration, RD)
 
 void StructDeclaration::semantic(Scope *sc)
 {
+    if (semanticRun >= PASSsemanticdone)
+        return;
+
     auto CRD = dyn_cast<clang::CXXRecordDecl>(RD);
     assert(CRD || !sc->parent->isTemplateInstance());
 
@@ -80,6 +83,9 @@ void StructDeclaration::semantic(Scope *sc)
 
 void ClassDeclaration::semantic(Scope *sc)
 {
+    if (semanticRun >= PASSsemanticdone)
+        return;
+
     // Basically a hook at the beginning of semantic(), to change RD from the template decl
     // to the instantation decl if needed.
     if (RD->getDescribedClassTemplate() ||
