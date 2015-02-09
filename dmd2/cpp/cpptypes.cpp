@@ -425,6 +425,19 @@ public:
         auto Canon = D->getCanonicalDecl();
         return Canon == ScopeDecl || Canon == TemplateDecl;
     }
+
+    bool extended(const clang::Decl *D)
+    {
+        if (operator()(D))
+            return true;
+
+        if (auto ClassPattern = llvm::dyn_cast_or_null<clang::CXXRecordDecl>(TemplateDecl))
+            if (auto ClassTemplate = ClassPattern->getDescribedClassTemplate())
+                if (auto MemberTemplate = ClassTemplate->getInstantiatedFromMemberTemplate())
+                    return ScopeChecker(MemberTemplate)(D);
+
+        return false;
+    }
 };
 
 class TypeQualifiedBuilder
@@ -860,7 +873,7 @@ Type* TypeMapper::FromType::fromTypeSubstTemplateTypeParm(const clang::SubstTemp
         ScopeStack.pop();
         ScopeChecker ScopeDeclEquals(ScopeDecl);
 
-        if (ScopeDeclEquals(Temp))
+        if (ScopeDeclEquals.extended(Temp))
         {
             isEscaped = false;
             break;
