@@ -1074,10 +1074,13 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
     if (FD)
         PI = FD->param_begin();
 
+    // FIXME we're ignoring functions with unhandled types i.e class values
+    if (tm.isNonPODRecord(T->getReturnType()))
+        return nullptr;
+
     for (auto I = T->param_type_begin(), E = T->param_type_end();
                 I != E; I++)
     {
-        // FIXME we're ignoring functions with unhandled types i.e class values
         if (tm.isNonPODRecord(*I))
             return nullptr;
 
