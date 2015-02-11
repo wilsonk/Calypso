@@ -1099,6 +1099,8 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
                             (*PI)->getUninstantiatedDefaultArg() : (*PI)->getDefaultArg();
                 defaultArg = ExprMapper(tm).fromExpression(DefaultArgExpr);  // WARNING: will using the uninstantiated default arg cause problems?
             }
+
+            PI++;
         }
 
         params->push(new Parameter(stc, at, ident, defaultArg));
