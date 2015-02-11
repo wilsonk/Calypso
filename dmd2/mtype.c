@@ -208,6 +208,7 @@ void Type::init()
     sizeTy[Taarray] = sizeof(TypeAArray);
     sizeTy[Tpointer] = sizeof(TypePointer);
     sizeTy[Treference] = sizeof(TypeReference);
+    sizeTy[Tvalueof] = sizeof(TypeValueof);
     sizeTy[Tfunction] = sizeof(TypeFunction);
     sizeTy[Tdelegate] = sizeof(TypeDelegate);
     sizeTy[Tident] = sizeof(TypeIdentifier);
@@ -228,6 +229,7 @@ void Type::init()
     mangleChar[Taarray] = 'H';
     mangleChar[Tpointer] = 'P';
     mangleChar[Treference] = 'R';
+    mangleChar[Tvalueof] = 'V';
     mangleChar[Tfunction] = 'F';
     mangleChar[Tident] = 'I';
     mangleChar[Tclass] = 'C';
@@ -5267,6 +5269,52 @@ Expression *TypeReference::defaultInit(Loc loc)
 bool TypeReference::isZeroInit(Loc loc)
 {
     return true;
+}
+
+
+/***************************** TypeValueof *****************************/ // CALYPSO
+
+TypeValueof::TypeValueof(Type *t)
+    : TypeNext(Tvalueof, t)
+{
+}
+
+const char *TypeValueof::kind()
+{
+    return "valueof";
+}
+
+Type *TypeValueof::syntaxCopy()
+{
+    Type *t = next->syntaxCopy();
+    if (t == next)
+        t = this;
+    else
+    {   t = new TypeValueof(t);
+        t->mod = mod;
+    }
+    return t;
+}
+
+Type *TypeValueof::semantic(Loc loc, Scope *sc)
+{
+    Type *n = next->semantic(loc, sc);
+    if (n != next)
+        deco = NULL;
+    next = n;
+    transitive();
+    return merge();
+}
+
+Type *TypeValueof::pointerTo()
+{
+    // HACK? Since TypeValueof is only ever used for C++ class values and was created for Calypso, we do some assumptions and try to get rid of it ASAP
+    return next->pointerTo();
+}
+
+Type *TypeValueof::referenceTo()
+{
+    return next;
 }
 
 

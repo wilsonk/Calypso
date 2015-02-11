@@ -107,6 +107,7 @@ enum ENUMTY
     Ttypeof,
     Ttuple,
     Tslice,
+    Tvalueof,   // CALYPSO
 
     Treturn,
     Tnull,
@@ -315,8 +316,8 @@ public:
     Type *castMod(MOD mod);
     Type *addMod(MOD mod);
     virtual Type *addStorageClass(StorageClass stc);
-    Type *pointerTo();
-    Type *referenceTo();
+    virtual Type *pointerTo();  // CALYPSO
+    virtual Type *referenceTo();
     Type *arrayOf();
     Type *sarrayOf(dinteger_t dim);
     Type *aliasthisOf();
@@ -602,6 +603,18 @@ public:
     Expression *defaultInit(Loc loc);
     bool isZeroInit(Loc loc);
     void accept(Visitor *v) { v->visit(this); }
+};
+
+// CALYPSO
+class TypeValueof : public TypeNext
+{
+public:
+    TypeValueof(Type *t);
+    const char *kind();
+    Type *syntaxCopy();
+    Type *semantic(Loc loc, Scope *sc);
+    virtual Type *pointerTo();
+    virtual Type *referenceTo();
 };
 
 enum RET
