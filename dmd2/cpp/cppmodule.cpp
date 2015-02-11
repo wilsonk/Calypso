@@ -485,9 +485,9 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
             NumParams++;
 
         if (OO == clang::OO_Call)
-            tempIdent = Id::index;
-        else if(OO == clang::OO_Subscript)
             tempIdent = Id::call;
+        else if(OO == clang::OO_Subscript)
+            tempIdent = Id::index;
         else
         {
             bool isUnary = NumParams == 1;
@@ -526,6 +526,9 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
                     case clang::OO_LessLess:
                     case clang::OO_GreaterGreater:
                         tempIdent = Id::opBinary;
+                        break;
+                    case clang::OO_Equal:
+                        tempIdent = Id::assign;
                         break;
                     case clang::OO_PlusEqual:
                     case clang::OO_MinusEqual:
