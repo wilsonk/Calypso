@@ -93,10 +93,12 @@ Expression* ExprMapper::fromBinExp(const clang::BinaryOperator* E)
     llvm::llvm_unreachable_internal("Unhandled C++ binary operation exp");
 }
 
-Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *t,
+Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
                                             bool interpret)  // TODO implement interpret properly
 {
     auto loc = fromLoc(E->getLocStart());
+    Expression *e = nullptr;
+    Type *t = nullptr;
 
     if (auto PE = dyn_cast<clang::ParenExpr>(E))
         return fromExpression(PE->getSubExpr());
@@ -123,12 +125,10 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *t,
     {
         auto Val = IL->getValue();
 
-        if (!t)
-            t = getAPIntDType(Val);
+        t = (!destType || !destType->isintegral()) ? getAPIntDType(Val) : destType;
 
-        return new IntegerExp(loc,
-                Val.isNegative() ? Val.getSExtValue() : Val.getZExtValue(),
-                getAPIntDType(Val));
+        e = new IntegerExp(loc,
+                Val.isNegative() ? Val.getSExtValue() : Val.getZExtValue(), t);
     }
     else if (auto CL = dyn_cast<clang::CharacterLiteral>(E))
     {
@@ -301,6 +301,15 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *t,
         isa<clang::CXXUnresolvedConstructExpr>(E) ||
         isa<clang::CXXNewExpr>(E)) // TODO implement evaluation
         return new NullExp(loc) /* nullptr */;
+
+    if (e)
+    {
+        if (!t || !destType ||
+                t->implicitConvTo(destType) >= MATCHconvert)
+            return e;
+
+        return new CastExp(loc, e, destType);
+    }
 
     llvm::llvm_unreachable_internal("Unhandled C++ expression");
 }

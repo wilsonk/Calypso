@@ -37,7 +37,8 @@ public:
     bool enableCallExpr = false; // temporary
 
     // Clang -> DMD
-    Expression *fromExpression(const clang::Expr *E, Type *t = nullptr, bool interpret = false);
+    Expression *fromExpression(const clang::Expr *E, Type *destType = nullptr,
+                               bool interpret = false);
 
     Expression *fromExpressionDeclRef(Loc loc, clang::NamedDecl* D);
     Expression *fromExpressionNonTypeTemplateParm(Loc loc, const clang::NonTypeTemplateParmDecl* D);
