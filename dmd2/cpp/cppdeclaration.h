@@ -129,38 +129,21 @@ public:
     // Declarations
     Dsymbols *VisitDeclContext(const clang::DeclContext *DC);
 
-    Dsymbol *VisitDecl(const clang::Decl *D);
+    Dsymbols *VisitDecl(const clang::Decl *D);
 
-    Dsymbol *VisitValueDecl(const clang::ValueDecl *D);
-    Dsymbol *VisitRecordDecl(const clang::RecordDecl* D, unsigned flags = 0);
-    Dsymbol *VisitTypedefNameDecl(const clang::TypedefNameDecl *D);
-    Dsymbol *VisitFunctionDecl(const clang::FunctionDecl *D);
-    Dsymbol *VisitRedeclarableTemplateDecl(const clang::RedeclarableTemplateDecl* D);
-    Dsymbol *VisitClassTemplateSpecializationDecl(const clang::ClassTemplateSpecializationDecl *D);
-    Dsymbol *VisitEnumDecl(const clang::EnumDecl *D);
+    Dsymbols *VisitValueDecl(const clang::ValueDecl *D);
+    Dsymbols *VisitRecordDecl(const clang::RecordDecl* D, unsigned flags = 0);
+    Dsymbols *VisitTypedefNameDecl(const clang::TypedefNameDecl *D);
+    Dsymbols *VisitFunctionDecl(const clang::FunctionDecl *D);
+    Dsymbols *VisitRedeclarableTemplateDecl(const clang::RedeclarableTemplateDecl* D);
+    Dsymbols *VisitClassTemplateSpecializationDecl(const clang::ClassTemplateSpecializationDecl *D);
+    Dsymbols *VisitEnumDecl(const clang::EnumDecl *D);
 
-    Dsymbol *VisitInstancedClassTemplate(const clang::ClassTemplateSpecializationDecl *D, unsigned flags = 0); // entry point when mapping instances during semantic()
+    Dsymbol *VisitInstancedClassTemplate(const clang::ClassTemplateSpecializationDecl *D, unsigned int flags = 0); // entry point when mapping instances during semantic()
     TemplateParameter *VisitTemplateParameter(const clang::NamedDecl *Param,
                                                                     const clang::TemplateArgument *SpecArg = nullptr); // in DMD explicit specializations use parameters, whereas Clang uses args
 
     static const unsigned ForceNonPOD = 1 << 0; // When a templace declaration is non-POD, we want the explicit template specializations to be non-POD too even if isPOD() is true
-    
-//     Dsymbol *VisitEnumConstantDecl(const clang::EnumConstantDecl *D);
-//     Dsymbol *VisitEmptyDecl(const clang::EmptyDecl *D);
-//     Dsymbol *VisitFriendDecl(const clang::FriendDecl *D);
-//     Dsymbol *VisitLabelDecl(const clang::LabelDecl *D);
-//     Dsymbol *VisitParmVarDecl(const clang::ParmVarDecl *D);
-//     Dsymbol *VisitFileScopeAsmDecl(const clang::FileScopeAsmDecl *D);
-//     Dsymbol *VisitImportDecl(const clang::ImportDecl *D);
-//     Dsymbol *VisitStaticAssertDecl(const clang::StaticAssertDecl *D);
-//     Dsymbol *VisitNamespaceDecl(const clang::NamespaceDecl *D);
-//     Dsymbol *VisitUsingDirectiveDecl(const clang::UsingDirectiveDecl *D);
-//     Dsymbol *VisitNamespaceAliasDecl(const clang::NamespaceAliasDecl *D);
-//     Dsymbol *VisitLinkageSpecDecl(const clang::LinkageSpecDecl *D);
-//     Dsymbol *VisitFunctionTemplateDecl(const clang::FunctionTemplateDecl *D);
-//     Dsymbol *VisitClassTemplateDecl(const clang::ClassTemplateDecl *D);
-//     Dsymbol *VisitUnresolvedUsingTypenameDecl(const clang::UnresolvedUsingTypenameDecl *D);
-//     Dsymbol *VisitUnresolvedUsingValueDecl(const clang::UnresolvedUsingValueDecl *D);
 
     static Identifier *getIdentifierForTemplateNonTypeParm(const clang::NonTypeTemplateParmDecl *NTTPD);
 };

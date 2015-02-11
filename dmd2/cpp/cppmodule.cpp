@@ -126,6 +126,18 @@ inline PROT DeclMapper::toPROT(clang::AccessSpecifier AS)
 
 /*****/
 
+namespace
+{
+
+inline Dsymbols *oneSymbol(Dsymbol *s)
+{
+    auto decldefs = new Dsymbols;
+    decldefs->push(s);
+    return decldefs;
+}
+
+}
+
 Dsymbols *DeclMapper::VisitDeclContext(const clang::DeclContext *DC)
 {
     auto decldefs = new Dsymbols;
@@ -134,18 +146,18 @@ Dsymbols *DeclMapper::VisitDeclContext(const clang::DeclContext *DC)
         D != DEnd; ++D)
     {
         if (auto d = VisitDecl(*D))
-            decldefs->push(d);
+            decldefs->append(d);
     }
 
     return decldefs;
 }
 
-Dsymbol *DeclMapper::VisitDecl(const clang::Decl *D)
+Dsymbols *DeclMapper::VisitDecl(const clang::Decl *D)
 {
     if (!D->isCanonicalDecl())
         return nullptr;
 
-    Dsymbol *s = nullptr;
+    Dsymbols *s = nullptr;
 
     // Unfortunately a long ugly list of if (... dyn_cast...) is more solid and
     // future-proof than a pretty switch à la decl_visitor
@@ -169,7 +181,7 @@ Dsymbol *DeclMapper::VisitDecl(const clang::Decl *D)
     return s;
 }
 
-Dsymbol *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
+Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
 {
     auto& Context = calypso.getASTContext();
     ExprMapper expmap(*this);
@@ -223,16 +235,19 @@ Dsymbol *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
             }
         }
     }
-    return a;
+
+    return oneSymbol(a);
 }
 
-Dsymbol *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags)
+Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags)
 {
     auto& Context = calypso.pch.AST->getASTContext();
     auto& S = calypso.pch.AST->getSema();
 
     if (D->isImplicit())
         return nullptr;
+
+    auto loc = fromLoc(D->getLocation());
 
     if (!D->isCompleteDefinition() && D->getDefinition())
         D = D->getDefinition();  // WARNING: if the definition isn't in the PCH this is going to submit an empty aggregate decl, there could be conflicts if several PCH or modules are used
@@ -253,11 +268,9 @@ Dsymbol *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags)
 
     if (!anon && !getIdentifierOrNull(D))
     {
-        fprintf(stderr, "Value with anon record type, no D equivalent (needs workaround), discarding\n");
+        ::warning(loc, "Value with anon record type, no D equivalent (needs workaround), discarding");
         return nullptr;
     }
-
-    auto loc = fromLoc(D->getLocation());
 
     auto CRD = dyn_cast<clang::CXXRecordDecl>(D);
         // NOTE: CXXRecordDecl will disappear in a future version of Clang and only
@@ -318,7 +331,7 @@ Dsymbol *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags)
 
         auto field = VisitValueDecl(*I);
         if (field)
-            members->push(field);
+            members->append(field);
     }
 
     if (CRD && /* TEMPORARY HACK */ !D->isUnion())
@@ -350,7 +363,7 @@ Dsymbol *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags)
             // CALYPSO FIXME remove the null check once everything is implemented
             auto fd = VisitFunctionDecl(*I);
             if (fd)
-                members->push(fd);
+                members->append(fd);
         }
     }
 
@@ -360,7 +373,7 @@ Dsymbol *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags)
     for (DECL##_iterator I(D->decls_begin()), E(D->decls_end()); \
                 I != E; I++) \
         if (auto s = VisitDecl(*I)) \
-            members->push(s);
+            members->append(s);
 
     SPECIFIC_ADD(Tag)
     SPECIFIC_ADD(Var)
@@ -373,14 +386,14 @@ Ldeclaration:
     CXXScope.pop();
 
     if (anon)
-        return new AnonDeclaration(loc, anon == 2, members);
+        return oneSymbol(new AnonDeclaration(loc, anon == 2, members));
 
     a->members = members;
 
-    return a;
+    return oneSymbol(a);
 }
 
-Dsymbol* DeclMapper::VisitTypedefNameDecl(const clang::TypedefNameDecl* D)
+Dsymbols *DeclMapper::VisitTypedefNameDecl(const clang::TypedefNameDecl* D)
 {
     if (isAnonTagTypedef(D))
         return nullptr;  // the anon tag will be mapped by VisitRecordDecl to an aggregate named after the typedef identifier
@@ -390,10 +403,10 @@ Dsymbol* DeclMapper::VisitTypedefNameDecl(const clang::TypedefNameDecl* D)
     auto t = fromType(D->getUnderlyingType());
 
     auto a = new AliasDeclaration(loc, id, t, D);
-    return a;
+    return oneSymbol(a);
 }
 
-Dsymbol *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
+Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 {
     if (D->isOverloadedOperator() || isa<clang::CXXConversionDecl>(D))
         return nullptr; // TODO
@@ -452,8 +465,7 @@ Dsymbol *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
         fd = new FuncDeclaration(loc, id, stc, tf, D);
     }
 
-    // TODO: operators
-    return fd;
+    return oneSymbol(fd);
 }
 
 // NOTE: doesn't return null if the template isn't defined. What we really want is some sort of canonical declaration to refer to for template parameters.
@@ -487,7 +499,7 @@ bool isTemplateParameterPack(const clang::NamedDecl *Param)
     llvm::llvm_unreachable_internal();
 }
 
-Dsymbol *DeclMapper::VisitRedeclarableTemplateDecl(const clang::RedeclarableTemplateDecl *D)
+Dsymbols *DeclMapper::VisitRedeclarableTemplateDecl(const clang::RedeclarableTemplateDecl *D)
 {   TemplateDeclaration *a;
 
     if (!isa<clang::ClassTemplateDecl>(D) && !isa<clang::TypeAliasTemplateDecl>(D)
@@ -537,12 +549,12 @@ Dsymbol *DeclMapper::VisitRedeclarableTemplateDecl(const clang::RedeclarableTemp
         return nullptr;
 
     auto decldefs = new Dsymbols;
-    decldefs->push(s);
+    decldefs->append(s);
 
     templateParameters.pop_back();
 
     a = new TemplateDeclaration(loc, id, tpl, decldefs, D);
-    return a;
+    return oneSymbol(a);
 }
 
 Identifier *DeclMapper::getIdentifierForTemplateNonTypeParm(const clang::NonTypeTemplateParmDecl *T)
@@ -710,10 +722,11 @@ Dsymbol *DeclMapper::VisitInstancedClassTemplate(const clang::ClassTemplateSpeci
     CXXScopeRebuilder(CXXScope).build(D);
 
     templateParameters.push_back(CT->getTemplateParameters());
-    auto s = VisitRecordDecl(D, flags);
+    auto a = VisitRecordDecl(D, flags);
     templateParameters.pop_back();
 
-    return s;
+    assert(a->dim);
+    return (*a)[0];
 }
 
 static const clang::ClassTemplateSpecializationDecl *getDefinition(const clang::ClassTemplateSpecializationDecl *D)
@@ -730,7 +743,7 @@ static const clang::ClassTemplateSpecializationDecl *getDefinition(const clang::
 }
 
 // Explicit specializations only
-Dsymbol *DeclMapper::VisitClassTemplateSpecializationDecl(const clang::ClassTemplateSpecializationDecl *D)
+Dsymbols *DeclMapper::VisitClassTemplateSpecializationDecl(const clang::ClassTemplateSpecializationDecl *D)
 {   TemplateDeclaration *a;
 
     D = getDefinition(D);
@@ -780,15 +793,15 @@ Dsymbol *DeclMapper::VisitClassTemplateSpecializationDecl(const clang::ClassTemp
 
     auto decldefs = new Dsymbols;
     auto ad = VisitRecordDecl(D);
-    decldefs->push(ad);
+    decldefs->append(ad);
 
     templateParameters.pop_back();
 
     a = new TemplateDeclaration(loc, id, tpl, decldefs, D);
-    return a;
+    return oneSymbol(a);
 }
 
-Dsymbol* DeclMapper::VisitEnumDecl(const clang::EnumDecl* D)
+Dsymbols *DeclMapper::VisitEnumDecl(const clang::EnumDecl* D)
 {
     if (!D->isCompleteDefinition() && D->getDefinition())
         D = D->getDefinition();
@@ -823,7 +836,7 @@ Dsymbol* DeclMapper::VisitEnumDecl(const clang::EnumDecl* D)
         e->members->push(em);
     }
 
-    return e;
+    return oneSymbol(e);
 }
 
 /*****/
@@ -966,7 +979,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
                             llvm::isa<clang::TypeAliasTemplateDecl>(*D))
                     {
                         if (auto s = mapper.VisitDecl(*D))
-                            m->members->push(s);
+                            m->members->append(s);
                     }
                 }
             }
@@ -1001,7 +1014,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
         m->rootDecl = D;
 
         if (auto s = mapper.VisitDecl(D))
-            m->members->push(s);
+            m->members->append(s);
 
         // Special case for class template, we need to add explicit specializations to the module as well
         if (auto CTD = dyn_cast<clang::ClassTemplateDecl>(D))
@@ -1011,11 +1024,11 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
 
             for (auto PartialSpec: PS)
                 if (auto s = mapper.VisitDecl(PartialSpec->getCanonicalDecl()))
-                    m->members->push(s);
+                    m->members->append(s);
 
             for (auto Spec: CTD->specializations())
                 if (auto s = mapper.VisitDecl(Spec->getCanonicalDecl()))
-                    m->members->push(s);
+                    m->members->append(s);
         }
 
 //         srcFilename = AST->getSourceManager().getFilename(TD->getLocation());
