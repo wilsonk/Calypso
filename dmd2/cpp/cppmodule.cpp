@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string>
 
 #include "llvm/ADT/DenseMap.h"
 #include "clang/AST/ASTContext.h"
@@ -406,9 +407,20 @@ Dsymbols *DeclMapper::VisitTypedefNameDecl(const clang::TypedefNameDecl* D)
     return oneSymbol(a);
 }
 
+const char *getOperatorName(const clang::OverloadedOperatorKind OO)
+{
+    switch (OO)
+    {
+#   define OVERLOADED_OPERATOR(Name,Spelling,Token,Unary,Binary,MemberOnly) \
+        case clang::OO_##Name: return #Name;
+#   include "clang/Basic/OperatorKinds.def"
+        default: return "None";
+    }
+}
+
 Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 {
-    if (D->isOverloadedOperator() || isa<clang::CXXConversionDecl>(D))
+    if (isa<clang::CXXConversionDecl>(D))
         return nullptr; // TODO
 
     auto loc = fromLoc(D->getLocation());
@@ -458,6 +470,109 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
             return nullptr;
 
         fd = new DtorDeclaration(loc, stc, Id::dtor, DD);
+    }
+    else if (D->isOverloadedOperator())
+    {
+        // NOTE: C++ overloaded operators might be virtual, unlike D which are always final (being templates)
+        //   Mapping the C++ operator to opBinary()() directly would make D lose info and overriding the C++ method impossible
+        auto OO = D->getOverloadedOperator();
+        const char *op = clang::getOperatorSpelling(OO);
+
+        Identifier *tempIdent;
+
+        auto NumParams = D->getNumParams();
+        if (MD && !MD->isStatic())
+            NumParams++;
+
+        if (OO == clang::OO_Call)
+            tempIdent = Id::index;
+        else if(OO == clang::OO_Subscript)
+            tempIdent = Id::call;
+        else
+        {
+            bool isUnary = NumParams == 1;
+            bool isBinary = NumParams == 2;
+
+            if (isUnary)
+            {
+                switch (OO)
+                {
+                    case clang::OO_Plus:
+                    case clang::OO_Minus:
+                    case clang::OO_Star:
+                    case clang::OO_Tilde:
+                    case clang::OO_PlusPlus:
+                    case clang::OO_MinusMinus:
+                        tempIdent = Id::opUnary;
+                        break;
+                    default:
+    //                     ::warning(loc, "Ignoring C++ unary operator%s", clang::getOperatorSpelling(OO));
+                        return nullptr;
+                }
+            }
+            else if (isBinary)
+            {
+                switch (OO)
+                {
+                    case clang::OO_Plus:
+                    case clang::OO_Minus:
+                    case clang::OO_Star:
+                    case clang::OO_Slash:
+                    case clang::OO_Percent:
+                    case clang::OO_Caret:
+                    case clang::OO_Amp:
+                    case clang::OO_Pipe:
+                    case clang::OO_Tilde:
+                    case clang::OO_LessLess:
+                    case clang::OO_GreaterGreater:
+                        tempIdent = Id::opBinary;
+                        break;
+                    case clang::OO_PlusEqual:
+                    case clang::OO_MinusEqual:
+                    case clang::OO_StarEqual:
+                    case clang::OO_SlashEqual:
+                    case clang::OO_PercentEqual:
+                    case clang::OO_CaretEqual:
+                    case clang::OO_AmpEqual:
+                    case clang::OO_PipeEqual:
+                    case clang::OO_LessLessEqual:
+                    case clang::OO_GreaterGreaterEqual:
+                        tempIdent = Id::opOpAssign;
+                        break;
+                    default:
+    //                     ::warning(loc, "Ignoring C++ binary operator%s", clang::getOperatorSpelling(OO));
+                        return nullptr;
+                }
+            }
+            else
+                return nullptr; // operator new or delete
+        }
+
+        std::string fullName(tempIdent->string, tempIdent->len);
+        fullName += "_";
+        fullName += getOperatorName(OO);
+        auto fullIdent = Lexer::idPool(fullName.c_str());
+
+        // Add the overridable method (or the static function)
+        auto a = new Dsymbols;
+        fd = new FuncDeclaration(loc, fullIdent, stc, tf, D);
+        a->push(fd);
+
+        // Add the opUnary/opBinary/... template declaration
+        auto decldefs = new Dsymbols;
+        auto alias = new ::AliasDeclaration(loc, tempIdent, fd);
+        decldefs->push(alias);
+
+        auto tpl = new TemplateParameters;
+        auto dstring = new TypeIdentifier(loc, Id::object);
+        dstring->addIdent(Lexer::idPool("string"));
+        auto tp_specvalue = new StringExp(loc, const_cast<char*>(op));
+        tpl->push(new TemplateValueParameter(loc, Lexer::idPool("s"), dstring, tp_specvalue, nullptr));
+
+        auto tempdecl = new ::TemplateDeclaration(loc, tempIdent, tpl, nullptr, decldefs);
+        a->push(tempdecl);
+
+        return a;
     }
     else
     {
