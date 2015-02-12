@@ -335,6 +335,7 @@ struct CppSymCollector
             case Tsarray:
             case Tpointer:
             case Treference:
+            case Tvalueof:
                 collect(static_cast<TypeNext*>(t)->next);
                 break;
             case Tident:

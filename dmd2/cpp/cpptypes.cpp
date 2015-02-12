@@ -161,6 +161,35 @@ Type *BuiltinTypes::toInt(clang::TargetInfo::IntType intTy)
 
 /***** Clang -> DMD types *****/
 
+static bool isNonPODRecord(const clang::RecordDecl *RD)
+{
+    auto CRD = dyn_cast<clang::CXXRecordDecl>(RD);
+    if (!CRD)
+        return false;
+
+    if (!CRD->hasDefinition()) // WARNING forward decls will always be considered POD
+        return false;
+
+    return !CRD->isPOD();
+}
+
+static bool isNonPODRecord(const clang::QualType T)
+{
+    auto RT = T->getAs<clang::RecordType>();
+    if (!RT)
+        return false;
+
+    return isNonPODRecord(RT->getDecl());
+}
+
+inline static Type *adjustAggregateType(Type *t, const clang::RecordDecl *RD)
+{
+    if (isNonPODRecord(RD))
+        return new TypeValueof(t);
+    else
+        return t;
+}
+
 Type *TypeMapper::fromType(const clang::QualType T)
 {
     return FromType(*this)(T);
@@ -228,12 +257,6 @@ Type *TypeMapper::FromType::fromTypeUnqual(const clang::Type *T)
     TYPEMAP(PackExpansion)
 #undef TYPEMAP
 
-        // NOTE: the C++ classes don't exactly map to D classes, but we can work
-        // around that:
-        //  - if a C++ function has an argument taking a class, the value will be dereferenced
-        //  - if a variable of a class type is exposed, it's ok to use DotVarExp, but DtoLoad will be skipped.
-        //  - if a C++ function returns an object of a class, make the GC acquire it somehow.
-
     // Array types
     if (auto AT = dyn_cast<clang::ArrayType>(T))
         return fromTypeArray(AT);
@@ -250,7 +273,7 @@ Type *TypeMapper::FromType::fromTypeUnqual(const clang::Type *T)
         if (isPointer)
             return pt->pointerTo();
         else
-            return tm.isNonPODRecord(pointeeT) ? pt : pt->referenceTo();  // special case for classes
+            return pt->referenceTo();
     }
 
     llvm::llvm_unreachable_internal("Unrecognized C++ type");
@@ -692,7 +715,8 @@ Type* TypeMapper::FromType::fromTypeEnum(const clang::EnumType* T)
 
 Type *TypeMapper::FromType::fromTypeRecord(const clang::RecordType *T)
 {
-    return typeQualifiedFor(T->getDecl());
+    return adjustAggregateType(typeQualifiedFor(T->getDecl()),
+                    T->getDecl());
 }
 
 Type *TypeMapper::FromType::fromTypeElaborated(const clang::ElaboratedType *T)
@@ -799,6 +823,9 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
             ti->Instances[ti->name] = RT->getDecl();
             ti->completeInst();
         }
+
+        if (!T->isTypeAlias())
+            return adjustAggregateType(tqual, RT->getDecl());
     }
 
     return tqual;
@@ -912,7 +939,7 @@ Type* TypeMapper::FromType::fromTypeSubstTemplateTypeParm(const clang::SubstTemp
 Type* TypeMapper::FromType::fromTypeInjectedClassName(const clang::InjectedClassNameType* T) // e.g in template <...> class A { A &next; } next has an injected class name type
 {
     auto className = fromIdentifier(T->getDecl()->getIdentifier());
-    return new TypeIdentifier(Loc(), className);
+    return adjustAggregateType(new TypeIdentifier(Loc(), className), T->getDecl());
 }
 
 TypeQualified *TypeMapper::FromType::fromNestedNameSpecifierImpl(const clang::NestedNameSpecifier *NNS)
@@ -932,6 +959,8 @@ TypeQualified *TypeMapper::FromType::fromNestedNameSpecifierImpl(const clang::Ne
         case clang::NestedNameSpecifier::TypeSpecWithTemplate:
         {
             auto t = fromTypeUnqual(NNS->getAsType());
+            if (t->ty == Tvalueof)
+                t = t->nextOf();
             assert(t->ty == Tinstance || t->ty == Tident || t->ty == Ttypeof);
             result = (TypeQualified*) t;
             break;
@@ -1039,31 +1068,6 @@ bool TypeMapper::isInjectedClassName(clang::Decl *D)
     return false;
 }
 
-bool TypeMapper::isNonPODRecord(const clang::QualType T)
-{
-    auto RT = T->getAs<clang::RecordType>();
-    if (!RT)
-        return false;
-
-    auto CRD = dyn_cast<clang::CXXRecordDecl>(RT->getDecl());
-    if (!CRD)
-        return false;
-
-    if (isa<clang::ClassTemplateSpecializationDecl>(CRD))
-        return true;
-
-    // FIXME!!! If this is a forward decl, what do?? We can only know if an agg is POD if the definition is known :(
-    if (!CRD->hasDefinition())
-//     {
-//         ::warning(Loc(), "FIXME: Assuming that CXXRecordDecl %s without a definition is non-POD",
-//                   CRD->getQualifiedNameAsString().c_str());
-//         return true;
-//     }
-        return false; // a reference of a reference is ok right?
-
-    return !CRD->isPOD();
-}
-
 TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoType* T,
         const clang::FunctionDecl *FD)
 {
@@ -1075,13 +1079,13 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
         PI = FD->param_begin();
 
     // FIXME we're ignoring functions with unhandled types i.e class values
-    if (tm.isNonPODRecord(T->getReturnType()))
+    if (isNonPODRecord(T->getReturnType()))
         return nullptr;
 
     for (auto I = T->param_type_begin(), E = T->param_type_end();
                 I != E; I++)
     {
-        if (tm.isNonPODRecord(*I))
+        if (isNonPODRecord(*I))
             return nullptr;
 
         StorageClass stc = STCundefined;
@@ -1254,13 +1258,16 @@ clang::QualType TypeMapper::toType(Loc loc, Type* t, Scope *sc, StorageClass stc
     auto& Context = calypso.pch.AST->getASTContext();
 
     if (stc & STCref)
+    {
         t = new TypeReference(t);
+        stc &= ~STCref;
+    }
 
     if (t->isConst() || t->isImmutable())
     {
         t = t->nullAttributes();
         t->mod &= ~(MODconst|MODimmutable);
-        return toType(loc, t, sc).withConst();
+        return toType(loc, t, sc, stc).withConst();
     }
 
     t = t->merge2();
@@ -1271,24 +1278,27 @@ clang::QualType TypeMapper::toType(Loc loc, Type* t, Scope *sc, StorageClass stc
     switch (t->ty)
     {
         case Tstruct:
-        case Tclass:
         {
-            const clang::RecordDecl *RD;
-
-            if (t->ty == Tstruct)
-            {
-                auto sd = static_cast<TypeStruct*>(t)->sym;
-                assert(isCPP(sd)); // FIXME: C++ template instanciation are supposed to happen only with types known to Clang for the time being
-                RD = static_cast<cpp::StructDeclaration*>(sd)->RD;
-            }
-            else
-            {
-                auto cd = static_cast<TypeClass*>(t)->sym;
-                assert(isCPP(cd));
-                RD = static_cast<cpp::ClassDeclaration*>(cd)->RD;
-            }
+            auto sd = static_cast<TypeStruct*>(t)->sym;
+            assert(isCPP(sd)); // FIXME: C++ template instanciation are supposed to happen only with types known to Clang for the time being
+            auto RD = static_cast<cpp::StructDeclaration*>(sd)->RD;
 
             return Context.getRecordType(RD);
+        }
+        case Tclass:
+        {
+            auto cd = static_cast<TypeClass*>(t)->sym;
+            assert(isCPP(cd));
+            auto RD = static_cast<cpp::ClassDeclaration*>(cd)->RD;
+
+            auto RT = Context.getRecordType(RD);
+            return Context.getLValueReferenceType(RT);
+        }
+        case Tvalueof:
+        {
+            auto RefTy = cast<clang::ReferenceType>(toType(loc,
+                                    static_cast<TypeValueof*>(t)->nextOf(), sc, stc));
+            return RefTy->getPointeeType();
         }
         case Tenum:
         {
@@ -1301,13 +1311,13 @@ clang::QualType TypeMapper::toType(Loc loc, Type* t, Scope *sc, StorageClass stc
         case Ttypedef:  // NOTE: these aren't the AliasDecl created by DeclMapper
         {
             auto td = static_cast<TypeTypedef*>(t)->sym;
-            return toType(loc, td->basetype, sc);
+            return toType(loc, td->basetype, sc, stc);
         }
         case Tident:
         case Tinstance:
         {
             t = t->semantic(loc, sc);
-            return toType(loc, t, sc);
+            return toType(loc, t, sc, stc);
         }
         case Tpointer:
         case Treference:
