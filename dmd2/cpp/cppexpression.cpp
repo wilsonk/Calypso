@@ -293,6 +293,20 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
         else
             return new IdentifierExp(loc, id);
     }
+    else if (auto SVI = dyn_cast<clang::CXXScalarValueInitExpr>(E))
+    {
+        t = tymap.fromType(E->getType());
+        return new DotIdExp(loc, new TypeExp(loc, t), Id::init);
+    }
+    else if (auto MT = dyn_cast<clang::MaterializeTemporaryExpr>(E))
+    {
+        auto Ty = MT->GetTemporaryExpr()->getType();
+
+        if (isa<clang::CXXScalarValueInitExpr>(MT->GetTemporaryExpr()))
+            return new NewExp(loc, nullptr, nullptr, tymap.fromType(Ty), nullptr);
+        else
+            return new NullExp(loc);
+    }
 
     if (isa<clang::InitListExpr>(E)) //TODO
         return new NullExp(loc);

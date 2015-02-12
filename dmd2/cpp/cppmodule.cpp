@@ -432,7 +432,8 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     auto tf = FromType(*this).fromTypeFunction(FPT, D);
     if (!tf)
     {
-        ::warning(loc, "Discarding %s, has a class value argument or return type\n", D->getDeclName().getAsString().c_str());
+        ::warning(loc, "Discarding %s, has a class value argument or return type",
+                            D->getDeclName().getAsString().c_str());
         return nullptr; // FIXME function with unhandled argument types
     }
     assert(tf->ty == Tfunction);
