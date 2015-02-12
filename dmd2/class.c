@@ -392,6 +392,8 @@ void ClassDeclaration::semantic(Scope *sc)
         {
             BaseClass *b = (*baseclasses)[0];
             Type *tb = b->type->toBasetype();
+            if (tb->ty == Tvalueof)
+                tb = tb->nextOf();
             TypeClass *tc = (tb->ty == Tclass) ? (TypeClass *)tb : NULL;
             TypeStruct *ts = (allowInheritFromStruct() && (tb->ty == Tstruct)) ? (TypeStruct *)tb : NULL; // CALYPSO
 
@@ -470,6 +472,8 @@ void ClassDeclaration::semantic(Scope *sc)
         {
             BaseClass *b = (*baseclasses)[i];
             Type *tb = b->type->toBasetype();
+            if (tb->ty == Tvalueof)
+                tb = tb->nextOf();
             TypeClass *tc = (tb->ty == Tclass) ? (TypeClass *)tb : NULL;
             TypeStruct *ts = (allowInheritFromStruct() && (tb->ty == Tstruct)) ? (TypeStruct *)tb : NULL;
             if ((!tc && !ts) ||  // CALYPSO

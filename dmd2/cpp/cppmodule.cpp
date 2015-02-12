@@ -304,6 +304,9 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
                         BEnd = CRD->bases_end(); B != BEnd; ++B)
                 {
                     auto brt = fromType(B->getType());
+                    if (brt->ty == Tvalueof)
+                        brt = brt->nextOf();
+
                     baseclasses->push(new BaseClass(brt,
                                                     toPROT(B->getAccessSpecifier())));
                 }
