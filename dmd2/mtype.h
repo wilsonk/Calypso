@@ -615,6 +615,7 @@ public:
     Type *semantic(Loc loc, Scope *sc);
     virtual Type *pointerTo();
     virtual Type *referenceTo();
+    void accept(Visitor *v) { v->visit(this); }
 };
 
 enum RET

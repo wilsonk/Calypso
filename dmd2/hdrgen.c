@@ -837,6 +837,12 @@ public:
         buf->writeByte('&');
     }
 
+    void visit(TypeValueof *t)
+    {
+        buf->writeByte('*');
+        visitWithMask(t->next, t->mod);
+    }
+
     void visit(TypeFunction *t)
     {
         //printf("TypeFunction::toCBuffer2() t = %p, ref = %d\n", t, t->isref);
