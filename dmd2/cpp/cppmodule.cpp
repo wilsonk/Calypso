@@ -21,8 +21,6 @@
 #include "cppexpression.h"
 #include "cpptemplate.h"
 
-#include <unistd.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string>
 
@@ -431,7 +429,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     auto tf = FromType(*this).fromTypeFunction(FPT, D);
     if (!tf)
     {
-        fprintf(stderr, "Discarding %s, has a class value argument\n", D->getDeclName().getAsString().c_str());
+        ::warning(loc, "Discarding %s, has a class value argument or return type\n", D->getDeclName().getAsString().c_str());
         return nullptr; // FIXME function with unhandled argument types
     }
     assert(tf->ty == Tfunction);

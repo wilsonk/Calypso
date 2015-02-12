@@ -270,8 +270,8 @@ struct Compiler
     const char *vendor;     // Compiler backend name
 };
 
-struct LangPlugin;
-typedef Array<struct LangPlugin *> LangPlugins;
+class LangPlugin;
+typedef Array<class LangPlugin *> LangPlugins;
 
 typedef unsigned structalign_t;
 #define STRUCTALIGN_DEFAULT ((structalign_t) ~0)  // magic value means "match whatever the underlying C compiler does"

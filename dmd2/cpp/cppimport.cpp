@@ -6,10 +6,6 @@
 #include "cpp/calypso.h"
 #include "expression.h"
 
-#include <unistd.h>
-#include <stdlib.h>
-#include <stdio.h>
-
 #include "llvm/Support/FileSystem.h" // shall be replaced by std.file
 #include "clang/Basic/Diagnostic.h"
 
