@@ -5318,6 +5318,11 @@ Expression *TypeValueof::dotExp(Scope *sc, Expression *e, Identifier *ident, int
     return next->dotExp(sc, e, ident, flag);
 }
 
+Dsymbol *TypeValueof::toDsymbol(Scope *sc)
+{
+    return next->toDsymbol(sc);
+}
+
 
 /***************************** TypeFunction *****************************/
 

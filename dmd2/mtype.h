@@ -614,6 +614,7 @@ public:
     Type *syntaxCopy();
     Type *semantic(Loc loc, Scope *sc);
     Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);
+    Dsymbol *toDsymbol(Scope *sc);
     void accept(Visitor *v) { v->visit(this); }
 };
 
