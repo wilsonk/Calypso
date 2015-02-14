@@ -1092,6 +1092,8 @@ bool TypeMapper::isInjectedClassName(clang::Decl *D)
 TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoType* T,
         const clang::FunctionDecl *FD)
 {
+    auto& S = calypso.pch.AST->getSema();
+
     auto params = new Parameters;
     params->reserve(T->getNumParams());
 
@@ -1120,9 +1122,16 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
 
             if ((*PI)->hasDefaultArg())
             {
-                auto DefaultArgExpr = (*PI)->hasUninstantiatedDefaultArg() ?
-                            (*PI)->getUninstantiatedDefaultArg() : (*PI)->getDefaultArg();
-                defaultArg = ExprMapper(tm).fromExpression(DefaultArgExpr, at);  // WARNING: will using the uninstantiated default arg cause problems?
+                clang::Expr *DefaultArgExpr;
+                if ((*PI)->hasUninstantiatedDefaultArg() &&
+                        (FD->getInstantiatedFromMemberFunction() || FD->isTemplateInstantiation()))
+                    DefaultArgExpr = S.BuildCXXDefaultArgExpr(FD->getPointOfInstantiation(),
+                                                              const_cast<clang::FunctionDecl*>(FD), *PI).get();
+                else
+                    DefaultArgExpr = (*PI)->hasUninstantiatedDefaultArg() ?
+                                (*PI)->getUninstantiatedDefaultArg() : (*PI)->getDefaultArg();
+
+                defaultArg = ExprMapper(tm).fromExpression(DefaultArgExpr, at);
             }
 
             PI++;
