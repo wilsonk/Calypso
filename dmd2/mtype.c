@@ -5243,7 +5243,7 @@ Type *TypeReference::semantic(Loc loc, Scope *sc)
     next = n;
     transitive();
     if (next->ty == Tvalueof)  // CALYPSO
-        return next->merge();
+        return next->nextOf()->merge();
     return merge();
 }
 
