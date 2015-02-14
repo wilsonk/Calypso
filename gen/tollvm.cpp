@@ -192,6 +192,11 @@ LLType* DtoType(Type* t)
         return IrTypeClass::get(tc->sym)->getLLType();
     }
 
+    case Tvalueof: // CALYPSO
+    {
+        return IrTypeValueof::get(t)->getLLType();
+    }
+
     // functions
     case Tfunction:
     {

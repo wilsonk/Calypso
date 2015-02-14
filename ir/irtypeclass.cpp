@@ -110,21 +110,22 @@ IrTypeClass* IrTypeClass::get(ClassDeclaration* cd)
     LOG_SCOPE;
     IF_LOG Logger::println("Instance size: %u", cd->structsize);
 
+    // CALYPSO
+    if (auto lp = cd->langPlugin())
+        if (auto ty = lp->codegen()->toType(cd->type))
+        {
+            t->type = ty;
+            t->packed = llvm::cast<LLStructType>(ty)->isPacked();
+            lp->codegen()->buildGEPIndices(t, t->varGEPIndices);
+            return t;
+        }
+
     // This class may contain an align declaration. See issue 726.
     t->packed = false;
     for (AggregateDeclaration *base = cd; base != 0 && !t->packed; base = toAggregateBase(base)) // CALYPSO
     {
         t->packed = isPacked(base);
     }
-
-    // CALYPSO
-    if (auto lp = cd->langPlugin())
-        if (auto ty = lp->codegen()->toType(cd->type))
-        {
-            t->type = ty;
-            lp->codegen()->buildGEPIndices(t, t->varGEPIndices);
-            return t;
-        }
 
     AggrTypeBuilder builder(t->packed);
 

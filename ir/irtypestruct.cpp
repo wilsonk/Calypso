@@ -52,6 +52,17 @@ IrTypeStruct* IrTypeStruct::get(StructDeclaration* sd)
     if (sd->sizeok != SIZEOKdone)
         return t;
 
+    // CALYPSO
+    if (auto lp = sd->langPlugin())
+        if (auto ty = lp->codegen()->toType(sd->type))
+        {
+            t->type = ty;
+            t->packed = llvm::cast<LLStructType>(ty)->isPacked();
+                    // what about default_fields
+            lp->codegen()->buildGEPIndices(t, t->varGEPIndices);
+            return t;
+        }
+
     t->packed = sd->alignment == 1;
     if (!t->packed)
     {
@@ -59,16 +70,6 @@ IrTypeStruct* IrTypeStruct::get(StructDeclaration* sd)
         // contains an align declaration. See issue 726.
         t->packed = isPacked(sd);
     }
-
-    // CALYPSO
-    if (auto lp = sd->langPlugin())
-        if (auto ty = lp->codegen()->toType(sd->type))
-        {
-            t->type = ty;
-                    // what about default_fields
-            lp->codegen()->buildGEPIndices(t, t->varGEPIndices);
-            return t;
-        }
 
     AggrTypeBuilder builder(t->packed);
     builder.addAggregate(sd);

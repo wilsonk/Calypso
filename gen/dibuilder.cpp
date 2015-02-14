@@ -519,6 +519,11 @@ llvm::DIType ldc::DIBuilder::CreateTypeDescription(Type* type,
         type = type->pointerTo();
         t = type->toBasetype();
     }
+    else if (t->ty == Tvalueof) // CALYPSO
+    {
+        type = type->nextOf();
+        t = type->toBasetype();
+    }
 
     if (t->ty == Tvoid || t->ty == Tnull)
 #if LDC_LLVM_VER >= 304
