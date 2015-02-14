@@ -5072,6 +5072,9 @@ Type *TypePointer::semantic(Loc loc, Scope *sc)
             error(loc, "can't have pointer to %s", n->toChars());
         case Terror:
             return Type::terror;
+        case Tvalueof: // CALYPSO
+            n = n->nextOf();
+            break;
         default:
             break;
     }
@@ -5239,6 +5242,8 @@ Type *TypeReference::semantic(Loc loc, Scope *sc)
         deco = NULL;
     next = n;
     transitive();
+    if (next->ty == Tvalueof)  // CALYPSO
+        return next->merge();
     return merge();
 }
 
@@ -5303,18 +5308,14 @@ Type *TypeValueof::semantic(Loc loc, Scope *sc)
         deco = NULL;
     next = n;
     transitive();
+    if (next->ty == Tstruct || next->ty == Tvalueof)
+        return next->merge();
     return merge();
 }
 
-Type *TypeValueof::pointerTo()
+Expression *TypeValueof::dotExp(Scope *sc, Expression *e, Identifier *ident, int flag)
 {
-    // HACK? Since TypeValueof is only ever used for C++ class values and was created for Calypso, we do some assumptions and try to get rid of it ASAP
-    return next->pointerTo();
-}
-
-Type *TypeValueof::referenceTo()
-{
-    return next;
+    return next->dotExp(sc, e, ident, flag);
 }
 
 

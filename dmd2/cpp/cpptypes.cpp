@@ -182,9 +182,10 @@ static bool isNonPODRecord(const clang::QualType T)
     return isNonPODRecord(RT->getDecl());
 }
 
-inline static Type *adjustAggregateType(Type *t, const clang::RecordDecl *RD)
+// As soon as the type is or might be a non-POD record, wrap it in TypeValueof
+inline static Type *adjustAggregateType(Type *t, const clang::RecordDecl *RD = nullptr)
 {
-    if (isNonPODRecord(RD))
+    if (!RD || RD->isDependentType() || isNonPODRecord(RD))
         return new TypeValueof(t);
     else
         return t;
@@ -848,7 +849,7 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
             return adjustAggregateType(tqual, RT->getDecl());
     }
 
-    return tqual;
+    return adjustAggregateType(tqual);
 }
 
 Identifier *TypeMapper::getIdentifierForTemplateTypeParm(const clang::TemplateTypeParmType *T)
@@ -1023,7 +1024,7 @@ Type* TypeMapper::FromType::fromTypeDependentName(const clang::DependentNameType
     else
         tqual->addIdent(ident);
 
-    return tqual;
+    return adjustAggregateType(tqual);
 }
 
 Type* TypeMapper::FromType::fromTypeDependentTemplateSpecialization(const clang::DependentTemplateSpecializationType* T)
@@ -1044,7 +1045,7 @@ Type* TypeMapper::FromType::fromTypeDependentTemplateSpecialization(const clang:
     else
         tqual->addInst(tempinst);
 
-    return tqual;
+    return adjustAggregateType(tqual);
 }
 
 Type* TypeMapper::FromType::fromTypeDecltype(const clang::DecltypeType* T)

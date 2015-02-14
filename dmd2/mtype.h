@@ -316,8 +316,8 @@ public:
     Type *castMod(MOD mod);
     Type *addMod(MOD mod);
     virtual Type *addStorageClass(StorageClass stc);
-    virtual Type *pointerTo();  // CALYPSO
-    virtual Type *referenceTo();
+    Type *pointerTo();  // CALYPSO
+    Type *referenceTo();
     Type *arrayOf();
     Type *sarrayOf(dinteger_t dim);
     Type *aliasthisOf();
@@ -613,8 +613,7 @@ public:
     const char *kind();
     Type *syntaxCopy();
     Type *semantic(Loc loc, Scope *sc);
-    virtual Type *pointerTo();
-    virtual Type *referenceTo();
+    Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);
     void accept(Visitor *v) { v->visit(this); }
 };
 
