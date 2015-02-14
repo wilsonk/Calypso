@@ -316,7 +316,7 @@ public:
     Type *castMod(MOD mod);
     Type *addMod(MOD mod);
     virtual Type *addStorageClass(StorageClass stc);
-    Type *pointerTo();  // CALYPSO
+    Type *pointerTo();
     Type *referenceTo();
     Type *arrayOf();
     Type *sarrayOf(dinteger_t dim);

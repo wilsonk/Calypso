@@ -173,7 +173,7 @@ static bool isNonPODRecord(const clang::RecordDecl *RD)
     return !CRD->isPOD();
 }
 
-static bool isNonPODRecord(const clang::QualType T)
+bool isNonPODRecord(const clang::QualType T)
 {
     auto RT = T->getAs<clang::RecordType>();
     if (!RT)
@@ -271,10 +271,14 @@ Type *TypeMapper::FromType::fromTypeUnqual(const clang::Type *T)
         auto pointeeT = T->getPointeeType();
         auto pt = fromType(pointeeT);
 
+        auto t2 = pt;
+        while (t2->ty == Tvalueof)
+            t2 = t2->nextOf();
+
         if (isPointer)
-            return pt->pointerTo();
+            return t2->pointerTo();
         else
-            return pt->referenceTo();
+            return (pt->ty != Tvalueof) ? pt->referenceTo() : t2;
     }
 
     llvm::llvm_unreachable_internal("Unrecognized C++ type");

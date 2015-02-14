@@ -301,11 +301,13 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
     else if (auto MT = dyn_cast<clang::MaterializeTemporaryExpr>(E))
     {
         auto Ty = MT->GetTemporaryExpr()->getType();
+        t = tymap.fromType(Ty);
 
-        if (isa<clang::CXXScalarValueInitExpr>(MT->GetTemporaryExpr()))
-            return new NewExp(loc, nullptr, nullptr, tymap.fromType(Ty), nullptr);
-        else
-            return new NullExp(loc);
+        // NOTE: if the context is dependent, wrongly deferencing a "new SomeClass" is of no importance except for reflection
+
+        e = new NewExp(loc, nullptr, nullptr, t, nullptr);
+        if (!isNonPODRecord(Ty))
+            e = new PtrExp(loc, e);
     }
 
     if (isa<clang::InitListExpr>(E)) //TODO

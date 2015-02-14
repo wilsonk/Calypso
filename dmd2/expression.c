@@ -4790,6 +4790,8 @@ Lagain:
     else
     {
         type = newtype->semantic(loc, sc);
+        if (type->ty == Tvalueof)  // CALYPSO
+            type = type->nextOf();
         if (type->ty == Terror)
             goto Lerr;
     }
