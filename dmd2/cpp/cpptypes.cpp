@@ -422,22 +422,22 @@ Objects* TypeMapper::FromType::fromTemplateArguments(const clang::TemplateArgume
 class ScopeChecker // determines if a C++ decl is "scopingly" equivalent to another's
 {
 public:
-    const clang::Decl *ScopeDecl, *TemplateDecl;
+    const clang::Decl *Scope, *Pattern;
 
     ScopeChecker(const clang::Decl *ScopeDecl)
-        : ScopeDecl(ScopeDecl->getCanonicalDecl())
+        : Scope(ScopeDecl->getCanonicalDecl())
     {
-        TemplateDecl = dyn_cast<clang::ClassTemplateDecl>(ScopeDecl); // non dependent type decls might have the template as the decl context rather than the instance
+        Pattern = dyn_cast<clang::ClassTemplateDecl>(ScopeDecl); // non dependent type decls might have the template as the decl context rather than the instance
 
         if (auto Spec = dyn_cast<clang::ClassTemplateSpecializationDecl>(ScopeDecl))
             if (!Spec->isExplicitSpecialization())
-                TemplateDecl = getTemplateSpecializedDecl(Spec);
+                Pattern = getTemplateSpecializedDecl(Spec);
 
-        if (auto Temp = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(TemplateDecl))
-            TemplateDecl = Temp->getTemplatedDecl();
+        if (auto Temp = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(Pattern))
+            Pattern = Temp->getTemplatedDecl();
 
-        if (TemplateDecl)
-            TemplateDecl = TemplateDecl->getCanonicalDecl();
+        if (Pattern)
+            Pattern = Pattern->getCanonicalDecl();
     }
 
     bool operator()(const clang::Decl *D)
@@ -446,7 +446,25 @@ public:
             D = Temp->getTemplatedDecl();
 
         auto Canon = D->getCanonicalDecl();
-        return Canon == ScopeDecl || Canon == TemplateDecl;
+        if (Canon == Scope || Canon == Pattern)
+            return true;
+
+        if (auto Record = dyn_cast<clang::CXXRecordDecl>(Scope))
+        {
+            for (auto& B: Record->bases())
+            {
+                auto BRT = B.getType()->getAs<clang::RecordType>();
+
+                if (!BRT)
+                    continue;
+
+                auto BRD = BRT->getDecl();
+                if (ScopeChecker(BRD)(D))
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     bool extended(const clang::Decl *D)
@@ -454,7 +472,7 @@ public:
         if (operator()(D))
             return true;
 
-        if (auto ClassPattern = llvm::dyn_cast_or_null<clang::CXXRecordDecl>(TemplateDecl))
+        if (auto ClassPattern = llvm::dyn_cast_or_null<clang::CXXRecordDecl>(Pattern))
             if (auto ClassTemplate = ClassPattern->getDescribedClassTemplate())
                 if (auto MemberTemplate = ClassTemplate->getInstantiatedFromMemberTemplate())
                     return ScopeChecker(MemberTemplate)(D);
@@ -613,15 +631,17 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* ND,
         ScopeStack.pop();
         ScopeChecker ScopeDeclEquals(ScopeDecl);
 
-        const clang::Decl *DCDecl = ND;
+        const clang::Decl *DCDecl = ND,
+                            *Previous = ND;
         while(!isa<clang::TranslationUnitDecl>(DCDecl))
         {
             if (ScopeDeclEquals(DCDecl))
             {
-                Root = ScopeDecl;
+                Root = Previous;
                 goto LrootDone;
             }
 
+            Previous = DCDecl;
             auto DC = DCDecl->getDeclContext();
             while (!isa<clang::Decl>(DC))
                 DC = DC->getParent();
