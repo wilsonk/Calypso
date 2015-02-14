@@ -456,16 +456,19 @@ public:
 
         if (auto Record = dyn_cast<clang::CXXRecordDecl>(Scope))
         {
-            for (auto& B: Record->bases())
+            if (Record = Record->getDefinition())
             {
-                auto BRT = B.getType()->getAs<clang::RecordType>();
+                for (auto& B: Record->bases())
+                {
+                    auto BRT = B.getType()->getAs<clang::RecordType>();
 
-                if (!BRT)
-                    continue;
+                    if (!BRT)
+                        continue;
 
-                auto BRD = BRT->getDecl();
-                if (ScopeChecker(BRD)(D))
-                    return true;
+                    auto BRD = BRT->getDecl();
+                    if (ScopeChecker(BRD)(D))
+                        return true;
+                }
             }
         }
 
