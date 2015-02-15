@@ -339,18 +339,9 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
     if (CRD && /* TEMPORARY HACK */ !D->isUnion())
     {
         if (!isPOD && !CRD->isDependentType())
-        {
-            S.CurContext = Context.getTranslationUnitDecl(); // HACK?
-
             // Clang declares and defines the implicit default constructor lazily, so do it here
             // before adding methods.
-            if (auto CD = S.LookupDefaultConstructor(
-                        const_cast<clang::CXXRecordDecl *>(CRD)))
-            {
-                CD->setTrivial(false); // Force its definition and Sema to act on it
-                S.MarkFunctionReferenced(clang::SourceLocation(), CD); // TODO put into NewExp semantic
-            }
-        }
+            S.LookupDefaultConstructor(const_cast<clang::CXXRecordDecl *>(CRD));
 
         for (auto I = CRD->method_begin(), E = CRD->method_end();
             I != E; ++I)
@@ -421,6 +412,8 @@ const char *getOperatorName(const clang::OverloadedOperatorKind OO)
 
 Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 {
+    auto& S = calypso.pch.AST->getSema();
+
     if (isa<clang::CXXConversionDecl>(D))
         return nullptr; // TODO
 
@@ -437,6 +430,10 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
         return nullptr; // FIXME function with unhandled argument types
     }
     assert(tf->ty == Tfunction);
+
+    auto _D = const_cast<clang::FunctionDecl*>(D);
+    _D->setTrivial(false); // Force its definition and Sema to act on it
+    S.MarkFunctionReferenced(clang::SourceLocation(), _D);
 
     StorageClass stc = STCundefined;
     if (MD)
@@ -1027,6 +1024,9 @@ clang::DeclContext::lookup_const_result wideLookup(Loc loc,
 Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
 {
     auto& Context = calypso.getASTContext();
+    auto& S = calypso.pch.AST->getSema();
+
+    S.CurContext = Context.getTranslationUnitDecl(); // HACK? Needed for declaring implicit ctors and dtors
 
     const clang::DeclContext *DC = Context.getTranslationUnitDecl();
     Package *pkg = rootPackage;
