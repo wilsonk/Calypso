@@ -72,6 +72,7 @@ clang::RedeclarableTemplateDecl *TemplateDeclaration::getPrimaryTemplate()
 {
     auto& Context = calypso.pch.AST->getASTContext();
     auto& S = calypso.pch.AST->getSema();
+    auto& instCollector = calypso.pch.instCollector;
 
     if (isForeignInstance(tithis))
         return nullptr;
@@ -160,8 +161,10 @@ LcorrectTempDecl:
 
     ti->correctTiargs();
 
+    instCollector.tempinsts.push(ti); // track function instantiation during the mapping of template instantiation (e.g by default arg exprs)
     ti->semanticRun = PASSinit; // WARNING: may disrupt something?
     ti->semantic(sc);
+    instCollector.tempinsts.pop();
     return ti;
 }
 
@@ -246,13 +249,16 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
 {
     auto& Context = calypso.pch.AST->getASTContext();
 
-    if (!ti)
+    if (!tempinsts.empty())
         return true;
+
+    auto ti = tempinsts.top();
 
     for (auto I = DG.begin(), E = DG.end(); I != E; ++I)
     {
         ti->Dependencies.push_back(*I);
-        (*I)->addAttr(clang::UsedAttr::CreateImplicit(Context));
+        if (!(*I)->hasAttr<clang::UsedAttr>())
+            (*I)->addAttr(clang::UsedAttr::CreateImplicit(Context));
     }
 
     return true;
@@ -263,6 +269,7 @@ void TemplateInstance::completeInst(bool foreignInstance)
     auto& Context = calypso.pch.AST->getASTContext();
     auto& Diags = calypso.pch.Diags;
     auto& S = calypso.pch.AST->getSema();
+    auto& instCollector = calypso.pch.instCollector;
 
     // Clang BUG? TUScope isn't set when no Parser is used, but required by template instantiations (e.g LazilyCreateBuiltin)
     if (!S.TUScope)
@@ -281,7 +288,7 @@ void TemplateInstance::completeInst(bool foreignInstance)
             // there's a chance the code wasn't emitted in the C++ libraries, so we do it ourselves.
             instantiatedByD = true;
 
-            calypso.pch.instCollector.ti = this;
+            instCollector.tempinsts.push(this);
 
             if (S.RequireCompleteType(CTSD->getLocation(), Ty, 0))
                 assert(false && "Sema::RequireCompleteType() failed on template specialization");
@@ -295,7 +302,7 @@ void TemplateInstance::completeInst(bool foreignInstance)
                                                         Function, foreignInstance);
             }
 
-            calypso.pch.instCollector.ti = nullptr;
+            instCollector.tempinsts.pop();
         }
     }
 }

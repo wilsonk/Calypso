@@ -47,7 +47,7 @@ Loc fromLoc(clang::SourceLocation L);
 // This collects the *new* function instances that a template instance depends upon, they need to be emitted
 struct InstantiationCollector : public clang::ASTConsumer
 {
-    TemplateInstance *ti = nullptr;
+    std::stack<TemplateInstance *> tempinsts;
 
     bool HandleTopLevelDecl(clang::DeclGroupRef DG) override;
 };
