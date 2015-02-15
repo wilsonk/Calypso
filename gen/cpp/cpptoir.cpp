@@ -344,8 +344,8 @@ void LangPlugin::toDefineFunction(::FuncDeclaration* fdecl)
 
     auto FD = static_cast<cpp::FuncDeclaration*>(fdecl)->FD;
 
-    if (FD->isDefined())
-        CGM.EmitTopLevelDecl(const_cast<clang::FunctionDecl *>(FD)); // TODO remove const_cast
+//     if (FD->isDefined())
+//         CGM.EmitTopLevelDecl(const_cast<clang::FunctionDecl *>(FD)); // TODO remove const_cast
 }
 
 void LangPlugin::addBaseClassData(AggrTypeBuilder &b, ::AggregateDeclaration *base)
