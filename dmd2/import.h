@@ -81,7 +81,7 @@ public:
     Modmap(Loc loc, StringExp *arg);
 };
 
-class CodeGen;
+class ForeignCodeGen;
 
 class LangPlugin
 {
@@ -113,7 +113,7 @@ public:
 
     // ===== - - - - - ===== //
 
-     virtual CodeGen *codegen() = 0;
+     virtual ForeignCodeGen *codegen() = 0;
 };
 
 #endif /* DMD_IMPORT_H */

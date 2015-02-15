@@ -107,7 +107,7 @@ public:
     llvm::Constant *GetAddrOfGlobal(clang::GlobalDecl GD);
 };
 
-class LangPlugin : public ::LangPlugin, public ::CodeGen
+class LangPlugin : public ::LangPlugin, public ::ForeignCodeGen
 {
 public:
     // ==== LangPlugin ====
@@ -133,7 +133,7 @@ public:
     ::FuncDeclaration *buildCpCtor(::StructDeclaration *sd, Scope *sc) override;
 
     // ==== CodeGen ====
-    CodeGen *codegen() { return this; }
+    ForeignCodeGen *codegen() { return this; }
 
     clang::CodeGen::CodeGenFunction *CGF = nullptr; // FIXME: won't work with nested funcs, need stack
 
@@ -143,30 +143,26 @@ public:
     void enterFunc(::FuncDeclaration *fd) override;
     void leaveFunc() override;
 
-    llvm::Type *toType(Type *t) override;
+    LLType *toType(Type *t) override;
+
     llvm::Constant *createInitializerConstant(IrAggr *irAggr,
         const IrAggr::VarInitMap& explicitInitializers,
         llvm::StructType* initializerType = 0) override;
-        
-    void buildGEPIndices(IrTypeAggr *irTyAgrr, VarGEPIndices &varGEPIndices) override;
-        
-    void toInitClass(TypeClass* tc, LLValue* dst) override;
-    
-    LLValue *toVirtualFunctionPointer(DValue* inst, ::FuncDeclaration* fdecl, char* name) override;
-
-    DValue* toCallFunction(Loc& loc, Type* resulttype, DValue* fnval, Expressions* arguments, llvm::Value *retvar) override;
 
     void toResolveFunction(::FuncDeclaration* fdecl) override;
-
-    void addBaseClassData(AggrTypeBuilder &builder, ::AggregateDeclaration *base) override;
-
-    void emitAdditionalClassSymbols(::ClassDeclaration *cd) override;
-
-    void toPostNewClass(Loc& loc, TypeClass* tc, DValue* val) override;
-
+    void toDefineFunction(::FuncDeclaration* fdecl) override;
     void toDeclareVariable(::VarDeclaration* vd) override;
-
     void toDefineTemplateInstance(::TemplateInstance *tempinst) override;
+
+    LLValue *toVirtualFunctionPointer(DValue* inst, ::FuncDeclaration* fdecl, char* name) override;
+    DValue* toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
+                                   Expressions* arguments, llvm::Value *retvar) override;
+
+    void buildGEPIndices(IrTypeAggr *irTyAgrr, VarGEPIndices &varGEPIndices) override;
+    void addBaseClassData(AggrTypeBuilder &builder, ::AggregateDeclaration *base) override;
+    void emitAdditionalClassSymbols(::ClassDeclaration *cd) override;
+    void toInitClass(TypeClass* tc, LLValue* dst) override;
+    void toPostNewClass(Loc& loc, TypeClass* tc, DValue* val) override;
          
     // ==== ==== ====
     PCH pch;
