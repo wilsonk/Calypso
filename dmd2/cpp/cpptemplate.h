@@ -45,7 +45,6 @@ public:
     CALYPSO_LANGPLUGIN
 
     llvm::SmallDenseMap<Identifier*, clang::Decl*, 1> Instances; // NOTE: not sure how cpp::TemplateInstance would ever get more than one member though
-    bool instantiatedByD = false; // Clang is lazier than DMD when it comes to template instantiation, a PCH might have references or pointers to a template specialization but that specialization although declared might not be defined and codegen'd, whereas DMD expects template specializations to be defined anywhere they appear even as pointers/refs
     llvm::SmallVector<clang::Decl*, 4> Dependencies; // Functions external to the template but instantiated during completeInst(), since they weren't instantiated before we need to emit them as well
 
     clang::Decl* mainInst(); // for gdb

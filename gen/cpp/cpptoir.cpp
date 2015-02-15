@@ -405,9 +405,6 @@ void LangPlugin::toDefineTemplateInstance(::TemplateInstance *inst)
 
     auto c_ti = static_cast<cpp::TemplateInstance *>(inst);
 
-    if (!c_ti->instantiatedByD)
-        return;
-
     for (auto D: c_ti->Instances)
     {
         auto Instance = D.second;

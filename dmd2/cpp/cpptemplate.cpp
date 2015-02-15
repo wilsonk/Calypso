@@ -214,7 +214,6 @@ TemplateInstance::TemplateInstance(const TemplateInstance& o)
     : TemplateInstance(o.loc, o.name)
 {
     Instances = o.Instances;
-    instantiatedByD = o.instantiatedByD;
     Dependencies = o.Dependencies;
 }
 
@@ -226,7 +225,6 @@ Dsymbol *TemplateInstance::syntaxCopy(Dsymbol *s)
     {
         auto ti = static_cast<cpp::TemplateInstance*>(s);
         ti->Instances = Instances;
-        ti->instantiatedByD = instantiatedByD;
         ti->Dependencies = Dependencies;
     }
 
@@ -279,6 +277,8 @@ void TemplateInstance::completeInst(bool foreignInstance)
     {
         auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(I.second);
 
+        instCollector.tempinsts.push(this);
+
         if (CTSD && !CTSD->hasDefinition() &&
             CTSD->getSpecializedTemplate()->getTemplatedDecl()->hasDefinition()) // unused forward template specialization decls will exist but as empty aggregates
         {
@@ -286,24 +286,21 @@ void TemplateInstance::completeInst(bool foreignInstance)
 
             // if the definition of the class template specialization wasn't present in the PCH
             // there's a chance the code wasn't emitted in the C++ libraries, so we do it ourselves.
-            instantiatedByD = true;
-
-            instCollector.tempinsts.push(this);
 
             if (S.RequireCompleteType(CTSD->getLocation(), Ty, 0))
                 assert(false && "Sema::RequireCompleteType() failed on template specialization");
-
-            // Force instantiation of method definitions
-            for (auto *D : CTSD->decls())
-            {
-                if (auto Function = dyn_cast<clang::FunctionDecl>(D))
-                    if (!Function->isDefined() && Function->getInstantiatedFromMemberFunction())
-                        S.InstantiateFunctionDefinition(CTSD->getLocation(),
-                                                        Function, foreignInstance);
-            }
-
-            instCollector.tempinsts.pop();
         }
+
+        // Force instantiation of method definitions
+        for (auto *D : CTSD->decls())
+        {
+            if (auto Function = dyn_cast<clang::FunctionDecl>(D))
+                if (!Function->isDefined() && Function->getInstantiatedFromMemberFunction())
+                    S.InstantiateFunctionDefinition(CTSD->getLocation(),
+                                                    Function, foreignInstance);
+        }
+
+        instCollector.tempinsts.pop();
     }
 }
 
