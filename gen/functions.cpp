@@ -1024,6 +1024,13 @@ void DtoDefineFunction(FuncDeclaration* fd)
     if (fd->ir.isDefined()) return;
     fd->ir.setDefined();
 
+    // CALYPSO
+    if (auto lp = fd->langPlugin())
+    {
+        lp->codegen()->toDefineFunction(fd);
+        return;
+    }
+
     // We cannot emit nested functions with parents that have not gone through
     // semantic analysis. This can happen as DMD leaks some template instances
     // from constraints into the module member list. DMD gets away with being
