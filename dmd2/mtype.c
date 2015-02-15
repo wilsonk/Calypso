@@ -5313,6 +5313,12 @@ Type *TypeValueof::semantic(Loc loc, Scope *sc)
     return merge();
 }
 
+d_uns64 TypeValueof::size(Loc loc)
+{
+    assert(next->ty == Tclass && "TypeValueof::size() called while next isn't a class");
+    return ((TypeClass*)next)->sym->size(loc);
+}
+
 Expression *TypeValueof::dotExp(Scope *sc, Expression *e, Identifier *ident, int flag)
 {
     return next->dotExp(sc, e, ident, flag);
