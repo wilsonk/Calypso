@@ -327,7 +327,7 @@ void LangPlugin::toResolveFunction(::FuncDeclaration* fdecl)
 
     if (auto Dtor = llvm::dyn_cast<const clang::CXXDestructorDecl>(FD))
         Callee = CGM->GetAddrOfCXXDestructor(Dtor, clang::Dtor_Complete,
-                                                FInfo, Ty);
+                                                FInfo, Ty, true);
     else if (auto Ctor = llvm::dyn_cast<const clang::CXXConstructorDecl>(FD))
         Callee = CGM->GetAddrOfFunction(
             clang::GlobalDecl(Ctor, clang::Ctor_Complete), Ty, false, true);
