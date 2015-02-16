@@ -41,7 +41,7 @@ struct DCXXVTableInfo // "DCXX" for D-C++ class "hybrid"
         if (!cd2)
             return result;  // Pure C++ or D class
 
-        auto& CGM = *calypso.AB->CGM();
+        auto& CGM = *calypso.CGM;
         auto& CGVT = CGM.getVTables();
         auto& VTableContext =
             *static_cast<clang::ItaniumVTableContext *>(Context.getVTableContext());
@@ -183,10 +183,9 @@ void LangPlugin::emitAdditionalClassSymbols(::ClassDeclaration *cd)
     auto VTLayout = dcxxInfo->VTLayout;
 
     auto& Context = getASTContext();
-    auto& CGM = *AB->CGM();
-    auto& CGVT = CGM.getVTables();
+    auto& CGVT = CGM->getVTables();
 
-    auto RTTI = CGM.GetAddrOfRTTIDescriptor(
+    auto RTTI = CGM->GetAddrOfRTTIDescriptor(
         Context.getTagDeclType(dcxxInfo->MostDerivedBase));
 
     auto OldVTableInit = CGVT.CreateVTableInitializer(
@@ -262,7 +261,7 @@ void LangPlugin::emitAdditionalClassSymbols(::ClassDeclaration *cd)
 
             auto thunkFd = getDCXXThunk(md, NewThunk);
             auto thunkLLFunc = getIrFunc(thunkFd)->func;
-            Inits[I] = llvm::ConstantExpr::getBitCast(thunkLLFunc, CGM.Int8PtrTy);
+            Inits[I] = llvm::ConstantExpr::getBitCast(thunkLLFunc, CGM->Int8PtrTy);
         }
     }
 
@@ -456,7 +455,7 @@ void LangPlugin::toPostNewClass(Loc& loc, TypeClass* tc, DValue* val)
 
     auto cxxThis = DtoCast(loc, val,
                            dcxxInfo->mostDerivedCXXBase->type);
-    DCXXVptrAdjuster adjuster(*AB->CGM(), cxxThis->getRVal(), cd);
+    DCXXVptrAdjuster adjuster(*CGM, cxxThis->getRVal(), cd);
 
     auto RD = dcxxInfo->mostDerivedCXXBase->RD;
 

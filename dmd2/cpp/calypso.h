@@ -68,45 +68,6 @@ struct PCH
     void update(); // re-emit the PCH if needed, and update the cached list
 };
 
-// Copy and pasted from clang::CodeGenImpl, because that one is declared inside an anonymous namespace in ModuleBuilder.cpp
-// Avoiding the redundancy would mean altering Clang's source code, so to keep Calypso compatible with vanilla binaries it seems more reasonable to handle it like that
-// FIXME that class might not be as useful as I first thought, calling CGM methods directly would be cleaner and simpler
-class AssistBuilder : public clang::ASTConsumer {
-    clang::DiagnosticsEngine &Diags;
-    std::unique_ptr<const llvm::DataLayout> TD;
-    clang::ASTContext *Ctx;
-    const clang::CodeGenOptions CodeGenOpts;  // Intentionally copied in.
-protected:
-    std::unique_ptr<clang::CodeGen::CodeGenModule> Builder;
-public:
-    AssistBuilder( clang::DiagnosticsEngine& diags, llvm::Module* M, const clang::CodeGenOptions& CGO, llvm::LLVMContext& C );
-    virtual ~AssistBuilder();
-
-    virtual void Initialize(clang::ASTContext &Context);
-    virtual void HandleCXXStaticMemberVarInstantiation(clang::VarDecl *VD);
-    virtual bool HandleTopLevelDecl(clang::DeclGroupRef DG);
-    /// HandleTagDeclDefinition - This callback is invoked each time a TagDecl
-    /// to (e.g. struct, union, enum, class) is completed. This allows the
-    /// client hack on the type, which can occur at any point in the file
-    /// (because these can be defined in declspecs).
-    virtual void HandleTagDeclDefinition(clang::TagDecl *D);
-    virtual void HandleTagDeclRequiredDefinition(const clang::TagDecl *D) LLVM_OVERRIDE;
-    virtual void HandleTranslationUnit(clang::ASTContext &Ctx);
-    virtual void CompleteTentativeDefinition(clang::VarDecl *D);
-    virtual void HandleVTable(clang::CXXRecordDecl *RD, bool DefinitionRequired);
-    virtual void HandleLinkerOptionPragma(llvm::StringRef Opts);
-    virtual void HandleDetectMismatch(llvm::StringRef Name,
-                                        llvm::StringRef Value);
-    virtual void HandleDependentLibrary(llvm::StringRef Lib);
-
-    // CALYPSO additions
-public:
-    llvm::Module* M;
-
-    clang::CodeGen::CodeGenModule *CGM() { return Builder.get(); }
-    llvm::Constant *GetAddrOfGlobal(clang::GlobalDecl GD);
-};
-
 class LangPlugin : public ::LangPlugin, public ::ForeignCodeGen
 {
 public:
@@ -172,7 +133,7 @@ public:
     // settings
     const char *cachePrefix = "calypso_cache"; // prefix of cached files (list of headers, PCH)
 
-    std::unique_ptr<AssistBuilder> AB;  // selective emit external C++ declarations, expressions, template instances, ...
+    std::unique_ptr<clang::CodeGen::CodeGenModule> CGM;  // selectively emit external C++ declarations, template instances, ...
 
     LangPlugin();
     void init();

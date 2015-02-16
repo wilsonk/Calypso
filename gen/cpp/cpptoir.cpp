@@ -46,10 +46,9 @@ void LangPlugin::enterModule(llvm::Module *m)
 
     auto& Context = getASTContext();
 
-    clang::CodeGenOptions CGO;
-    AB.reset(new AssistBuilder(*pch.Diags, m,
-                                  CGO, llvm::getGlobalContext()));
-    AB->Initialize(Context);
+    auto CGO = new clang::CodeGenOptions;
+    CGM.reset(new clang::CodeGen::CodeGenModule(Context,
+                            *CGO, *m, *gDataLayout, *pch.Diags));
 }
 
 void LangPlugin::leaveModule()
@@ -58,16 +57,16 @@ void LangPlugin::leaveModule()
         return;
 
     auto& Context = getASTContext();
-    AB->HandleTranslationUnit(Context);
+    CGM->Release();
+    CGM.reset();
 }
 
 void LangPlugin::enterFunc(::FuncDeclaration *fd)
 {//FIXME nested
     if (!getASTUnit())
         return;
-    
-    auto& CGM = *(AB->CGM());
-    CGF = new clang::CodeGen::CodeGenFunction(CGM, true);
+
+    CGF = new clang::CodeGen::CodeGenFunction(*CGM, true);
     CGF->CurCodeDecl = nullptr;
 }
 
@@ -88,7 +87,6 @@ void LangPlugin::updateCGFInsertPoint()
 
 llvm::Type *LangPlugin::toType(::Type *t)
 {
-    auto CGM = AB->CGM();
     auto& Context = getASTContext();
 
     auto RD = getRecordDecl(t);
@@ -105,7 +103,6 @@ llvm::Constant *LangPlugin::createInitializerConstant(IrAggr *irAggr,
         llvm::StructType* initializerType)
 {
     auto& Context = getASTContext();
-    auto CGM = AB->CGM();
 
     auto RD = getRecordDecl(irAggr->aggrdecl);
 
@@ -145,8 +142,7 @@ llvm::Constant *LangPlugin::createInitializerConstant(IrAggr *irAggr,
 void LangPlugin::buildGEPIndices(IrTypeAggr *irTyAgrr,
                                  VarGEPIndices &varGEPIndices)
 {
-    auto& CGM = *AB->CGM();
-    auto& CGTypes = CGM.getTypes();
+    auto& CGTypes = CGM->getTypes();
     
     auto t = irTyAgrr->getDType();
     AggregateDeclaration *ad;
@@ -171,7 +167,6 @@ void LangPlugin::buildGEPIndices(IrTypeAggr *irTyAgrr,
 void LangPlugin::toInitClass(TypeClass* tc, LLValue* dst)
 {
     auto& Context = getASTContext();
-    auto& CGM = *AB->CGM();
 
     uint64_t const dataBytes = tc->sym->structsize;
     if (dataBytes == 0)
@@ -186,8 +181,6 @@ void LangPlugin::toInitClass(TypeClass* tc, LLValue* dst)
 LLValue *LangPlugin::toVirtualFunctionPointer(DValue* inst, 
                                               ::FuncDeclaration* fdecl, char* name)
 {
-    auto& CGM = *AB->CGM();
-    
     auto MD = llvm::cast<const clang::CXXMethodDecl>(getFD(fdecl));
 
     // get instance
@@ -195,24 +188,22 @@ LLValue *LangPlugin::toVirtualFunctionPointer(DValue* inst,
 
     const clang::CodeGen::CGFunctionInfo *FInfo = nullptr;
     if (const clang::CXXDestructorDecl *Dtor = llvm::dyn_cast<clang::CXXDestructorDecl>(MD))
-        FInfo = &CGM.getTypes().arrangeCXXDestructor(Dtor,
+        FInfo = &CGM->getTypes().arrangeCXXDestructor(Dtor,
                                                     clang::Dtor_Complete);
     else if (const clang::CXXConstructorDecl *Ctor = llvm::dyn_cast<clang::CXXConstructorDecl>(MD))
-        FInfo = &CGM.getTypes().arrangeCXXConstructorDeclaration(Ctor,
+        FInfo = &CGM->getTypes().arrangeCXXConstructorDeclaration(Ctor,
                                                                 clang::Ctor_Complete);
     else
-        FInfo = &CGM.getTypes().arrangeCXXMethodDeclaration(MD);
+        FInfo = &CGM->getTypes().arrangeCXXMethodDeclaration(MD);
   
-    llvm::FunctionType *Ty = CGM.getTypes().GetFunctionType(*FInfo);
+    llvm::FunctionType *Ty = CGM->getTypes().GetFunctionType(*FInfo);
     
-    return CGM.getCXXABI().getVirtualFunctionPointer(*CGF, MD, vthis, Ty);
+    return CGM->getCXXABI().getVirtualFunctionPointer(*CGF, MD, vthis, Ty);
 }
 
 DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval, 
                                    Expressions* arguments, llvm::Value *retvar)
 {
-    auto& CGM = *AB->CGM();
-
     updateCGFInsertPoint();
     
     DFuncValue* dfnval = fnval->isFunc();
@@ -241,7 +232,7 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
     auto Dtor = llvm::dyn_cast<clang::CXXDestructorDecl>(FD);
     if (Dtor && Dtor->isVirtual())
     {
-        CGM.getCXXABI().EmitVirtualDestructorCall(*CGF, Dtor, clang::Dtor_Complete,
+        CGM->getCXXABI().EmitVirtualDestructorCall(*CGF, Dtor, clang::Dtor_Complete,
                                         clang::SourceLocation(), This);
 
         return new DImValue(nullptr, nullptr); // WARNING ldc never does that, it returns the instruction of the call site instead
@@ -251,7 +242,7 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
     if (MD && !MD->isStatic())
     {
         if (MD->isVirtual()) {
-            This = CGM.getCXXABI().adjustThisArgumentForVirtualFunctionCall(
+            This = CGM->getCXXABI().adjustThisArgumentForVirtualFunctionCall(
                 *CGF, MD, This, true);
         }
 
@@ -275,12 +266,12 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
         clang::CodeGen::RequiredArgs required =
             clang::CodeGen::RequiredArgs::forPrototypePlus(FPT, Args.size());
         
-        RV = CGF->EmitCall(CGM.getTypes().arrangeCXXMethodCall(Args, FPT, required),
+        RV = CGF->EmitCall(CGM->getTypes().arrangeCXXMethodCall(Args, FPT, required),
                     callable, ReturnValue, Args, MD);
     }
     else
     {
-        RV = CGF->EmitCall(CGM.getTypes().arrangeFreeFunctionCall(Args, FPT),
+        RV = CGF->EmitCall(CGM->getTypes().arrangeFreeFunctionCall(Args, FPT),
                     callable, ReturnValue, Args, FD);
     }
 
@@ -297,7 +288,6 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
 
 void LangPlugin::toResolveFunction(::FuncDeclaration* fdecl)
 {
-    auto CGM = AB->CGM();
     auto FD = getFD(fdecl);
 
     DtoFunctionType(fdecl);
@@ -327,12 +317,12 @@ void LangPlugin::toResolveFunction(::FuncDeclaration* fdecl)
 
     if (auto Dtor = llvm::dyn_cast<const clang::CXXDestructorDecl>(FD))
         Callee = CGM->GetAddrOfCXXDestructor(Dtor, clang::Dtor_Complete,
-                                                FInfo, Ty, true);
+                                                FInfo, Ty);
     else if (auto Ctor = llvm::dyn_cast<const clang::CXXConstructorDecl>(FD))
         Callee = CGM->GetAddrOfFunction(
-            clang::GlobalDecl(Ctor, clang::Ctor_Complete), Ty, false, true);
+            clang::GlobalDecl(Ctor, clang::Ctor_Complete), Ty);
     else
-        Callee = CGM->GetAddrOfFunction(FD, Ty, false, true);
+        Callee = CGM->GetAddrOfFunction(FD, Ty);
 
     auto irFunc = getIrFunc(fdecl, true);
     irFunc->func = llvm::cast<llvm::Function>(Callee);
@@ -340,25 +330,21 @@ void LangPlugin::toResolveFunction(::FuncDeclaration* fdecl)
 
 void LangPlugin::toDefineFunction(::FuncDeclaration* fdecl)
 {
-    auto& CGM = *AB->CGM();
-
     auto FD = static_cast<cpp::FuncDeclaration*>(fdecl)->FD;
 
-//     if (FD->isDefined())
-//         CGM.EmitTopLevelDecl(const_cast<clang::FunctionDecl *>(FD)); // TODO remove const_cast
+    if (FD->isDefined())
+        CGM->EmitTopLevelDecl(const_cast<clang::FunctionDecl *>(FD)); // TODO remove const_cast
 }
 
 void LangPlugin::addBaseClassData(AggrTypeBuilder &b, ::AggregateDeclaration *base)
 {
-    auto& CGM = *AB->CGM();
-
     const clang::RecordDecl *RD;
     if (base->isClassDeclaration())
         RD = static_cast<cpp::ClassDeclaration*>(base)->RD;
     else
         RD  = static_cast<cpp::StructDeclaration*>(base)->RD;
 
-    auto& CGRL = CGM.getTypes().getCGRecordLayout(RD);
+    auto& CGRL = CGM->getTypes().getCGRecordLayout(RD);
 
     auto BaseTy = CGRL.getBaseSubobjectLLVMType();
     auto BaseLayout = gDataLayout->getStructLayout(BaseTy);
@@ -381,7 +367,6 @@ void LangPlugin::addBaseClassData(AggrTypeBuilder &b, ::AggregateDeclaration *ba
 
 void LangPlugin::toDeclareVariable(::VarDeclaration* vd)
 {
-    auto& CGM = *AB->CGM();
     auto VD = llvm::cast<clang::VarDecl>(
             static_cast<cpp::VarDeclaration*>(vd)->VD);
 
@@ -393,7 +378,7 @@ void LangPlugin::toDeclareVariable(::VarDeclaration* vd)
 //     if (VD->getTLSKind() == clang::VarDecl::TLS_Dynamic)
 //         v = CGM.getCXXABI().EmitThreadLocalVarDeclLValue(*CGF, VD, VD->getType()).getAddress();
 //     else
-        v = CGM.GetAddrOfGlobalVar(VD);
+        v = CGM->GetAddrOfGlobalVar(VD);
 
     getIrGlobal(vd)->value = v;
 }
@@ -401,7 +386,6 @@ void LangPlugin::toDeclareVariable(::VarDeclaration* vd)
 void LangPlugin::toDefineTemplateInstance(::TemplateInstance *inst)
 {
     auto& Context = getASTContext();
-    auto& CGM = *AB->CGM();
 
     auto c_ti = static_cast<cpp::TemplateInstance *>(inst);
 
@@ -410,11 +394,11 @@ void LangPlugin::toDefineTemplateInstance(::TemplateInstance *inst)
         auto Instance = D.second;
 
         if (auto CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(Instance))
-            CGM.UpdateCompletedType(CTSD);
+            CGM->UpdateCompletedType(CTSD);
     }
 
     for (auto D: c_ti->Dependencies)
-        CGM.EmitTopLevelDecl(D);
+        CGM->EmitTopLevelDecl(D);
 }
 
 }

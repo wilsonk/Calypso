@@ -247,17 +247,13 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
 {
     auto& Context = calypso.pch.AST->getASTContext();
 
-    if (!tempinsts.empty())
+    if (tempinsts.empty())
         return true;
 
     auto ti = tempinsts.top();
 
     for (auto I = DG.begin(), E = DG.end(); I != E; ++I)
-    {
         ti->Dependencies.push_back(*I);
-        if (!(*I)->hasAttr<clang::UsedAttr>())
-            (*I)->addAttr(clang::UsedAttr::CreateImplicit(Context));
-    }
 
     return true;
 }
