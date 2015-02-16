@@ -330,9 +330,9 @@ void LangPlugin::toResolveFunction(::FuncDeclaration* fdecl)
                                                 FInfo, Ty);
     else if (auto Ctor = llvm::dyn_cast<const clang::CXXConstructorDecl>(FD))
         Callee = CGM->GetAddrOfFunction(
-            clang::GlobalDecl(Ctor, clang::Ctor_Complete), Ty);
+            clang::GlobalDecl(Ctor, clang::Ctor_Complete), Ty, false, true);
     else
-        Callee = CGM->GetAddrOfFunction(FD, Ty);
+        Callee = CGM->GetAddrOfFunction(FD, Ty, false, true);
 
     auto irFunc = getIrFunc(fdecl, true);
     irFunc->func = llvm::cast<llvm::Function>(Callee);
