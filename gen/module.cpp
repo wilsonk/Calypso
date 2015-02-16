@@ -603,6 +603,11 @@ static void codegenModule(Module* m)
     if (opts::cppDebug)
         gIR->module->dump();
 
+    // CALYPSO
+    for (auto I = global.langPlugins.begin(), E = global.langPlugins.end();
+            I != E; I++)
+        (*I)->codegen()->leaveModule();
+
     // verify the llvm
     verifyModule(*gIR->module);
 }
@@ -671,12 +676,7 @@ llvm::Module* Module::genLLVMModule(llvm::LLVMContext& context)
 
     LLVM_D_InitRuntime();
 
-    codegenModule(this); 
-
-    // CALYPSO
-    for (auto I = global.langPlugins.begin(), E = global.langPlugins.end();
-            I != E; I++)
-        (*I)->codegen()->leaveModule();
+    codegenModule(this);
 
     gIR = NULL;
 
