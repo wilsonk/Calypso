@@ -503,6 +503,8 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
             isUnary = NumParams == 1;
             isBinary = NumParams == 2;
 
+            assert(isUnary || isBinary);
+
             wrapInTemp = true; // except for opAssign
 
             if (isUnary)
@@ -608,24 +610,13 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 
             for (unsigned i = 0; i < D->getNumParams(); i++)
             {
-                const char *tp_paramname;
-                switch (i)
-                {
-                    case 0:
-                        tp_paramname = isNonMember ? "__lhst" : "__rhst";
-                        break;
-                    case 1:
-                        tp_paramname = "__rhst";
-                        break;
-                    default:
-                        assert(false && "Shouldn't happen");
-                }
-
+                const char *tp_paramname = (i == 0 && D->getNumParams() == 2) ?
+                                    "__lhst" : "__rhst";
                 auto tp_paramident = Lexer::idPool(tp_paramname);
 
                 auto tp_spectype = (*tf->parameters)[i]->type;
                 tpl->push(new TemplateTypeParameter(loc, tp_paramident,
-                                                    tp_spectype, nullptr));
+                                                    tp_spectype, tp_spectype));
 
                 (*fwdtf->parameters)[i]->type = new TypeIdentifier(loc, tp_paramident);
             }
