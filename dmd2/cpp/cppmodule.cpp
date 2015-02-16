@@ -1,25 +1,26 @@
 // Contributed by Elie Morisse, same license DMD uses
 
 #include "cpp/astunit.h"
-#include "../aggregate.h"
-#include "../attrib.h"
-#include "../declaration.h"
-#include "../enum.h"
-#include "../identifier.h"
-#include "../import.h"
-#include "../init.h"
-#include "../lexer.h"
-#include "../template.h"
-#include "../scope.h"
+#include "aggregate.h"
+#include "attrib.h"
+#include "declaration.h"
+#include "enum.h"
+#include "identifier.h"
+#include "import.h"
+#include "init.h"
+#include "lexer.h"
+#include "template.h"
+#include "scope.h"
+#include "statement.h"
 #include "id.h"
 
-#include "calypso.h"
-#include "cppmodule.h"
-#include "cppdeclaration.h"
-#include "cppimport.h"
-#include "cppaggregate.h"
-#include "cppexpression.h"
-#include "cpptemplate.h"
+#include "cpp/calypso.h"
+#include "cpp/cppmodule.h"
+#include "cpp/cppdeclaration.h"
+#include "cpp/cppimport.h"
+#include "cpp/cppaggregate.h"
+#include "cpp/cppexpression.h"
+#include "cpp/cpptemplate.h"
 
 #include <stdlib.h>
 #include <string>
@@ -412,6 +413,7 @@ const char *getOperatorName(const clang::OverloadedOperatorKind OO)
 
 Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 {
+    auto& Context = calypso.getASTContext();
     auto& S = calypso.pch.AST->getSema();
 
     if (isa<clang::CXXConversionDecl>(D))
@@ -477,20 +479,28 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
         auto OO = D->getOverloadedOperator();
         const char *op = clang::getOperatorSpelling(OO);
 
-        Identifier *tempIdent;
+        Identifier *opIdent;
+        bool wrapInTemp = false;
+
+        bool isNonMember = MD && !MD->isStatic();
 
         auto NumParams = D->getNumParams();
-        if (MD && !MD->isStatic())
+        if (isNonMember)
             NumParams++;
 
+        bool isUnary = false,
+            isBinary = false;
+
         if (OO == clang::OO_Call)
-            tempIdent = Id::call;
+            opIdent = Id::call;
         else if(OO == clang::OO_Subscript)
-            tempIdent = Id::index;
+            opIdent = Id::index;
         else
         {
-            bool isUnary = NumParams == 1;
-            bool isBinary = NumParams == 2;
+            isUnary = NumParams == 1;
+            isBinary = NumParams == 2;
+
+            wrapInTemp = true; // except for opAssign
 
             if (isUnary)
             {
@@ -502,7 +512,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
                     case clang::OO_Tilde:
                     case clang::OO_PlusPlus:
                     case clang::OO_MinusMinus:
-                        tempIdent = Id::opUnary;
+                        opIdent = Id::opUnary;
                         break;
                     default:
     //                     ::warning(loc, "Ignoring C++ unary operator%s", clang::getOperatorSpelling(OO));
@@ -524,11 +534,26 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
                     case clang::OO_Tilde:
                     case clang::OO_LessLess:
                     case clang::OO_GreaterGreater:
-                        tempIdent = Id::opBinary;
+                        opIdent = Id::opBinary;
                         break;
                     case clang::OO_Equal:
-                        tempIdent = Id::assign;
+                        // D doesn't allow overloading of identity assignment
+                        // NOTE: C++ assignment operators can't be non-members
+                    {
+                        if (auto RHSLValue = dyn_cast<clang::LValueReferenceType>(
+                                        MD->getParamDecl(0)->getType().getDesugaredType(Context).getTypePtr()))
+                        {
+                            auto LHSType = Context.getTypeDeclType(MD->getParent());
+                            auto RHSType = RHSLValue->getPointeeType().withoutLocalFastQualifiers();
+
+                            if (LHSType.getCanonicalType() == RHSType.getCanonicalType())
+                                return nullptr;
+                        }
+
+                        opIdent = Id::assign;
+                        wrapInTemp = false;
                         break;
+                    }
                     case clang::OO_PlusEqual:
                     case clang::OO_MinusEqual:
                     case clang::OO_StarEqual:
@@ -539,7 +564,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
                     case clang::OO_PipeEqual:
                     case clang::OO_LessLessEqual:
                     case clang::OO_GreaterGreaterEqual:
-                        tempIdent = Id::opOpAssign;
+                        opIdent = Id::opOpAssign;
                         break;
                     default:
     //                     ::warning(loc, "Ignoring C++ binary operator%s", clang::getOperatorSpelling(OO));
@@ -550,29 +575,77 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
                 return nullptr; // operator new or delete
         }
 
-        std::string fullName(tempIdent->string, tempIdent->len);
-        fullName += "_";
-        fullName += getOperatorName(OO);
-        auto fullIdent = Lexer::idPool(fullName.c_str());
+        Identifier *fullIdent;
+        if (wrapInTemp)
+        {
+            std::string fullName(opIdent->string, opIdent->len);
+            fullName += "_";
+            fullName += getOperatorName(OO);
+            fullIdent = Lexer::idPool(fullName.c_str());
+        }
+        else
+            fullIdent = opIdent;
 
         // Add the overridable method (or the static function)
         auto a = new Dsymbols;
         fd = new FuncDeclaration(loc, fullIdent, stc, tf, D);
         a->push(fd);
 
-        // Add the opUnary/opBinary/... template declaration
-        auto decldefs = new Dsymbols;
-        auto alias = new ::AliasDeclaration(loc, tempIdent, fd);
-        decldefs->push(alias);
+        if (wrapInTemp)
+        {
+            // Add the opUnary/opBinary/... template declaration
+            auto tpl = new TemplateParameters;
+            auto dstring = new TypeIdentifier(loc, Id::object);
+            dstring->addIdent(Lexer::idPool("string"));
+            auto tp_specvalue = new StringExp(loc, const_cast<char*>(op));
+            tpl->push(new TemplateValueParameter(loc, Lexer::idPool("s"),
+                                                 dstring, tp_specvalue, nullptr));
 
-        auto tpl = new TemplateParameters;
-        auto dstring = new TypeIdentifier(loc, Id::object);
-        dstring->addIdent(Lexer::idPool("string"));
-        auto tp_specvalue = new StringExp(loc, const_cast<char*>(op));
-        tpl->push(new TemplateValueParameter(loc, Lexer::idPool("s"), dstring, tp_specvalue, nullptr));
+            auto fwdtf = static_cast<TypeFunction*>(tf->syntaxCopy());
 
-        auto tempdecl = new ::TemplateDeclaration(loc, tempIdent, tpl, nullptr, decldefs);
-        a->push(tempdecl);
+            for (unsigned i = 0; i < D->getNumParams(); i++)
+            {
+                const char *tp_paramname;
+                switch (i)
+                {
+                    case 0:
+                        tp_paramname = isNonMember ? "__lhst" : "__rhst";
+                        break;
+                    case 1:
+                        tp_paramname = "__rhst";
+                        break;
+                    default:
+                        assert(false && "Shouldn't happen");
+                }
+
+                auto tp_paramident = Lexer::idPool(tp_paramname);
+
+                auto tp_spectype = (*tf->parameters)[i]->type;
+                tpl->push(new TemplateTypeParameter(loc, tp_paramident,
+                                                    tp_spectype, nullptr));
+
+                (*fwdtf->parameters)[i]->type = new TypeIdentifier(loc, tp_paramident);
+            }
+
+            auto ffwd = new ::FuncDeclaration(loc, loc, opIdent, STCfinal, fwdtf);
+
+            // build the body of the forwarding function
+            auto args = new Expressions;
+            args->reserve(fwdtf->parameters->dim);
+            for (auto *p: *fwdtf->parameters)
+                args->push(new IdentifierExp(loc, p->ident));
+
+            Expression *e = new IdentifierExp(loc, fullIdent);
+            e = new CallExp(loc, e, args);
+
+            ffwd->fbody = new ReturnStatement(loc, e);
+
+            auto decldefs = new Dsymbols;
+            decldefs->push(ffwd);
+
+            auto tempdecl = new ::TemplateDeclaration(loc, opIdent, tpl, nullptr, decldefs);
+            a->push(tempdecl);
+        }
 
         return a;
     }
