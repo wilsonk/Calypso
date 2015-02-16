@@ -474,6 +474,9 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     }
     else if (D->isOverloadedOperator())
     {
+        if (D->isImplicit())
+            return nullptr;
+
         // NOTE: C++ overloaded operators might be virtual, unlike D which are always final (being templates)
         //   Mapping the C++ operator to opBinary()() directly would make D lose info and overriding the C++ method impossible
         auto OO = D->getOverloadedOperator();
