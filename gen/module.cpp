@@ -61,7 +61,7 @@
 #endif
 #endif
 
-#ifdef __sun
+#if _AIX || __sun
 #include <alloca.h>
 #endif
 
@@ -127,12 +127,13 @@ void Module::buildTargetFiles(bool singleObj)
 
     // LDC
     // another safety check to make sure we don't overwrite previous output files
-    if (!singleObj)
+    if (!singleObj && global.params.obj)
         check_and_add_output_file(this, objfile->name->str);
     if (docfile)
         check_and_add_output_file(this, docfile->name->str);
-    if (hdrfile)
-        check_and_add_output_file(this, hdrfile->name->str);
+    //FIXME: DMD overwrites header files. This should be done only in a DMD mode.
+    //if (hdrfile)
+    //    check_and_add_output_file(this, hdrfile->name->str);
 }
 
 File* Module::buildFilePath(const char* forcename, const char* path, const char* ext)
@@ -563,7 +564,7 @@ static void codegenModule(Module* m)
 
     // process module members
     for (unsigned k=0; k < m->members->dim; k++) {
-        Dsymbol* dsym = static_cast<Dsymbol*>(m->members->data[k]);
+        Dsymbol* dsym = (*m->members)[k];
         assert(dsym);
         Declaration_codegen(dsym);
     }
@@ -592,7 +593,12 @@ static void codegenModule(Module* m)
         llvm::NamedMDNode *IdentMetadata = gIR->module->getOrInsertNamedMetadata("llvm.ident");
         std::string Version("ldc version ");
         Version.append(global.ldc_version);
-        llvm::Value *IdentNode[] = {
+#if LDC_LLVM_VER >= 306
+        llvm::Metadata *IdentNode[] =
+#else
+        llvm::Value *IdentNode[] =
+#endif
+        {
             llvm::MDString::get(gIR->context(), Version)
         };
         IdentMetadata->addOperand(llvm::MDNode::get(gIR->context(), IdentNode));
@@ -773,11 +779,7 @@ void Module::genmoduleinfo()
     //printf("members->dim = %d\n", members->dim);
     for (size_t i = 0; i < members->dim; i++)
     {
-        Dsymbol *member;
-
-        member = static_cast<Dsymbol *>(members->data[i]);
-        //printf("\tmember '%s'\n", member->toChars());
-        member->addLocalClass(&aclasses);
+        (*members)[i]->addLocalClass(&aclasses);
     }
     // fill inits
     std::vector<LLConstant*> classInits;

@@ -16,7 +16,7 @@ include(CheckCXXCompilerFlag)
 #
 
 find_package(LLVM 3.1 REQUIRED
-    all-targets analysis asmparser asmprinter bitreader bitwriter codegen core debuginfo instcombine ipa ipo instrumentation linker lto mc mcdisassembler mcparser objcarcopts object option profiledata scalaropts selectiondag support tablegen target transformutils vectorize ${EXTRA_LLVM_MODULES})
+    all-targets analysis asmparser asmprinter bitreader bitwriter codegen core debuginfodwarf instcombine ipa ipo instrumentation linker lto mc mcdisassembler mcparser objcarcopts object option profiledata scalaropts selectiondag support tablegen target transformutils vectorize ${EXTRA_LLVM_MODULES})
 math(EXPR LDC_LLVM_VER ${LLVM_VERSION_MAJOR}*100+${LLVM_VERSION_MINOR})
 
 #
@@ -34,7 +34,7 @@ include(GetLinuxDistribution)
 #
 
 # Version information
-set(LDC_VERSION "0.15.0") # May be overridden by git hash tag
+set(LDC_VERSION "0.15.2") # May be overridden by git hash tag
 set(DMDFE_MAJOR_VERSION   2)
 set(DMDFE_MINOR_VERSION   0)
 set(DMDFE_PATCH_VERSION   66)
@@ -148,7 +148,11 @@ endif()
 append("${SANITIZE_CXXFLAGS}" DMD_CXXFLAGS)
 append("${SANITIZE_CXXFLAGS}" LDC_CXXFLAGS)
 # LLVM_CXXFLAGS may contain -Werror which causes compile errors with dmd source
-string(REPLACE "-Werror" "" LLVM_CXXFLAGS ${LLVM_CXXFLAGS})
+string(REPLACE "-Werror " "" LLVM_CXXFLAGS ${LLVM_CXXFLAGS})
+if (UNIX AND NOT "${LLVM_LDFLAGS}" STREQUAL "")
+    # LLVM_LDFLAGS may contain -l-lld which is a wrong library reference (AIX)
+    string(REPLACE "-l-lld " "-lld " LLVM_LDFLAGS ${LLVM_LDFLAGS})
+endif()
 
 # CALYPSO
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")

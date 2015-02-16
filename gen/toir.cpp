@@ -834,7 +834,7 @@ public:
             {
                 if (fndecl->linkage == LINKc && strcmp(fndecl->ident->string, "printf") == 0)
                 {
-                    warnInvalidPrintfCall(e->loc, static_cast<Expression*>(e->arguments->data[0]), e->arguments->dim);
+                    warnInvalidPrintfCall(e->loc, (*e->arguments)[0], e->arguments->dim);
                 }
             }
 
@@ -849,7 +849,10 @@ public:
                 if (LLValue *argptr = p->func()->_argptr) {
                     DtoStore(DtoLoad(argptr), DtoBitCast(arg, getPtrToType(getVoidPtrType())));
                     result = new DImValue(e->type, arg);
-                } else if (global.params.targetTriple.getArch() == llvm::Triple::x86_64) {
+                }
+                else if (global.params.targetTriple.getArch() == llvm::Triple::x86_64 &&
+                    !global.params.targetTriple.isOSWindows()
+                ) {
                     // Since the user only created a __va_list* on the stack before
                     // invoking va_start, we first need to allocate the actual
                     // struct before invoking va_start.
@@ -863,7 +866,8 @@ public:
                 }
             }
             else if (fndecl->llvmInternal == LLVMva_copy &&
-                global.params.targetTriple.getArch() == llvm::Triple::x86_64
+                global.params.targetTriple.getArch() == llvm::Triple::x86_64 &&
+                !global.params.targetTriple.isOSWindows()
             ) {
                 if (e->arguments->dim != 2) {
                     e->error("va_copy instruction expects 2 arguments");
@@ -887,7 +891,7 @@ public:
                     e->error("va_arg instruction expects 1 arguments");
                     fatal();
                 }
-                result = DtoVaArg(e->loc, e->type, static_cast<Expression*>(e->arguments->data[0]));
+                result = DtoVaArg(e->loc, e->type, (*e->arguments)[0]);
             }
             // C alloca
             else if (fndecl->llvmInternal == LLVMalloca) {
@@ -895,7 +899,7 @@ public:
                     e->error("alloca expects 1 arguments");
                     fatal();
                 }
-                Expression* exp = static_cast<Expression*>(e->arguments->data[0]);
+                Expression* exp = (*e->arguments)[0];
                 DValue* expv = toElem(exp);
                 if (expv->getType()->toBasetype()->ty != Tint32)
                     expv = DtoCast(e->loc, expv, Type::tint32);
@@ -907,7 +911,7 @@ public:
                     e->error("fence instruction expects 1 arguments");
                     fatal();
                 }
-                gIR->ir->CreateFence(llvm::AtomicOrdering(static_cast<Expression*>(e->arguments->data[0])->toInteger()));
+                gIR->ir->CreateFence(llvm::AtomicOrdering((*e->arguments)[0]->toInteger()));
                 return;
             }
             // atomic store instruction
@@ -916,9 +920,9 @@ public:
                     e->error("atomic store instruction expects 3 arguments");
                     fatal();
                 }
-                Expression* exp1 = static_cast<Expression*>(e->arguments->data[0]);
-                Expression* exp2 = static_cast<Expression*>(e->arguments->data[1]);
-                int atomicOrdering = static_cast<Expression*>(e->arguments->data[2])->toInteger();
+                Expression* exp1 = (*e->arguments)[0];
+                Expression* exp2 = (*e->arguments)[1];
+                int atomicOrdering = (*e->arguments)[2]->toInteger();
                 LLValue* val = toElem(exp1)->getRVal();
                 LLValue* ptr = toElem(exp2)->getRVal();
 
@@ -939,8 +943,8 @@ public:
                     fatal();
                 }
 
-                Expression* exp = static_cast<Expression*>(e->arguments->data[0]);
-                int atomicOrdering = static_cast<Expression*>(e->arguments->data[1])->toInteger();
+                Expression* exp = (*e->arguments)[0];
+                int atomicOrdering = (*e->arguments)[1]->toInteger();
 
                 LLValue* ptr = toElem(exp)->getRVal();
                 Type* retType = exp->type->nextOf();
@@ -961,10 +965,10 @@ public:
                     e->error("cmpxchg instruction expects 4 arguments");
                     fatal();
                 }
-                Expression* exp1 = static_cast<Expression*>(e->arguments->data[0]);
-                Expression* exp2 = static_cast<Expression*>(e->arguments->data[1]);
-                Expression* exp3 = static_cast<Expression*>(e->arguments->data[2]);
-                int atomicOrdering = static_cast<Expression*>(e->arguments->data[3])->toInteger();
+                Expression* exp1 = (*e->arguments)[0];
+                Expression* exp2 = (*e->arguments)[1];
+                Expression* exp3 = (*e->arguments)[2];
+                int atomicOrdering = (*e->arguments)[3]->toInteger();
                 LLValue* ptr = toElem(exp1)->getRVal();
                 LLValue* cmp = toElem(exp2)->getRVal();
                 LLValue* val = toElem(exp3)->getRVal();
@@ -1009,9 +1013,9 @@ public:
                         break;
                 }
 
-                Expression* exp1 = static_cast<Expression*>(e->arguments->data[0]);
-                Expression* exp2 = static_cast<Expression*>(e->arguments->data[1]);
-                int atomicOrdering = static_cast<Expression*>(e->arguments->data[2])->toInteger();
+                Expression* exp1 = (*e->arguments)[0];
+                Expression* exp2 = (*e->arguments)[1];
+                int atomicOrdering = (*e->arguments)[2]->toInteger();
                 LLValue* ptr = toElem(exp1)->getRVal();
                 LLValue* val = toElem(exp2)->getRVal();
                 LLValue* ret = gIR->ir->CreateAtomicRMW(llvm::AtomicRMWInst::BinOp(op), ptr, val,
@@ -1029,8 +1033,8 @@ public:
                     fatal();
                 }
 
-                Expression* exp1 = static_cast<Expression*>(e->arguments->data[0]);
-                Expression* exp2 = static_cast<Expression*>(e->arguments->data[1]);
+                Expression* exp1 = (*e->arguments)[0];
+                Expression* exp2 = (*e->arguments)[1];
                 LLValue* ptr = toElem(exp1)->getRVal();
                 LLValue* bitnum = toElem(exp2)->getRVal();
 
@@ -1841,7 +1845,7 @@ public:
             assert(e->arguments->dim >= 1);
             if (e->arguments->dim == 1)
             {
-                DValue* sz = toElem(static_cast<Expression*>(e->arguments->data[0]));
+                DValue* sz = toElem((*e->arguments)[0]);
                 // allocate & init
                 result = DtoNewDynArray(e->loc, e->newtype, sz, true);
             }
@@ -1851,7 +1855,7 @@ public:
                 std::vector<DValue*> dims;
                 dims.reserve(ndims);
                 for (size_t i=0; i<ndims; ++i)
-                    dims.push_back(toElem(static_cast<Expression*>(e->arguments->data[i])));
+                    dims.push_back(toElem((*e->arguments)[i]));
                 result = DtoNewMulDimDynArray(e->loc, e->newtype, &dims[0], ndims, true);
             }
         }
@@ -2032,7 +2036,7 @@ public:
         {
             LLValue* thisarg = p->func()->thisArg;
             assert(thisarg && "null thisarg, but we're in assert(this) exp;");
-            LLValue* thisptr = DtoLoad(p->func()->thisArg);
+            LLValue* thisptr = DtoLoad(thisarg);
             condty = e->e1->type->toBasetype();
             cond = new DImValue(condty, thisptr);
         }
@@ -2056,7 +2060,11 @@ public:
         // call assert runtime functions
         p->scope() = IRScope(assertbb, endbb);
 
-        DtoAssert(p->func()->decl->getModule(), e->loc, e->msg ? toElem(e->msg) : NULL);
+        /* DMD Bugzilla 8360: If the condition is evalated to true,
+         * msg is not evaluated at all. So should use toElemDtor()
+         * instead of toElem().
+         */
+        DtoAssert(p->func()->decl->getModule(), e->loc, e->msg ? toElemDtor(e->msg) : NULL);
 
         // rewrite the scope
         p->scope() = IRScope(endbb, oldend);
@@ -2876,8 +2884,8 @@ public:
         const size_t n = e->keys->dim;
         for (size_t i = 0; i<n; ++i)
         {
-            Expression* ekey = static_cast<Expression*>(e->keys->data[i]);
-            Expression* eval = static_cast<Expression*>(e->values->data[i]);
+            Expression* ekey = (*e->keys)[i];
+            Expression* eval = (*e->values)[i];
 
             IF_LOG Logger::println("(%zu) aa[%s] = %s", i, ekey->toChars(), eval->toChars());
 
@@ -2934,8 +2942,7 @@ public:
         IF_LOG Logger::print("DotTypeExp::toElem: %s @ %s\n", e->toChars(), e->type->toChars());
         LOG_SCOPE;
 
-        Type* t = e->sym->getType();
-        assert(t);
+        assert(e->sym->getType());
         result = toElem(e->e1);
     }
 
@@ -2963,16 +2970,15 @@ public:
         types.reserve(e->exps->dim);
         for (size_t i = 0; i < e->exps->dim; i++)
         {
-            Expression *el = static_cast<Expression *>(e->exps->data[i]);
-            types.push_back(i1ToI8(voidToI8(DtoType(el->type))));
+            types.push_back(i1ToI8(voidToI8(DtoType((*e->exps)[i]->type))));
         }
         LLValue *val = DtoRawAlloca(LLStructType::get(gIR->context(), types),0, "tuple");
         for (size_t i = 0; i < e->exps->dim; i++)
         {
-            Expression *el = static_cast<Expression *>(e->exps->data[i]);
+            Expression *el = (*e->exps)[i];
             DValue* ep = toElem(el);
             LLValue *gep = DtoGEPi(val,0,i);
-            if (el->type->ty == Tstruct)
+            if (DtoIsPassedByRef(el->type))
                 DtoStore(DtoLoad(ep->getRVal()), gep);
             else if (el->type->ty != Tvoid)
                 DtoStoreZextI8(ep->getRVal(), gep);
@@ -3049,16 +3055,132 @@ DValue *toElem(Expression *e)
 
 // Search for temporaries for which the destructor must be called.
 // was in toElemDtor but that triggered bug 978911 in VS
-class SearchVarsWithDestructors : public StoppableVisitor
+class SearchVarsWithDestructors : public Visitor
 {
 public:
     std::vector<Expression*> edtors;
 
-    // Import all functions from class StoppableVisitor
-    using StoppableVisitor::visit;
+    // Import all functions from class Visitor
+    using Visitor::visit;
+
+    void applyTo(Expression *e)
+    {
+        if (e)
+            e->accept(this);
+    }
+
+    void applyTo(Expressions *e)
+    {
+        if (!e)
+            return;
+        for (size_t i = 0; i < e->dim; i++)
+            applyTo((*e)[i]);
+    }
 
     virtual void visit(Expression* e)
     {
+    }
+
+    virtual void visit(NewExp *e)
+    {
+        applyTo(e->thisexp);
+        applyTo(e->newargs);
+        applyTo(e->arguments);
+    }
+
+    virtual void visit(NewAnonClassExp *e)
+    {
+        applyTo(e->thisexp);
+        applyTo(e->newargs);
+        applyTo(e->arguments);
+    }
+
+    virtual void visit(UnaExp *e)
+    {
+        applyTo(e->e1);
+    }
+
+    virtual void visit(BinExp *e)
+    {
+        applyTo(e->e1);
+        applyTo(e->e2);
+    }
+
+    virtual void visit(CallExp *e)
+    {
+        applyTo(e->e1);
+        applyTo(e->arguments);
+    }
+
+    virtual void visit(ArrayExp *e)
+    {
+        applyTo(e->e1);
+        applyTo(e->arguments);
+    }
+
+    virtual void visit(SliceExp *e)
+    {
+        applyTo(e->e1);
+        applyTo(e->lwr);
+        applyTo(e->upr);
+    }
+
+    virtual void visit(ArrayLiteralExp *e)
+    {
+        applyTo(e->elements);
+    }
+
+    virtual void visit(AssocArrayLiteralExp *e)
+    {
+        applyTo(e->keys);
+        applyTo(e->values);
+    }
+
+    virtual void visit(StructLiteralExp *e)
+    {
+        if (e->stageflags & stageApply) return;
+        int old = e->stageflags;
+        e->stageflags |= stageApply;
+        applyTo(e->elements);
+        e->stageflags = old;
+    }
+
+    virtual void visit(TupleExp *e)
+    {
+        applyTo(e->e0);
+        applyTo(e->exps);
+    }
+
+    virtual void visit(AndAndExp *e)
+    {
+        applyTo(e->e1);
+        // Don't visit the expression, because later ToElemVisitor will
+        // call toElemDtor on it. Otherwise, there will be multiple
+        // destructor calls on any temporary created by the expression.
+        // See issue #795.
+        //applyTo(e->e2);
+    }
+
+    virtual void visit(OrOrExp *e)
+    {
+        applyTo(e->e1);
+        // same as above
+        //applyTo(e->e2);
+    }
+
+    virtual void visit(CondExp *e)
+    {
+        applyTo(e->econd);
+        // same as above
+        //applyTo(e->e1);
+        //applyTo(e->e2);
+    }
+
+    virtual void visit(AssertExp *e)
+    {
+        applyTo(e->e1);
+        // same as above
+        // applyTo(e->msg);
     }
 
     virtual void visit(DeclarationExp* e)
@@ -3075,7 +3197,7 @@ public:
 
         if (vd->init) {
             if (ExpInitializer* ex = vd->init->isExpInitializer())
-                walkPostorder(ex->exp, this);
+                applyTo(ex->exp);
         }
 
         if (!vd->isDataseg() && vd->edtor && !vd->noscope)
@@ -3108,7 +3230,7 @@ DValue *toElemDtor(Expression *e)
 
     // find destructors that must be called
     SearchVarsWithDestructors visitor;
-    walkPostorder(e, &visitor);
+    visitor.applyTo(e);
 
     if (!visitor.edtors.empty()) {
         if (e->op == TOKcall || e->op == TOKassert) {
@@ -3133,9 +3255,7 @@ DValue *toElemDtor(Expression *e)
 
             gIR->scope() = IRScope(oldbb, oldend);
 
-            // call the destructors but not for AssertExp
-            if (e->op == TOKcall)
-                callDestructors->toIR();
+            callDestructors->toIR();
             delete callDestructors;
             return val;
         } else {

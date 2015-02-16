@@ -151,13 +151,18 @@ private:
 #endif
         );
     void AddBaseFields(AggregateDeclaration *ad, llvm::DIFile file,
-                         std::vector<llvm::Value*> &elems);
+#if LDC_LLVM_VER >= 306
+                       std::vector<llvm::Metadata*> &elems
+#else
+                       std::vector<llvm::Value*> &elems
+#endif
+                         );
     llvm::DIFile CreateFile(Loc& loc);
     llvm::DIType CreateBasicType(Type *type);
     llvm::DIType CreateEnumType(Type *type);
     llvm::DIType CreatePointerType(Type *type);
     llvm::DIType CreateVectorType(Type *type);
-    llvm::DIType CreateMemberType(unsigned linnum, Type *type, llvm::DIFile file, const char* c_name, unsigned offset);
+    llvm::DIType CreateMemberType(unsigned linnum, Type *type, llvm::DIFile file, const char* c_name, unsigned offset, PROT);
     llvm::DIType CreateCompositeType(Type *type);
     llvm::DIType CreateArrayType(Type *type);
     llvm::DIType CreateSArrayType(Type *type);
