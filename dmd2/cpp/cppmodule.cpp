@@ -433,9 +433,12 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     }
     assert(tf->ty == Tfunction);
 
-    auto _D = const_cast<clang::FunctionDecl*>(D);
-    _D->setTrivial(false); // Force its definition and Sema to act on it
-    S.MarkFunctionReferenced(clang::SourceLocation(), _D);
+    if (!D->getDeclContext()->isDependentContext())
+    {
+        auto D_ = const_cast<clang::FunctionDecl*>(D);
+        D_->setTrivial(false);  // force its definition and Sema to resolve its exception spec
+        S.MarkFunctionReferenced(clang::SourceLocation(), D_);
+    }
 
     StorageClass stc = STCundefined;
     if (MD)
