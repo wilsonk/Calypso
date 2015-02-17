@@ -400,7 +400,7 @@ Dsymbols *DeclMapper::VisitTypedefNameDecl(const clang::TypedefNameDecl* D)
     return oneSymbol(a);
 }
 
-const char *getOperatorName(const clang::OverloadedOperatorKind OO)
+static const char *getOperatorName(const clang::OverloadedOperatorKind OO)
 {
     switch (OO)
     {
@@ -488,10 +488,10 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
         Identifier *opIdent;
         bool wrapInTemp = false;
 
-        bool isNonMember = MD && !MD->isStatic();
+        bool isNonMember = !MD || MD->isStatic();
 
         auto NumParams = D->getNumParams();
-        if (isNonMember)
+        if (!isNonMember)
             NumParams++;
 
         bool isUnary = false,
@@ -505,8 +505,6 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
         {
             isUnary = NumParams == 1;
             isBinary = NumParams == 2;
-
-            assert(isUnary || isBinary);
 
             wrapInTemp = true; // except for opAssign
 
@@ -573,6 +571,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
                     case clang::OO_LessLessEqual:
                     case clang::OO_GreaterGreaterEqual:
                         opIdent = Id::opOpAssign;
+                        op = strndup(op, strlen(op) - 1);
                         break;
                     default:
     //                     ::warning(loc, "Ignoring C++ binary operator%s", clang::getOperatorSpelling(OO));
@@ -619,7 +618,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 
                 auto tp_spectype = (*tf->parameters)[i]->type;
                 tpl->push(new TemplateTypeParameter(loc, tp_paramident,
-                                                    tp_spectype, tp_spectype));
+                                                    tp_spectype, nullptr));
 
                 (*fwdtf->parameters)[i]->type = new TypeIdentifier(loc, tp_paramident);
             }
