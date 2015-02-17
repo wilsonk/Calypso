@@ -24,14 +24,13 @@ Although Calypso is currently soldered to LDC, separating the two and placing Ca
 Installation notes
 -------
 
-First you need a LLVM + Clang 3.5 source tree, built libraries and the Clang binaries. Installing binary packages from your distribution isn't enough since the include/ files aren't exposing many symbols, so the source packages are needed as well. Or if you want or need to build Clang yourself, make sure to get the 3.5 branch:
+First you need a LLVM + Clang 3.6 source tree, built libraries and the Clang binaries. Installing binary packages from your distribution isn't enough since the include/ files aren't exposing many symbols, so the source packages are needed as well. Or if you want or need to build Clang yourself, make sure to get the 3.6 branch:
 
-    $ svn co http://llvm.org/svn/llvm-project/llvm/branches/release_35 llvm
-    $ cd llvm/tool
-    $ svn co http://llvm.org/svn/llvm-project/cfe/branches/release_35 clang
-    $ cd ../..
-    $ cd llvm/projects
-    $ svn co http://llvm.org/svn/llvm-project/compiler-rt/branches/release_35 compiler-rt
+    $ svn co http://llvm.org/svn/llvm-project/llvm/branches/release_36 llvm-3.6
+    $ cd llvm-3.6/tools
+    $ svn co http://llvm.org/svn/llvm-project/cfe/branches/release_36 clang
+    $ cd ../projects
+    $ svn co http://llvm.org/svn/llvm-project/compiler-rt/branches/release_36 compiler-rt
 
 Then build and install Clang as described in the rest of:
 http://clang.llvm.org/get_started.html

@@ -409,7 +409,7 @@ set_target_properties(
 
 ### CALYPSO
 
-find_package(Clang REQUIRED)
+find_package(Clang 3.6 REQUIRED)
 include_directories("${CLANG_INCLUDE_DIRS}")
 
 set(LLVM_SOURCE_PATH "" CACHE PATH
