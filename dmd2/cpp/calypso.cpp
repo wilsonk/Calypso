@@ -180,7 +180,12 @@ void PCH::update()
 //         if (!strlen(compiler))
 //             compiler = "clang";
 
-        auto compiler = llvm::sys::FindProgramByName("clang");
+        auto compiler = llvm::sys::findProgramByName("clang");
+        if (!compiler)
+        {
+            ::error(Loc(), "Clang compiler not found");
+            fatal();
+        }
 
         /* PCH generation */
 
@@ -213,7 +218,7 @@ void PCH::update()
         ARGV_ADD(pchHeader);
 #undef ARGV_ADD
 
-        if (executeToolAndWait(compiler, Argv,
+        if (executeToolAndWait(*compiler, Argv,
                 global.params.verbose) == -1) // NOTE: I also have a compiler-agnostic version in my backups with fork(), which was deemed useless since Calypso is tied to LDC and LLVM
         {
             ::error(Loc(), "execv Error!");

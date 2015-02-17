@@ -70,8 +70,8 @@ public:
       : PP(PP), Context(Context), LangOpt(LangOpt), TargetOpts(TargetOpts),
         Target(Target), Counter(Counter), InitializedLanguage(false) {}
 
-  bool ReadLanguageOptions(const LangOptions &LangOpts,
-                           bool Complain) override {
+  bool ReadLanguageOptions(const LangOptions &LangOpts, bool Complain,
+                           bool AllowCompatibleDifferences) override {
     if (InitializedLanguage)
       return false;
 
@@ -212,10 +212,9 @@ ASTUnit *ASTUnit::LoadFromASTFile(const std::string &Filename,
                              /*DisableValidation=*/disableValid,
                              false);
 
-  AST->Reader->setListener(new ASTInfoCollector(*AST->PP, Context,
-                                           AST->ASTFileLangOpts,
-                                           AST->TargetOpts, AST->Target,
-                                           Counter));
+  AST->Reader->setListener(llvm::make_unique<ASTInfoCollector>(
+      *AST->PP, Context, AST->ASTFileLangOpts, AST->TargetOpts, AST->Target,
+      Counter));
 
   switch (AST->Reader->ReadAST(Filename, serialization::MK_MainFile,
                           SourceLocation(), ASTReader::ARR_None)) {

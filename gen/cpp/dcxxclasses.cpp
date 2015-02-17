@@ -414,7 +414,7 @@ struct DCXXVptrAdjuster
 
             if (I.isVirtual()) {
             // Check if we've visited this virtual base before.
-            if (!VBases.insert(BaseDecl))
+            if (!VBases.insert(BaseDecl).second)
                 continue;
 
             const clang::ASTRecordLayout &Layout =

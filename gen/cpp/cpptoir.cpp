@@ -187,12 +187,9 @@ LLValue *LangPlugin::toVirtualFunctionPointer(DValue* inst,
     LLValue* vthis = inst->getRVal();
 
     const clang::CodeGen::CGFunctionInfo *FInfo = nullptr;
-    if (const clang::CXXDestructorDecl *Dtor = llvm::dyn_cast<clang::CXXDestructorDecl>(MD))
-        FInfo = &CGM->getTypes().arrangeCXXDestructor(Dtor,
-                                                    clang::Dtor_Complete);
-    else if (const clang::CXXConstructorDecl *Ctor = llvm::dyn_cast<clang::CXXConstructorDecl>(MD))
-        FInfo = &CGM->getTypes().arrangeCXXConstructorDeclaration(Ctor,
-                                                                clang::Ctor_Complete);
+    if (llvm::isa<clang::CXXConstructorDecl>(MD) || llvm::isa<clang::CXXDestructorDecl>(MD))
+        FInfo = &CGM->getTypes().arrangeCXXStructorDeclaration(MD,
+                                                               clang::CodeGen::StructorType::Complete);
     else
         FInfo = &CGM->getTypes().arrangeCXXMethodDeclaration(MD);
   
@@ -233,7 +230,7 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
     if (Dtor && Dtor->isVirtual())
     {
         CGM->getCXXABI().EmitVirtualDestructorCall(*CGF, Dtor, clang::Dtor_Complete,
-                                        clang::SourceLocation(), This);
+                                        This, nullptr);
 
         return new DImValue(nullptr, nullptr); // WARNING ldc never does that, it returns the instruction of the call site instead
     }
@@ -271,7 +268,7 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
     }
     else
     {
-        RV = CGF->EmitCall(CGM->getTypes().arrangeFreeFunctionCall(Args, FPT),
+        RV = CGF->EmitCall(CGM->getTypes().arrangeFreeFunctionCall(Args, FPT, false),
                     callable, ReturnValue, Args, FD);
     }
 
@@ -298,14 +295,14 @@ void LangPlugin::toResolveFunction(::FuncDeclaration* fdecl)
     const clang::CodeGen::CGFunctionInfo *FInfo;
     llvm::FunctionType *Ty;
 
-    if (auto MD = llvm::dyn_cast<const clang::CXXMethodDecl>(FD))
+    auto MD = llvm::dyn_cast<const clang::CXXMethodDecl>(FD);
+
+    if (MD)
     {
-        if (auto Dtor = llvm::dyn_cast<const clang::CXXDestructorDecl>(MD))
-            FInfo = &CGM->getTypes().arrangeCXXDestructor(Dtor,
-                                                        clang::Dtor_Complete);
-        else if (auto Ctor = llvm::dyn_cast<const clang::CXXConstructorDecl>(MD))
-            FInfo = &CGM->getTypes().arrangeCXXConstructorDeclaration(Ctor,
-                                                                    clang::Ctor_Complete);
+        if (llvm::isa<const clang::CXXConstructorDecl>(MD) ||
+                    llvm::isa<const clang::CXXDestructorDecl>(MD))
+            FInfo = &CGM->getTypes().arrangeCXXStructorDeclaration(MD,
+                                                                    clang::CodeGen::StructorType::Complete);
         else
             FInfo = &CGM->getTypes().arrangeCXXMethodDeclaration(MD);
 
@@ -315,12 +312,10 @@ void LangPlugin::toResolveFunction(::FuncDeclaration* fdecl)
         Ty = CGM->getTypes().GetFunctionType(FD);
 
 
-    if (auto Dtor = llvm::dyn_cast<const clang::CXXDestructorDecl>(FD))
-        Callee = CGM->GetAddrOfCXXDestructor(Dtor, clang::Dtor_Complete,
-                                                FInfo, Ty);
-    else if (auto Ctor = llvm::dyn_cast<const clang::CXXConstructorDecl>(FD))
-        Callee = CGM->GetAddrOfFunction(
-            clang::GlobalDecl(Ctor, clang::Ctor_Complete), Ty);
+    if (MD && (llvm::isa<const clang::CXXConstructorDecl>(MD) ||
+                            llvm::isa<const clang::CXXDestructorDecl>(MD)))
+        Callee = CGM->getAddrOfCXXStructor(MD,
+                                    clang::CodeGen::StructorType::Complete, FInfo, Ty);
     else
         Callee = CGM->GetAddrOfFunction(FD, Ty);
 
