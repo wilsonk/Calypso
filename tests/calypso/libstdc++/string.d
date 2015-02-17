@@ -19,14 +19,19 @@ void main()
     s.reserve(charArray.length * 2);
     s.insert(0, charArray.ptr, charArray.length);
 
-    writeln(to!string(s.c_str()));
-    writeln("Size: ", s.size());
-    writeln("Capacity: ", s.capacity());
+    writeln(to!string(s.c_str));
+    writeln("3rd and 5th characters: ", s[2], ", ", s[4]);
+    writeln("Size: ", s.size);
+    writeln("Capacity: ", s.capacity);
+
+    auto s2 = new cppstring("Hi'iaka");
+    s.push_back(',');
+    s.push_back(' ');
+    s += s2;
 
     s.insert(0, "< ");
-    s.push_back(' ');
-    s.push_back('>');
-    writeln(to!string(s.c_str()));
+    s += " >".ptr;
+    writeln(to!string(s.c_str));
 
     s.clear();
 }
