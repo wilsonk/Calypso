@@ -831,7 +831,9 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
 
     if (T->isSugared())
     {
-        // NOTE: To reduce DMD -> Clang translations to a minimum we don't instantiate ourselves whenever possible, i.e when the template instance is already declared or defined in the PCH. If it's only declared, there's a chance the specialization wasn't emitted in the C++ libraries, so we tell Sema to complete its instantiation.
+        // NOTE: To reduce DMD -> Clang translations to a minimum we don't instantiate ourselves whenever possible, i.e when
+        // the template instance is already declared or defined in the PCH. If it's only declared, there's a chance the specialization
+        // wasn't emitted in the C++ libraries, so we tell Sema to complete its instantiation.
 
         auto RT = T->getAs<clang::RecordType>();
 
@@ -853,7 +855,26 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
         }
 
         if (!T->isTypeAlias())
+        {
+            if (!RT)
+            {
+                clang::TemplateName templateName = T->getTemplateName();
+                clang::TemplateDecl* templateDecl = templateName.getAsTemplateDecl();
+                assert(templateDecl && "could not retrieve template declaration from name");
+
+                clang::ClassTemplateDecl* classTemplateDecl = dyn_cast<clang::ClassTemplateDecl>(templateDecl);
+                assert(classTemplateDecl && "could not cast to class template declaration");
+
+                const clang::CXXRecordDecl* templatedDecl = dyn_cast<clang::CXXRecordDecl>(classTemplateDecl->getTemplatedDecl());
+                assert(templatedDecl && "could not retrieve templated declaration from class templated declaration");
+
+                return adjustAggregateType(tqual, templatedDecl);
+            }
+
             return adjustAggregateType(tqual, RT->getDecl());
+        }
+
+        return adjustAggregateType(tqual, RT->getDecl());
     }
 
     return adjustAggregateType(tqual);
