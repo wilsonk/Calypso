@@ -549,7 +549,7 @@ void TypeQualifiedBuilder::addInst(TypeQualified *&tqual,
     // NOTE: To reduce DMD -> Clang translations to a minimum we don't instantiate ourselves whenever possible, i.e when the template instance is already declared or defined in the PCH. If it's only declared, there's a chance the specialization wasn't emitted in the C++ libraries, so we tell Sema to complete its instantiation.
     if (Spec && !isa<clang::ClassTemplatePartialSpecializationDecl>(Spec))
     {
-        tempinst->Instances[ident] = D;
+        tempinst->Inst = D;
         tempinst->completeInst();
     }
 
@@ -854,7 +854,7 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
                 o = tqual->idents.back();
             auto ti = (cpp::TemplateInstance*)o;
 
-            ti->Instances[ti->name] = RT->getDecl();
+            ti->Inst = RT->getDecl();
             ti->completeInst();
         }
 

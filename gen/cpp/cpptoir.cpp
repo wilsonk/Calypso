@@ -384,13 +384,8 @@ void LangPlugin::toDefineTemplateInstance(::TemplateInstance *inst)
 
     auto c_ti = static_cast<cpp::TemplateInstance *>(inst);
 
-    for (auto D: c_ti->Instances)
-    {
-        auto Instance = D.second;
-
-        if (auto CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(Instance))
-            CGM->UpdateCompletedType(CTSD);
-    }
+    if (auto CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(c_ti->Inst))
+        CGM->UpdateCompletedType(CTSD);
 
     for (auto D: c_ti->Dependencies)
         CGM->EmitTopLevelDecl(D);

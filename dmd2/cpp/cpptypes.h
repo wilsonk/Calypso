@@ -75,10 +75,7 @@ public:
     TypeMapper(cpp::Module *mod = nullptr);  // mod can be null if no implicit import is needed
 
     bool addImplicitDecls = true;
-    ::Module *instMod = nullptr; // only used during the semantic pass for C++ template instantiations
     Dsymbols *substsyms = nullptr; // only for TempateInstance::correctTiargs (partial spec arg deduction)
-
-    ::Module *getInstantiatingModule() { return instMod ? instMod : (::Module*) mod; }
 
     std::stack<const clang::Decl *> CXXScope;
 

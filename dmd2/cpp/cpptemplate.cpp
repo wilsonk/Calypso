@@ -67,6 +67,21 @@ clang::RedeclarableTemplateDecl *TemplateDeclaration::getPrimaryTemplate()
     return CTSD->getSpecializedTemplate();
 }
 
+bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
+{
+    auto& Context = calypso.pch.AST->getASTContext();
+
+    if (tempinsts.empty())
+        return true;
+
+    auto ti = tempinsts.top();
+
+    for (auto I = DG.begin(), E = DG.end(); I != E; ++I)
+        ti->Dependencies.push_back(*I);
+
+    return true;
+}
+
 ::TemplateInstance* TemplateDeclaration::foreignInstance(::TemplateInstance* tithis,
                                                        Scope* sc)
 {
@@ -92,7 +107,7 @@ clang::RedeclarableTemplateDecl *TemplateDeclaration::getPrimaryTemplate()
         tithis->syntaxCopy(ti);
     }
 
-    if (!ti->Instances.empty()) // the instance is already there, so we only need to correct the tempdecl and start semantic over again (to fix tdtypes notably)
+    if (ti->Inst) // the instance is already there, so we only need to correct the tempdecl and start semantic over again (to fix tdtypes notably)
         goto LcorrectTempDecl;
 
     {
@@ -148,7 +163,7 @@ clang::RedeclarableTemplateDecl *TemplateDeclaration::getPrimaryTemplate()
         if (auto RT = Ty->getAs<clang::RecordType>())
         {
             auto CTSD = cast<clang::ClassTemplateSpecializationDecl>(RT->getDecl());
-            ti->Instances[ti->name] = CTSD;
+            ti->Inst = CTSD;
             ti->completeInst(true);
         }
         else
@@ -170,7 +185,7 @@ LcorrectTempDecl:
 
 void TemplateDeclaration::correctTempDecl(TemplateInstance *ti)
 {
-    auto Inst = ti->Instances[ti->name];
+    auto Inst = ti->Inst;
     auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(Inst);
 
     if (isa<clang::TypeAliasTemplateDecl>(TempOrSpec) || // FIXME, any way to retrieve the template decl for alias templates?
@@ -213,7 +228,7 @@ TemplateInstance::TemplateInstance(Loc loc, Identifier* temp_id)
 TemplateInstance::TemplateInstance(const TemplateInstance& o)
     : TemplateInstance(o.loc, o.name)
 {
-    Instances = o.Instances;
+    Inst = o.Inst;
     Dependencies = o.Dependencies;
 }
 
@@ -224,7 +239,7 @@ Dsymbol *TemplateInstance::syntaxCopy(Dsymbol *s)
     else
     {
         auto ti = static_cast<cpp::TemplateInstance*>(s);
-        ti->Instances = Instances;
+        ti->Inst = Inst;
         ti->Dependencies = Dependencies;
     }
 
@@ -243,21 +258,6 @@ Identifier *TemplateInstance::getIdent()
     return result;
 }
 
-bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
-{
-    auto& Context = calypso.pch.AST->getASTContext();
-
-    if (tempinsts.empty())
-        return true;
-
-    auto ti = tempinsts.top();
-
-    for (auto I = DG.begin(), E = DG.end(); I != E; ++I)
-        ti->Dependencies.push_back(*I);
-
-    return true;
-}
-
 void TemplateInstance::completeInst(bool foreignInstance)
 {
     auto& Context = calypso.pch.AST->getASTContext();
@@ -269,25 +269,24 @@ void TemplateInstance::completeInst(bool foreignInstance)
     if (!S.TUScope)
         S.TUScope = new clang::Scope(nullptr, clang::Scope::DeclScope, *Diags);
 
-    for (auto I: Instances)
+    auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(Inst);
+
+    instCollector.tempinsts.push(this);
+
+    if (CTSD && !CTSD->hasDefinition() &&
+        CTSD->getSpecializedTemplate()->getTemplatedDecl()->hasDefinition()) // unused forward template specialization decls will exist but as empty aggregates
     {
-        auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(I.second);
+        auto Ty = Context.getRecordType(CTSD);
 
-        instCollector.tempinsts.push(this);
+        // if the definition of the class template specialization wasn't present in the PCH
+        // there's a chance the code wasn't emitted in the C++ libraries, so we do it ourselves.
 
-        if (CTSD && !CTSD->hasDefinition() &&
-            CTSD->getSpecializedTemplate()->getTemplatedDecl()->hasDefinition()) // unused forward template specialization decls will exist but as empty aggregates
-        {
-            auto Ty = Context.getRecordType(CTSD);
+        if (S.RequireCompleteType(CTSD->getLocation(), Ty, 0))
+            assert(false && "Sema::RequireCompleteType() failed on template specialization");
+    }
 
-            // if the definition of the class template specialization wasn't present in the PCH
-            // there's a chance the code wasn't emitted in the C++ libraries, so we do it ourselves.
-
-            if (S.RequireCompleteType(CTSD->getLocation(), Ty, 0))
-                assert(false && "Sema::RequireCompleteType() failed on template specialization");
-        }
-
-        // Force instantiation of method definitions
+    // Force instantiation of method definitions
+    if (CTSD)
         for (auto *D : CTSD->decls())
         {
             if (auto Function = dyn_cast<clang::FunctionDecl>(D))
@@ -296,8 +295,7 @@ void TemplateInstance::completeInst(bool foreignInstance)
                                                     Function, foreignInstance);
         }
 
-        instCollector.tempinsts.pop();
-    }
+    instCollector.tempinsts.pop();
 }
 
 // HACK-ish unfortunately.. but partial spec arg deduction isn't trivial. Can't think of a simpler way.
@@ -355,7 +353,6 @@ struct CppSymCollector
 
 void TemplateInstance::correctTiargs()
 {
-    auto Inst = Instances[name];
     auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(Inst);
 
     if (!CTSD)
@@ -393,12 +390,6 @@ void TemplateInstance::correctTiargs()
         tiargs = TypeMapper::FromType(tymap).fromTemplateArguments(Args.begin(), Args.end(),
                         Partial->getTemplateParameters());
     }
-
-}
-
-clang::Decl *TemplateInstance::mainInst()
-{
-    return Instances[name];
 }
 
 }

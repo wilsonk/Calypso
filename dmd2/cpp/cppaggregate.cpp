@@ -65,11 +65,10 @@ void StructDeclaration::semantic(Scope *sc)
 
         assert(ti && isCPP(ti->inst));
         auto c_ti = static_cast<cpp::TemplateInstance*>(ti->inst);
-        auto InstRD = cast<clang::ClassTemplateSpecializationDecl>(c_ti->Instances[ident]);
+        auto InstRD = cast<clang::ClassTemplateSpecializationDecl>(c_ti->Inst);
 
         DeclMapper m(nullptr);
         m.addImplicitDecls = false;
-        m.instMod = sc->module;
 
         auto instsd = static_cast<cpp::StructDeclaration*>(
                 m.VisitInstancedClassTemplate(InstRD)->isStructDeclaration());
@@ -95,11 +94,10 @@ void ClassDeclaration::semantic(Scope *sc)
 
         assert(ti && isCPP(ti->inst));
         auto c_ti = static_cast<cpp::TemplateInstance*>(ti->inst);
-        auto InstRD = cast<clang::ClassTemplateSpecializationDecl>(c_ti->Instances[ident]);
+        auto InstRD = cast<clang::ClassTemplateSpecializationDecl>(c_ti->Inst);
 
         DeclMapper m(nullptr);
         m.addImplicitDecls = false;
-        m.instMod = sc->module;
 
         auto instcd = static_cast<cpp::ClassDeclaration*>(
             m.VisitInstancedClassTemplate(InstRD, DeclMapper::ForceNonPOD)->isClassDeclaration());
