@@ -623,13 +623,19 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* ND,
         if (auto subst = tm.trySubstitute(ND)) // HACK for correctTiargs
             return subst;
 
-    if (!ND->getIdentifier())
-        return new TypeNull; // FIXME anonymous record or enum
-
     const clang::Decl *Root;
     decltype(CXXScope) ScopeStack(tm.CXXScope);
 
-    auto Name = ND->getDeclName();
+    clang::DeclarationName Name;
+    if (ND->getIdentifier())
+        Name =  ND->getDeclName();
+    else if (auto Tag = llvm::dyn_cast<clang::TagDecl>(ND))
+        if (auto Typedef = Tag->getTypedefNameForAnonDecl())
+            Name = Typedef->getDeclName();
+
+    if (Name.isEmpty()) // might be an anonymous enum decl for fromExpressionDeclRef
+            // TODO: check that this doesn't happen when called from TypeMapper would be more solid
+        return nullptr;
 
     // This is currently the only place where a "C++ scope" is used, this is
     // especially needed for identifier lookups during template instantiations
