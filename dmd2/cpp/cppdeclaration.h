@@ -51,6 +51,7 @@ public:
                     Type* type, const clang::FunctionDecl *FD);
     FuncDeclaration(const FuncDeclaration&);
     Dsymbol *syntaxCopy(Dsymbol *s) override;
+    void semantic(Scope *sc) override;
     bool allowFinalOverride() override { return true; }
 };
 

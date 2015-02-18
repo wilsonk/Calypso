@@ -664,7 +664,7 @@ public:
 
     FuncDeclaration(Loc loc, Loc endloc, Identifier *id, StorageClass storage_class, Type *type);
     virtual Dsymbol *syntaxCopy(Dsymbol *);
-    void semantic(Scope *sc);
+    virtual void semantic(Scope *sc); // CALYPSO
     void semantic2(Scope *sc);
     void semantic3(Scope *sc);
     bool functionSemantic();

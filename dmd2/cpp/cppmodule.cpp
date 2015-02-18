@@ -1165,6 +1165,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
                     if (llvm::isa<clang::FunctionDecl>(*D) ||
                             llvm::isa<clang::VarDecl>(*D) ||
                             llvm::isa<clang::TypedefNameDecl>(*D) ||
+                            llvm::isa<clang::FunctionTemplateDecl>(*D) ||
                             llvm::isa<clang::TypeAliasTemplateDecl>(*D))
                     {
                         if (auto s = mapper.VisitDecl(*D))

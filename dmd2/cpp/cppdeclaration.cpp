@@ -1,12 +1,18 @@
 // Contributed by Elie Morisse, same license DMD uses
 
-#include "calypso.h"
-#include "cppdeclaration.h"
+#include "cpp/calypso.h"
+#include "cpp/cppdeclaration.h"
+#include "cpp/cpptemplate.h"
+#include "scope.h"
 
 #include "clang/AST/Decl.h"
 
 namespace cpp
 {
+
+using llvm::isa;
+using llvm::cast;
+using llvm::dyn_cast;
 
 VarDeclaration::VarDeclaration(Loc loc, Identifier *id,
                                const clang::ValueDecl *VD, Type *t, Initializer *init)
@@ -92,6 +98,32 @@ IMPLEMENT_syntaxCopy(FuncDeclaration, FD)
 IMPLEMENT_syntaxCopy(CtorDeclaration, CCD)
 IMPLEMENT_syntaxCopy(DtorDeclaration, CDD)
 IMPLEMENT_syntaxCopy(EnumDeclaration, ED)
+
+void FuncDeclaration::semantic(Scope *sc)
+{
+    if (semanticRun >= PASSsemanticdone)
+        return;
+
+    if (FD->getDescribedFunctionTemplate())
+    {
+        auto ti = sc->parent->isTemplateInstance();
+        assert(ti && isCPP(ti->inst));
+        auto c_ti = static_cast<cpp::TemplateInstance*>(ti->inst);
+
+        auto Inst = cast<clang::FunctionDecl>(c_ti->Inst);
+
+        DeclMapper m(nullptr);
+        m.addImplicitDecls = false;
+
+        auto inst = static_cast<decltype(this)>(
+                (*m.VisitFunctionDecl(Inst))[0]->isFuncDeclaration());
+        assert(inst);
+
+        inst->syntaxCopy(this);
+    }
+
+    ::FuncDeclaration::semantic(sc);
+}
 
 const clang::FunctionDecl *getFD(::FuncDeclaration *f)
 {

@@ -13,6 +13,7 @@
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/Sema/Sema.h"
+#include "clang/Sema/Template.h"
 
 namespace cpp
 {
@@ -107,6 +108,9 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
         tithis->syntaxCopy(ti);
     }
 
+    // Track function instantiations during the mapping of template instantiation (e.g by default arg exprs)
+    instCollector.tempinsts.push(ti);
+
     if (ti->Inst) // the instance is already there, so we only need to correct the tempdecl and start semantic over again (to fix tdtypes notably)
         goto LcorrectTempDecl;
 
@@ -157,14 +161,48 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
         }
 
         clang::TemplateName Name(Temp);
-        auto Ty = S.CheckTemplateIdType(Name, Temp->getLocation(), Args); // NOTE: this also substitutes the argument types
-                                            // to TemplateTypeParmType, which is needed for partial specializations to work.
 
-        if (auto RT = Ty->getAs<clang::RecordType>())
+        if (isa<clang::ClassTemplateDecl>(Temp) ||
+                isa<clang::TypeAliasTemplateDecl>(Temp))
         {
+            auto Ty = S.CheckTemplateIdType(Name, Temp->getLocation(), Args); // NOTE: this also substitutes the argument types
+                                                // to TemplateTypeParmType, which is needed for partial specializations to work.
+
+            auto RT = Ty->castAs<clang::RecordType>();
             auto CTSD = cast<clang::ClassTemplateSpecializationDecl>(RT->getDecl());
             ti->Inst = CTSD;
             ti->completeInst(true);
+        }
+        else if (auto FuncTemp = dyn_cast<clang::FunctionTemplateDecl>(Temp))
+        {
+            assert(FuncTemp->getTemplatedDecl() &&
+                    FuncTemp->getTemplatedDecl()->isDefined());
+
+            // Converts TemplateArgumentListInfo to something suitable for TemplateArgumentList
+            llvm::SmallVector<clang::TemplateArgument, 4> Converted;
+            if (S.CheckTemplateArgumentList(Temp, Temp->getLocation(), Args,
+                                            false, Converted))
+                assert(false && "CheckTemplateArgumentList failed for function template");
+
+            clang::TemplateArgumentList ArgList(clang::TemplateArgumentList::OnStack,
+                                    Converted.data(), Converted.size());
+            clang::MultiLevelTemplateArgumentList MultiList(ArgList);
+
+            // Instantiate the declaration
+            clang::Sema::InstantiatingTemplate Instantiating(S,
+                                            Temp->getLocation(), Temp->getTemplatedDecl());
+            if (Instantiating.isInvalid())
+                assert(false && "InstantiatingTemplate is invalid");
+
+            auto FuncInst = cast<clang::FunctionDecl>(
+                            S.SubstDecl(FuncTemp->getTemplatedDecl(),
+                                        Temp->getDeclContext(), MultiList));
+            assert(FuncInst && "Sema::SubstDecl failed");
+
+            // Then the definition
+            S.InstantiateFunctionDefinition(Temp->getLocation(), FuncInst, true);
+
+            ti->Inst = FuncInst;
         }
         else
             assert(false);
@@ -176,7 +214,6 @@ LcorrectTempDecl:
 
     ti->correctTiargs();
 
-    instCollector.tempinsts.push(ti); // track function instantiation during the mapping of template instantiation (e.g by default arg exprs)
     ti->semanticRun = PASSinit; // WARNING: may disrupt something?
     ti->semantic(sc);
     instCollector.tempinsts.pop();
