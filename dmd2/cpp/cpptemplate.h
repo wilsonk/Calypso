@@ -54,7 +54,7 @@ public:
     Dsymbol *syntaxCopy(Dsymbol *) override;
     Identifier *getIdent() override;
 
-    void completeInst(bool foreignInstance = false);
+    void completeInst();
     void correctTiargs();
 };
 

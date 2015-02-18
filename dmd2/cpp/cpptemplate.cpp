@@ -171,7 +171,7 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
             auto RT = Ty->castAs<clang::RecordType>();
             auto CTSD = cast<clang::ClassTemplateSpecializationDecl>(RT->getDecl());
             ti->Inst = CTSD;
-            ti->completeInst(true);
+            ti->completeInst();
         }
         else if (auto FuncTemp = dyn_cast<clang::FunctionTemplateDecl>(Temp))
         {
@@ -295,7 +295,7 @@ Identifier *TemplateInstance::getIdent()
     return result;
 }
 
-void TemplateInstance::completeInst(bool foreignInstance)
+void TemplateInstance::completeInst()
 {
     auto& Context = calypso.pch.AST->getASTContext();
     auto& Diags = calypso.pch.Diags;
@@ -329,7 +329,7 @@ void TemplateInstance::completeInst(bool foreignInstance)
             if (auto Function = dyn_cast<clang::FunctionDecl>(D))
                 if (!Function->isDefined() && Function->getInstantiatedFromMemberFunction())
                     S.InstantiateFunctionDefinition(CTSD->getLocation(),
-                                                    Function, foreignInstance);
+                                                    Function, true);
         }
 
     instCollector.tempinsts.pop();
