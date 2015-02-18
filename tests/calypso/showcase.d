@@ -105,8 +105,7 @@ void main()
     testClass cls = new testInherit;
     cls.priv.f = 5.25;
     writeln("cls.priv.f = ", cls.priv.f);
-    cls.n = 2;
-    writeln("cls.echo(9, 8) = ", cls.echo(9, 8));
+    writeln("cls.echo(9, 8) = ", cls.echo(9, 8)); // 42 * 5 == 210 expected if the ctor was called
     writeln("cls.echo2(2.5) = ", cls.echo2(2.5));
 
     testMultipleInherit mul = new testMultipleInherit;
@@ -148,10 +147,20 @@ void main()
     auto t1 = new tempWithPartialSpecs!(double, 10);
     auto t2 = new tempWithPartialSpecs!(char, 8);
     auto t3 = new tempWithPartialSpecs!(bool, 5);
-    writeln("t1 instantied from ", to!string(t1.toChars()));
-    writeln("t2 instantied from ", to!string(t2.toChars()));
-    writeln("t3 instantied from ", to!string(t3.toChars()));
+    writeln("t1 instantied from ", to!string(t1.toChars));
+    writeln("t2 instantied from ", to!string(t2.toChars));
+    writeln("t3 instantied from ", to!string(t3.toChars));
 
+    // Function templates
+    std.stdio.writeln("\n[Function templates]");
+    char _char;
+    short _short;
+    double _double;
+    testStruct _testStruct;
+    writeln("funcTempSizeOf(_char) = ", funcTempSizeOf(_char));
+    writeln("funcTempSizeOf(_short) = ", funcTempSizeOf(_short));
+    writeln("funcTempSizeOf(_double) = ", funcTempSizeOf(_double));
+//     writeln("funcTempSizeOf(_testStruct) = ", funcTempSizeOf(_testStruct));
 
     // ======== ========
     // And finally... just checking if basic D functionality still works as usual i.e if everything else wasn't broken by inadvertance

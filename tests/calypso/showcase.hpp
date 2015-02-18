@@ -26,6 +26,8 @@ namespace test {
         unsigned n;
         virtual int echo(int a, int b);
         virtual float echo2(float f);
+
+        testClass() { n = 1000; }
     };
     
     // Derived class
@@ -37,6 +39,8 @@ namespace test {
 
         int echo(int a, int b) override;
         virtual float echo2(float f) override;
+
+        testInherit() { n = 5; }
     };
 
     // Multiple inheritance
@@ -77,7 +81,7 @@ namespace test {
     };
 
     // Partial and explicit template specializations
-    template<typename T = unsigned, int N = 1>
+    template<typename T = unsigned, int N = 1> // primary template
      struct tempWithPartialSpecs
     {
         const char *toChars() { return "Primary template"; }
@@ -104,6 +108,10 @@ namespace test {
     template<>
      class tempWithPartialSpecs<bool, 5> // explicit spec
     {
-        const char *toChars() { return "Explicit spec (T = wchar, N = 5)"; }
+        const char *toChars() { return "Explicit spec (T = bool, N = 5)"; }
     };
+
+    // Function templates
+    template<typename T>
+     unsigned funcTempSizeOf(T a) { return sizeof(T); }
 }
