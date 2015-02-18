@@ -263,19 +263,20 @@ Type *TypeMapper::FromType::fromTypeUnqual(const clang::Type *T)
         return fromTypeArray(AT);
 
     // Pointer and reference types
-    bool isPointer = isa<clang::PointerType>(T),
-            isReference = isa<clang::ReferenceType>(T);
+    auto Pointer = dyn_cast<clang::PointerType>(T);
+    auto Reference = dyn_cast<clang::ReferenceType>(T);
 
-    if (isPointer || isReference)
+    if (Pointer || Reference)
     {
-        auto pointeeT = T->getPointeeType();
+        auto pointeeT = Reference ?
+                Reference->getPointeeTypeAsWritten() : Pointer->getPointeeType();
         auto pt = fromType(pointeeT);
 
         auto t2 = pt;
         while (t2->ty == Tvalueof)
             t2 = t2->nextOf();
 
-        if (isPointer)
+        if (Pointer)
             return t2->pointerTo();
         else
             return (pt->ty != Tvalueof) ? pt->referenceTo() : t2;
