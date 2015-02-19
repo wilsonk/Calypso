@@ -858,17 +858,8 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
         {
             if (!RT)
             {
-                clang::TemplateName templateName = T->getTemplateName();
-                clang::TemplateDecl* templateDecl = templateName.getAsTemplateDecl();
-                assert(templateDecl && "could not retrieve template declaration from name");
-
-                clang::ClassTemplateDecl* classTemplateDecl = dyn_cast<clang::ClassTemplateDecl>(templateDecl);
-                assert(classTemplateDecl && "could not cast to class template declaration");
-
-                const clang::CXXRecordDecl* templatedDecl = dyn_cast<clang::CXXRecordDecl>(classTemplateDecl->getTemplatedDecl());
-                assert(templatedDecl && "could not retrieve templated declaration from class templated declaration");
-
-                return adjustAggregateType(tqual, templatedDecl);
+                auto ICNT = T->castAs<clang::InjectedClassNameType>();
+                return adjustAggregateType(tqual, ICNT->getDecl());
             }
 
             return adjustAggregateType(tqual, RT->getDecl());
