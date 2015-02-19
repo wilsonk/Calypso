@@ -864,8 +864,6 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
 
             return adjustAggregateType(tqual, RT->getDecl());
         }
-
-        return adjustAggregateType(tqual, RT->getDecl());
     }
 
     return adjustAggregateType(tqual);
