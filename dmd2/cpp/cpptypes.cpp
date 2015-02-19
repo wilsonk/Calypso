@@ -838,7 +838,9 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
 
     if (T->isSugared())
     {
-        // NOTE: To reduce DMD -> Clang translations to a minimum we don't instantiate ourselves whenever possible, i.e when the template instance is already declared or defined in the PCH. If it's only declared, there's a chance the specialization wasn't emitted in the C++ libraries, so we tell Sema to complete its instantiation.
+        // NOTE: To reduce DMD -> Clang translations to a minimum we don't instantiate ourselves whenever possible, i.e when
+        // the template instance is already declared or defined in the PCH. If it's only declared, there's a chance the specialization
+        // wasn't emitted in the C++ libraries, so we tell Sema to complete its instantiation.
 
         auto RT = T->getAs<clang::RecordType>();
 
@@ -860,7 +862,15 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
         }
 
         if (!T->isTypeAlias())
+        {
+            if (!RT)
+            {
+                auto ICNT = T->castAs<clang::InjectedClassNameType>();
+                return adjustAggregateType(tqual, ICNT->getDecl());
+            }
+
             return adjustAggregateType(tqual, RT->getDecl());
+        }
     }
 
     return adjustAggregateType(tqual);
