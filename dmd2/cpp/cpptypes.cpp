@@ -255,6 +255,7 @@ Type *TypeMapper::FromType::fromTypeUnqual(const clang::Type *T)
     TYPEMAP(DependentName)
     TYPEMAP(DependentTemplateSpecialization)
     TYPEMAP(Decltype)
+    TYPEMAP(TypeOfExpr)
     TYPEMAP(PackExpansion)
 #undef TYPEMAP
 
@@ -281,9 +282,6 @@ Type *TypeMapper::FromType::fromTypeUnqual(const clang::Type *T)
         else
             return (pt->ty != Tvalueof) ? pt->referenceTo() : t2;
     }
-
-    if (auto TOE = dyn_cast<clang::TypeOfExprType>(T))
-        return fromTypeOfExpr(TOE);
 
     llvm::llvm_unreachable_internal("Unrecognized C++ type");
 }
@@ -959,7 +957,7 @@ Type* TypeMapper::FromType::fromTypeSubstTemplateTypeParm(const clang::SubstTemp
     {
         // If the substitued argument comes from decltype(some function template call), then the fragile link that makes perfect C++ template mapping possible (type sugar) is broken.
         // Clang has lost the template instance at this point, so first we get it back from the decltype expr.
-        if (auto CE = llvm::dyn_cast_or_null<clang::CallExpr>(DecltypeExpr))
+        if (auto CE = llvm::dyn_cast_or_null<clang::CallExpr>(TypeOfExpr))
             if (auto Callee = CE->getDirectCallee())
                 if (Callee->isTemplateInstantiation())
                 {
@@ -969,8 +967,8 @@ Type* TypeMapper::FromType::fromTypeSubstTemplateTypeParm(const clang::SubstTemp
                     ExprMapper em(tm);
                     em.enableCallExpr = true;
 
-                    auto e = em.fromExpression(DecltypeExpr);
-                    auto loc = fromLoc(DecltypeExpr->getExprLoc());
+                    auto e = em.fromExpression(TypeOfExpr);
+                    auto loc = fromLoc(TypeOfExpr->getExprLoc());
 
                     return new TypeTypeof(loc, e);
 
@@ -1075,36 +1073,30 @@ Type* TypeMapper::FromType::fromTypeDependentTemplateSpecialization(const clang:
     return adjustAggregateType(tqual);
 }
 
-Type* TypeMapper::FromType::fromTypeOfExpr(const clang::TypeOfExprType* T)
-{
-    if (T->isSugared())
-        return fromType(T->desugar());
-    else
-    {
-        ExprMapper em(tm);
-        auto e = em.fromExpression(T->getUnderlyingExpr());
-        if (!e)
-            ::error(Loc(), "TypeOfExprType had no underlying type");
-
-        return new TypeTypeof(Loc(), e);
-    }
-}
-
-Type* TypeMapper::FromType::fromTypeDecltype(const clang::DecltypeType* T)
+template <typename _Type>
+Type *TypeMapper::FromType::fromTypeOfExpr(const _Type *T)
 {
     if (T->isSugared())  // TODO: remove this for reflection?
     {
         FromType underlying(tm);
-        underlying.DecltypeExpr = T->getUnderlyingExpr(); // needed for SubstTemplateTypeParm
+        underlying.TypeOfExpr = T->getUnderlyingExpr(); // needed for SubstTemplateTypeParm
 
         return underlying(T->desugar());
     }
 
     auto exp = ExprMapper(tm).fromExpression(T->getUnderlyingExpr());
-    if (exp) // temporary? some decltype use CallExpr, which I feel would make getting things working much harder for little gain since templates are instantiated by Sema
-        return new TypeTypeof(Loc(), exp);
-    else
-        return new TypeNull;
+    assert(exp);
+    return new TypeTypeof(Loc(), exp);
+}
+
+Type* TypeMapper::FromType::fromTypeTypeOfExpr(const clang::TypeOfExprType* T)
+{
+    return fromTypeOfExpr(T);
+}
+
+Type* TypeMapper::FromType::fromTypeDecltype(const clang::DecltypeType* T)
+{
+    return fromTypeOfExpr(T);
 }
 
 Type* TypeMapper::FromType::fromTypePackExpansion(const clang::PackExpansionType* T)

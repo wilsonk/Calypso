@@ -88,7 +88,7 @@ public:
         TypeMapper &tm;
         TypeQualified *prefix; // special case for NNS qualified types
 
-        const clang::Expr *DecltypeExpr = nullptr;
+        const clang::Expr *TypeOfExpr = nullptr;
 
         FromType(TypeMapper &tm, TypeQualified *prefix = nullptr);
 
@@ -107,7 +107,7 @@ public:
         Type *fromTypeInjectedClassName(const clang::InjectedClassNameType *T);
         Type *fromTypeDependentName(const clang::DependentNameType *T);
         Type *fromTypeDependentTemplateSpecialization(const clang::DependentTemplateSpecializationType *T);
-        Type *fromTypeOfExpr(const clang::TypeOfExprType *T);
+        Type *fromTypeTypeOfExpr(const clang::TypeOfExprType *T);
         Type *fromTypeDecltype(const clang::DecltypeType *T);
         Type *fromTypePackExpansion(const clang::PackExpansionType *T);
         TypeFunction *fromTypeFunction(const clang::FunctionProtoType *T,
@@ -127,6 +127,9 @@ public:
         Type *typeQualifiedFor(clang::NamedDecl* ND,
                             const clang::TemplateArgument* ArgBegin = nullptr,
                             const clang::TemplateArgument* ArgEnd = nullptr);
+
+        template<typename _Type>
+         Type *fromTypeOfExpr(const _Type *T);
 
     private:
         Type *fromType(const clang::QualType T);  // private alias
