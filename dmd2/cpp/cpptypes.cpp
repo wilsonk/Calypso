@@ -282,6 +282,18 @@ Type *TypeMapper::FromType::fromTypeUnqual(const clang::Type *T)
             return (pt->ty != Tvalueof) ? pt->referenceTo() : t2;
     }
 
+    if (auto TO = dyn_cast<clang::TypeOfExprType>(T))
+    {
+        if (TO->isSugared())
+            return fromType(TO->desugar());
+        else
+        {
+            ExprMapper em(tm);
+            auto e = em.fromExpression(TO->getUnderlyingExpr());
+            return new TypeTypeof(Loc(), e);
+        }
+    }
+
     llvm::llvm_unreachable_internal("Unrecognized C++ type");
 }
 
