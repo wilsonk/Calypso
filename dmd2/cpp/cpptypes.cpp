@@ -282,6 +282,9 @@ Type *TypeMapper::FromType::fromTypeUnqual(const clang::Type *T)
             return (pt->ty != Tvalueof) ? pt->referenceTo() : t2;
     }
 
+    if (auto TOE = dyn_cast<clang::TypeOfExprType>(T))
+        return fromTypeOfExpr(TOE);
+
     llvm::llvm_unreachable_internal("Unrecognized C++ type");
 }
 
@@ -1070,6 +1073,21 @@ Type* TypeMapper::FromType::fromTypeDependentTemplateSpecialization(const clang:
         tqual->addInst(tempinst);
 
     return adjustAggregateType(tqual);
+}
+
+Type* TypeMapper::FromType::fromTypeOfExpr(const clang::TypeOfExprType* T)
+{
+    if (T->isSugared())
+        return fromType(T->desugar());
+    else
+    {
+        ExprMapper em(tm);
+        auto e = em.fromExpression(T->getUnderlyingExpr());
+        if (!e)
+            ::error(Loc(), "TypeOfExprType had no underlying type");
+
+        return new TypeTypeof(Loc(), e);
+    }
 }
 
 Type* TypeMapper::FromType::fromTypeDecltype(const clang::DecltypeType* T)

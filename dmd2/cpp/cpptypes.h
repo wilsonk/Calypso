@@ -107,6 +107,7 @@ public:
         Type *fromTypeInjectedClassName(const clang::InjectedClassNameType *T);
         Type *fromTypeDependentName(const clang::DependentNameType *T);
         Type *fromTypeDependentTemplateSpecialization(const clang::DependentTemplateSpecializationType *T);
+        Type *fromTypeOfExpr(const clang::TypeOfExprType *T);
         Type *fromTypeDecltype(const clang::DecltypeType *T);
         Type *fromTypePackExpansion(const clang::PackExpansionType *T);
         TypeFunction *fromTypeFunction(const clang::FunctionProtoType *T,
