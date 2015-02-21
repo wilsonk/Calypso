@@ -88,6 +88,8 @@ Expression* ExprMapper::fromBinExp(const clang::BinaryOperator* E)
         case clang::BO_AddAssign: return new AddAssignExp(loc, lhs, rhs);
         case clang::BO_RemAssign: return new MinAssignExp(loc, lhs, rhs);
         case clang::BO_DivAssign: return new DivAssignExp(loc, lhs, rhs);
+
+        case clang::BO_Comma: return new CommaExp(loc, lhs, rhs);
     }
 
     llvm::llvm_unreachable_internal("Unhandled C++ binary operation exp");
