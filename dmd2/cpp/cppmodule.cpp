@@ -543,9 +543,12 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
                         opIdent = Id::opBinary;
                         break;
                     case clang::OO_Equal:
-                        // D doesn't allow overloading of identity assignment
-                        // NOTE: C++ assignment operators can't be non-members
+                        // D doesn't allow overloading of identity assignment, and since it might still be fundamental
+                        // for some types (e.g std::map), map it to another method.
+                        // NOTE: C++ assignment operators can't be non-members.
                     {
+                        bool isIdentityAssign = false;
+
                         if (auto RHSLValue = dyn_cast<clang::LValueReferenceType>(
                                         MD->getParamDecl(0)->getType().getDesugaredType(Context).getTypePtr()))
                         {
@@ -553,25 +556,28 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
                             auto RHSType = RHSLValue->getPointeeType().withoutLocalFastQualifiers();
 
                             if (LHSType.getCanonicalType() == RHSType.getCanonicalType())
-                                return nullptr;
+                                isIdentityAssign = true;
                         }
 
-                        opIdent = Id::assign;
+                        if (isIdentityAssign)
+                            opIdent = Lexer::idPool("__opAssign");
+                        else
+                            opIdent = Id::assign;
+                        
                         wrapInTemp = false;
                         break;
                     }
-                    case clang::OO_PlusEqual:
-                    case clang::OO_MinusEqual:
-                    case clang::OO_StarEqual:
-                    case clang::OO_SlashEqual:
-                    case clang::OO_PercentEqual:
-                    case clang::OO_CaretEqual:
-                    case clang::OO_AmpEqual:
-                    case clang::OO_PipeEqual:
-                    case clang::OO_LessLessEqual:
-                    case clang::OO_GreaterGreaterEqual:
+                    case clang::OO_PlusEqual: op = "+";
+                    case clang::OO_MinusEqual: op = "-";
+                    case clang::OO_StarEqual: op = "*";
+                    case clang::OO_SlashEqual: op = "/";
+                    case clang::OO_PercentEqual: op = "%";
+                    case clang::OO_CaretEqual: op = "^";
+                    case clang::OO_AmpEqual: op = "&";
+                    case clang::OO_PipeEqual: op = "|";
+                    case clang::OO_LessLessEqual: op = "<<";
+                    case clang::OO_GreaterGreaterEqual: op = ">>";
                         opIdent = Id::opOpAssign;
-                        op = strndup(op, strlen(op) - 1);
                         break;
                     default:
     //                     ::warning(loc, "Ignoring C++ binary operator%s", clang::getOperatorSpelling(OO));
