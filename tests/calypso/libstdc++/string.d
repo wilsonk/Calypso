@@ -5,7 +5,7 @@
  *   $ ldc2 -L-lstdc++ string.d
  */
 
-modmap (C++) "string";
+modmap (C++) "<string>";
 
 import std.stdio, std.conv, std.string;
 import (C++) std.basic_string;

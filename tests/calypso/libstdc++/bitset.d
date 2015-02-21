@@ -5,7 +5,7 @@
  *   $ ldc2 -L-lstdc++ bitset.d
  */
 
-modmap (C++) "bitset";
+modmap (C++) "<bitset>";
 
 import std.stdio;
 import (C++) std.bitset;

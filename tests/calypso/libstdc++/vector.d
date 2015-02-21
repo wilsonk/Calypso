@@ -5,7 +5,7 @@
  *   $ ldc2 -L-lstdc++ vector.d
  */
 
-modmap (C++) "vector";
+modmap (C++) "<vector>";
 
 import std.stdio, std.conv, std.string;
 import (C++) std.vector;

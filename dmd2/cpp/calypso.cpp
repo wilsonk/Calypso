@@ -103,10 +103,6 @@ void PCH::init()
         // used without modifying Clang).
     if (!fheaderList)
         return;
-//     {
-//         ::error(Loc(), "C/C++ header list cache file couldn't be opened/created");
-//         fatal();
-//     }
 
     char linebuf[MAX_FILENAME_SIZE];
     while (fgets(linebuf, MAX_FILENAME_SIZE, fheaderList) != NULL)
@@ -198,7 +194,12 @@ void PCH::update()
         }
 
         for (unsigned i = 0; i < headers.dim; ++i)
-            fprintf(fmono, "#include \"%s\"\n", headers[i]);
+        {
+            if (headers[i][0] == '<')
+                fprintf(fmono, "#include %s\n", headers[i]);
+            else
+                fprintf(fmono, "#include \"%s\"\n", headers[i]);
+        }
 
         fclose(fmono);
 
@@ -219,7 +220,7 @@ void PCH::update()
 #undef ARGV_ADD
 
         if (executeToolAndWait(*compiler, Argv,
-                global.params.verbose) == -1) // NOTE: I also have a compiler-agnostic version in my backups with fork(), which was deemed useless since Calypso is tied to LDC and LLVM
+                global.params.verbose) == -1)
         {
             ::error(Loc(), "execv Error!");
             fatal();
