@@ -151,9 +151,31 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
     }
     else if (auto FL = dyn_cast<clang::FloatingLiteral>(E))
     {
-        // hmm APFloat have no precision info, so use double?
-        auto FVal = FL->getValue();
-        return new RealExp(loc, FVal.convertToDouble(), Type::tfloat64);
+        auto APFVal = FL->getValue();
+
+        real_t val;
+        Type *ft = Type::tfloat32;
+
+        if (APFVal.isZero())
+            val = 0.0;
+        else if (&APFVal.getSemantics() == &llvm::APFloat::IEEEsingle)
+            val = APFVal.convertToFloat();
+        else if (&APFVal.getSemantics() == &llvm::APFloat::IEEEdouble)
+        {
+            val = APFVal.convertToDouble();
+            ft = Type::tfloat64;
+        }
+        else
+        {
+            ::warning(loc, "Floating point semantics for non-zero APFloat handled by converting to string and strtold");
+
+            llvm::SmallString<16> Str;
+            APFVal.toString(Str, 0, llvm::APFloat::semanticsPrecision(APFVal.getSemantics()));
+            val = strtold(Str.c_str(), nullptr);
+            ft = Type::tfloat80;
+        }
+
+        return new RealExp(loc, val, ft);
     }
     else if (auto SL = dyn_cast<clang::StringLiteral>(E))
     {
