@@ -17,9 +17,12 @@ void main()
     auto m = new map!(char, cppstring);
 
     immutable char a = '0';
+    immutable char b = 'z';
     m[a].__opAssign(new cppstring("Sedna"));
         // NOTE: since overloading the identify assignment is forbiddden in D, it's not possible to just do
         //      m[a] = new cppstring("Sedna");
 
-    writeln(to!string(m[a].c_str));
+    m[b] = "90377".ptr;
+
+    writeln(m[b].c_str.to!string, " ", m[a].c_str.to!string);
 }
