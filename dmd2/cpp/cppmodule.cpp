@@ -186,6 +186,9 @@ Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
     auto& Context = calypso.getASTContext();
     ExprMapper expmap(*this);
 
+    if (isNonSupportedType(D->getType()))
+        return nullptr;
+
     auto loc = fromLoc(D->getLocation());
     auto Ty = D->getType().getDesugaredType(Context);
 

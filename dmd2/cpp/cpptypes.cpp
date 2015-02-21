@@ -97,6 +97,7 @@ void BuiltinTypes::build(clang::ASTContext &Context)
     map(Context.UnsignedLongTy, toInt(clang::TargetInfo::UnsignedLong));
     map(Context.UnsignedLongLongTy, toInt(clang::TargetInfo::UnsignedLongLong));
     map(Context.UnsignedInt128Ty, Type::tuns128); // WARNING: a one-to-one correspondance would be safer for template partial specializations
+            // NOTE: cent and ucent aren't supported by D and will trigger an error during semantic()
 
         //===- Signed Types -------------------------------------------------------===//
     map(Context.SignedCharTy, Type::tint8);
@@ -180,6 +181,32 @@ bool isNonPODRecord(const clang::QualType T)
         return false;
 
     return isNonPODRecord(RT->getDecl());
+}
+
+bool isNonSupportedType(clang::QualType T)
+{
+    auto& Context = calypso.pch.AST->getASTContext();
+
+    // non-POD class values
+    if (isNonPODRecord(T))
+        return true;
+
+    // (u)int128_t or any pointer/reference to (TODO: function types as well?)
+    auto Pointee = T->getPointeeType();
+    while (!Pointee.isNull())
+    {
+        T = Pointee;
+        Pointee = T->getPointeeType();
+    }
+
+    if (auto BT = T->getAs<clang::BuiltinType>())
+    {
+        clang::QualType Builtin(BT, 0);
+        if (Builtin == Context.Int128Ty || Builtin == Context.UnsignedInt128Ty)
+            return true;
+    }
+
+    return false;
 }
 
 // As soon as the type is or might be a non-POD record, wrap it in TypeValueof
@@ -1136,13 +1163,13 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
         PI = FD->param_begin();
 
     // FIXME we're ignoring functions with unhandled types i.e class values
-    if (isNonPODRecord(T->getReturnType()))
+    if (isNonSupportedType(T->getReturnType()))
         return nullptr;
 
     for (auto I = T->param_type_begin(), E = T->param_type_end();
                 I != E; I++)
     {
-        if (isNonPODRecord(*I))
+        if (isNonSupportedType(*I))
             return nullptr;
 
         StorageClass stc = STCundefined;
