@@ -191,7 +191,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
         return new StringExp(loc, const_cast<char*>(SL->getString().data()),
                              SL->getLength(), postfix);
     }
-    else if (auto NPL = dyn_cast<clang::CXXNullPtrLiteralExpr>(E))
+    else if (isa<clang::CXXNullPtrLiteralExpr>(E) || isa<clang::GNUNullExpr>(E))
     {
         return new NullExp(loc);
     }
