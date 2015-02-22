@@ -191,7 +191,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
         return new StringExp(loc, const_cast<char*>(SL->getString().data()),
                              SL->getLength(), postfix);
     }
-    else if (auto NPL = dyn_cast<clang::CXXNullPtrLiteralExpr>(E))
+    else if (isa<clang::CXXNullPtrLiteralExpr>(E) || isa<clang::GNUNullExpr>(E))
     {
         return new NullExp(loc);
     }
@@ -208,6 +208,13 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
             return new IntegerExp(loc, SOP->getPackLength(), Type::tuns64);
         else
             return new NullExp(loc);  // TODO replace by D traits
+    }
+    else if (auto NE = dyn_cast<clang::CXXNoexceptExpr>(E))
+    {
+        if (!NE->isValueDependent())
+            return new IntegerExp(loc, NE->getValue() ? 1 : 0, Type::tbool);
+        else
+            return new NullExp(loc);
     }
     else if (auto UEOTT = dyn_cast<clang::UnaryExprOrTypeTraitExpr>(E))
     {

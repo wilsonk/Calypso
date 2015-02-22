@@ -414,6 +414,25 @@ static const char *getOperatorName(const clang::OverloadedOperatorKind OO)
     }
 }
 
+static const char *getDOperatorSpelling(const clang::OverloadedOperatorKind OO)
+{
+    switch (OO)
+    {
+        case clang::OO_PlusEqual: return "+";
+        case clang::OO_MinusEqual: return "-";
+        case clang::OO_StarEqual: return "*";
+        case clang::OO_SlashEqual: return "/";
+        case clang::OO_PercentEqual: return "%";
+        case clang::OO_CaretEqual: return "^";
+        case clang::OO_AmpEqual: return "&";
+        case clang::OO_PipeEqual: return "|";
+        case clang::OO_LessLessEqual: return "<<";
+        case clang::OO_GreaterGreaterEqual: return ">>";
+        default:
+            return clang::getOperatorSpelling(OO);
+    }
+}
+
 Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 {
     auto& Context = calypso.getASTContext();
@@ -486,7 +505,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
         // NOTE: C++ overloaded operators might be virtual, unlike D which are always final (being templates)
         //   Mapping the C++ operator to opBinary()() directly would make D lose info and overriding the C++ method impossible
         auto OO = D->getOverloadedOperator();
-        const char *op = clang::getOperatorSpelling(OO);
+        const char *op = getDOperatorSpelling(OO);
 
         Identifier *opIdent;
         bool wrapInTemp = false;
@@ -570,17 +589,16 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
                         wrapInTemp = false;
                         break;
                     }
-                    case clang::OO_PlusEqual: op = "+"; goto end_opOpAssign;
-                    case clang::OO_MinusEqual: op = "-"; goto end_opOpAssign;
-                    case clang::OO_StarEqual: op = "*"; goto end_opOpAssign;
-                    case clang::OO_SlashEqual: op = "/"; goto end_opOpAssign;
-                    case clang::OO_PercentEqual: op = "%"; goto end_opOpAssign;
-                    case clang::OO_CaretEqual: op = "^"; goto end_opOpAssign;
-                    case clang::OO_AmpEqual: op = "&"; goto end_opOpAssign;
-                    case clang::OO_PipeEqual: op = "|"; goto end_opOpAssign;
-                    case clang::OO_LessLessEqual: op = "<<"; goto end_opOpAssign;
-                    case clang::OO_GreaterGreaterEqual: op = ">>";
-end_opOpAssign:
+                    case clang::OO_PlusEqual:
+                    case clang::OO_MinusEqual:
+                    case clang::OO_StarEqual:
+                    case clang::OO_SlashEqual:
+                    case clang::OO_PercentEqual:
+                    case clang::OO_CaretEqual:
+                    case clang::OO_AmpEqual:
+                    case clang::OO_PipeEqual:
+                    case clang::OO_LessLessEqual:
+                    case clang::OO_GreaterGreaterEqual:
                         opIdent = Id::opOpAssign;
                         break;
                     default:
