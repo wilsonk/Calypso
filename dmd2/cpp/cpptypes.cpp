@@ -992,7 +992,6 @@ Type* TypeMapper::FromType::fromTypeSubstTemplateTypeParm(const clang::SubstTemp
                     // The laziest and "should work in most cases" solution is to use DMD's own overloading and template argument deduction from the original decltype expression.
 
                     ExprMapper em(tm);
-                    em.enableCallExpr = true;
 
                     auto e = em.fromExpression(TypeOfExpr);
                     auto loc = fromLoc(TypeOfExpr->getExprLoc());

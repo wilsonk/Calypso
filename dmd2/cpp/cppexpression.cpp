@@ -291,9 +291,6 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
     }
     else if (auto C = dyn_cast<clang::CallExpr>(E))
     {
-        if (!enableCallExpr)
-            return new NullExp(loc);
-
         auto e = fromExpression(C->getCallee());
 
         auto args = new Expressions;
