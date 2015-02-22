@@ -42,7 +42,137 @@ Identifier *fromIdentifier(const clang::IdentifierInfo *II)
         // Is this the cost of interfacing with Clang or is there another way? (probably not an easy one)
 }
 
-Identifier *getIdentifierOrNull(const clang::NamedDecl* D)
+static const char *getDOperatorSpelling(const clang::OverloadedOperatorKind OO)
+{
+    switch (OO)
+    {
+        case clang::OO_PlusEqual: return "+";
+        case clang::OO_MinusEqual: return "-";
+        case clang::OO_StarEqual: return "*";
+        case clang::OO_SlashEqual: return "/";
+        case clang::OO_PercentEqual: return "%";
+        case clang::OO_CaretEqual: return "^";
+        case clang::OO_AmpEqual: return "&";
+        case clang::OO_PipeEqual: return "|";
+        case clang::OO_LessLessEqual: return "<<";
+        case clang::OO_GreaterGreaterEqual: return ">>";
+        default:
+            return clang::getOperatorSpelling(OO);
+    }
+}
+
+static Identifier *getOperatorIdentifier(const clang::FunctionDecl *FD,
+                                                    const char *&op)
+{
+    auto& Context = calypso.getASTContext();
+    auto OO = FD->getOverloadedOperator();
+
+    Identifier *opIdent;
+    bool wrapInTemp = false;
+
+    auto MD = dyn_cast<clang::CXXMethodDecl>(FD);
+    bool isNonMember = !MD || MD->isStatic();
+
+    auto NumParams = FD->getNumParams();
+    if (!isNonMember)
+        NumParams++;
+
+    if (OO == clang::OO_Call)
+        opIdent = Id::call;
+    else if(OO == clang::OO_Subscript)
+        opIdent = Id::index;
+    else
+    {
+        bool isUnary = NumParams == 1;
+        bool isBinary = NumParams == 2;
+
+        wrapInTemp = true; // except for opAssign
+
+        if (isUnary)
+        {
+            switch (OO)
+            {
+                case clang::OO_Plus:
+                case clang::OO_Minus:
+                case clang::OO_Star:
+                case clang::OO_Tilde:
+                case clang::OO_PlusPlus:
+                case clang::OO_MinusMinus:
+                    opIdent = Id::opUnary;
+                    break;
+                default:
+    //                     ::warning(loc, "Ignoring C++ unary operator%s", clang::getOperatorSpelling(OO));
+                    return nullptr;
+            }
+        }
+        else if (isBinary)
+        {
+            switch (OO)
+            {
+                case clang::OO_Plus:
+                case clang::OO_Minus:
+                case clang::OO_Star:
+                case clang::OO_Slash:
+                case clang::OO_Percent:
+                case clang::OO_Caret:
+                case clang::OO_Amp:
+                case clang::OO_Pipe:
+                case clang::OO_Tilde:
+                case clang::OO_LessLess:
+                case clang::OO_GreaterGreater:
+                    opIdent = Id::opBinary;
+                    break;
+                case clang::OO_Equal:
+                    // D doesn't allow overloading of identity assignment, and since it might still be fundamental
+                    // for some types (e.g std::map), map it to another method.
+                    // NOTE: C++ assignment operators can't be non-members.
+                {
+                    bool isIdentityAssign = false;
+
+                    if (auto RHSLValue = dyn_cast<clang::LValueReferenceType>(
+                                    MD->getParamDecl(0)->getType().getDesugaredType(Context).getTypePtr()))
+                    {
+                        auto LHSType = Context.getTypeDeclType(MD->getParent());
+                        auto RHSType = RHSLValue->getPointeeType().withoutLocalFastQualifiers();
+
+                        if (LHSType.getCanonicalType() == RHSType.getCanonicalType())
+                            isIdentityAssign = true;
+                    }
+
+                    if (isIdentityAssign)
+                        opIdent = Lexer::idPool("__opAssign");
+                    else
+                        opIdent = Id::assign;
+
+                    wrapInTemp = false;
+                    break;
+                }
+                case clang::OO_PlusEqual:
+                case clang::OO_MinusEqual:
+                case clang::OO_StarEqual:
+                case clang::OO_SlashEqual:
+                case clang::OO_PercentEqual:
+                case clang::OO_CaretEqual:
+                case clang::OO_AmpEqual:
+                case clang::OO_PipeEqual:
+                case clang::OO_LessLessEqual:
+                case clang::OO_GreaterGreaterEqual:
+                    opIdent = Id::opOpAssign;
+                    break;
+                default:
+    //                     ::warning(loc, "Ignoring C++ binary operator%s", clang::getOperatorSpelling(OO));
+                    return nullptr;
+            }
+        }
+        else
+            return nullptr; // operator new or delete
+    }
+
+    op = wrapInTemp ? getDOperatorSpelling(OO) : nullptr;
+    return opIdent;
+}
+
+Identifier *getIdentifierOrNull(const clang::NamedDecl *D, const char **op)
 {
     if (auto FTD = dyn_cast<clang::FunctionTemplateDecl>(D))
         D = FTD->getTemplatedDecl(); // same ident, can dyn_cast
@@ -51,11 +181,12 @@ Identifier *getIdentifierOrNull(const clang::NamedDecl* D)
         return Id::ctor;
     else if (isa<clang::CXXDestructorDecl>(D))
         return Id::dtor;
-    else if (auto MD = dyn_cast<clang::CXXMethodDecl>(D))
-    {
-        if (MD->isOverloadedOperator())
-            assert(false && "getIdentifierOrNull called on overloaded operator");
-    }
+    else if (auto FD = dyn_cast<clang::FunctionDecl>(D))
+        if (FD->isOverloadedOperator())
+        {
+            assert(op);
+            return getOperatorIdentifier(FD, *op);
+        }
 
     clang::IdentifierInfo *II = nullptr;
 
@@ -68,9 +199,9 @@ Identifier *getIdentifierOrNull(const clang::NamedDecl* D)
     return II ? fromIdentifier(II) : nullptr;
 }
 
-Identifier *getIdentifier(const clang::NamedDecl* D)
+Identifier *getIdentifier(const clang::NamedDecl *D, const char **op)
 {
-    auto result = getIdentifierOrNull(D);
+    auto result = getIdentifierOrNull(D, op);
     assert(result);
 
     return result;

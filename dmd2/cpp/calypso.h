@@ -38,9 +38,9 @@ class TemplateInstance;
 namespace reclang { class ASTUnit; }
 using reclang::ASTUnit;
 
-Identifier *fromIdentifier(const clang::IdentifierInfo* II);
-Identifier *getIdentifier(const clang::NamedDecl* D);
-Identifier *getIdentifierOrNull(const clang::NamedDecl* D);
+Identifier *fromIdentifier(const clang::IdentifierInfo *II);
+Identifier *getIdentifier(const clang::NamedDecl *D, const char **op = nullptr);
+Identifier *getIdentifierOrNull(const clang::NamedDecl *D, const char **op = nullptr);
 
 Loc fromLoc(clang::SourceLocation L);
 
