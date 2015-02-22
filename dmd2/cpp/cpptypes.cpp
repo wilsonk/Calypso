@@ -518,6 +518,8 @@ public:
     }
 };
 
+// Messy... and also used for expression mapping, because TypeQualified's purpose is very similar
+// to expressions, could TypeQualified be merged with DotIdExp & co?
 class TypeQualifiedBuilder
 {
 public:
@@ -531,9 +533,10 @@ public:
     void addIdent(TypeQualified *&tqual,
                   Identifier *ident);
     void addInst(TypeQualified *&tqual,
-                 clang::NamedDecl* D,
-                 const clang::TemplateArgument *TempArgBegin,
-                 const clang::TemplateArgument *TempArgEnd);
+                const clang::TemplateDecl *Temp,
+                const clang::TemplateArgument *ArgBegin,
+                const clang::TemplateArgument *ArgEnd,
+                clang::NamedDecl *Spec = nullptr);
 
     TypeQualifiedBuilder(TypeMapper::FromType &from, const clang::Decl* Root,
         const clang::TemplateArgument *TempArgBegin = nullptr,
@@ -555,19 +558,13 @@ void TypeQualifiedBuilder::addIdent(TypeQualified *&tqual,
 }
 
 void TypeQualifiedBuilder::addInst(TypeQualified *&tqual,
-                clang::NamedDecl* D,
+                const clang::TemplateDecl *Temp,
                 const clang::TemplateArgument *ArgBegin,
-                const clang::TemplateArgument *ArgEnd)
+                const clang::TemplateArgument *ArgEnd,
+                clang::NamedDecl *Spec)
 {
-    auto ident = getIdentifier(D);
-    auto loc = fromLoc(D->getLocation());
-    auto Spec = dyn_cast<clang::ClassTemplateSpecializationDecl>(D);
-
-    const clang::TemplateDecl *Temp;
-    if (Spec)
-        Temp = Spec->getSpecializedTemplate();
-    else
-        Temp = dyn_cast<clang::TemplateDecl>(D);
+    auto ident = getIdentifier(Temp);
+    auto loc = fromLoc(Spec ? Spec->getLocation() : Temp->getLocation());
 
     auto tiargs = from.fromTemplateArguments(ArgBegin, ArgEnd,
             Temp->getTemplateParameters());
@@ -575,10 +572,10 @@ void TypeQualifiedBuilder::addInst(TypeQualified *&tqual,
     auto tempinst = new cpp::TemplateInstance(loc, ident);
     tempinst->tiargs = tiargs;
 
-    // NOTE: To reduce DMD -> Clang translations to a minimum we don't instantiate ourselves whenever possible, i.e when the template instance is already declared or defined in the PCH. If it's only declared, there's a chance the specialization wasn't emitted in the C++ libraries, so we tell Sema to complete its instantiation.
-    if (Spec && !isa<clang::ClassTemplatePartialSpecializationDecl>(Spec))
+    // NOTE: To reduce DMD -> Clang translations to a minimum we don't instantiate ourselves whenever possible, i.e when the template instance is already declared or defined in the PCH. If it's only declared, we tell Sema to complete its instantiation.
+    if (Spec)
     {
-        tempinst->Inst = D;
+        tempinst->Inst = Spec;
         tempinst->completeInst();
     }
 
@@ -619,22 +616,51 @@ TypeQualified *TypeQualifiedBuilder::get(clang::NamedDecl *ND)
     if (!ident)
         return tqual;
 
-    auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(ND);
+    clang::NamedDecl *Spec = nullptr;
+    const clang::TemplateDecl *SpecTemp = nullptr;
+    llvm::ArrayRef<clang::TemplateArgument> TempArgs;
 
-    if (isa<clang::ClassTemplateDecl>(ND) || isa<clang::TypeAliasTemplateDecl>(ND))
+    llvm::SmallVector<clang::TemplateArgument, 4> ArgsArray; // temporary array used for function specs only
+
+    if (auto ClassSpec = dyn_cast<clang::ClassTemplateSpecializationDecl>(ND))
     {
-        addInst(tqual, ND, TopTempArgBegin, TopTempArgEnd);
-        TopTempArgBegin = TopTempArgEnd = nullptr;  // just to be sure, because what happens if there are multiple TypeAliasTemplateDecl in the same qualified type?
+        assert(!isa<clang::ClassTemplatePartialSpecializationDecl>(ND)); // should never happen?
+
+        if (!tm.isInjectedClassName(ClassSpec))
+        {
+            Spec = ClassSpec;
+            SpecTemp = ClassSpec->getSpecializedTemplate();
+            TempArgs = ClassSpec->getTemplateArgs().asArray();
+        }
     }
-    else if (CTSD && !tm.isInjectedClassName(CTSD))
+    else if (auto Func = dyn_cast<clang::FunctionDecl>(ND)) // functions will always be at the top
     {
-        auto TempArgs = CTSD->getTemplateArgs().asArray();
-        addInst(tqual, CTSD, TempArgs.begin(), TempArgs.end());
+        if (auto ExplicitArgs = Func->getTemplateSpecializationArgsAsWritten())
+        {
+            Spec = Func;
+            SpecTemp = Func->getPrimaryTemplate();
+
+            for (unsigned i = 0; i < ExplicitArgs->NumTemplateArgs; i++)
+                ArgsArray.push_back((*ExplicitArgs)[i].getArgument());
+            TempArgs = ArgsArray;
+        }
+        // NOTE: Function specs without explicit arguments will be mapped to Identifier
+        // and that's okay (+ avoids argument deduction).
+    }
+
+    if (auto Temp = dyn_cast<clang::TemplateDecl>(ND))
+    {
+        addInst(tqual, Temp, TopTempArgBegin, TopTempArgEnd);
+        TopTempArgBegin = TopTempArgEnd = nullptr;  // e.g there could be multiple TypeAliasTemplateDecl in the same qualified type
+    }
+    else if (Spec)
+    {
+        addInst(tqual, SpecTemp, TempArgs.begin(), TempArgs.end(), Spec);
     }
     else
     {
         if (tqual && !fullyQualified &&
-                isa<clang::TypedefNameDecl>(ND) &&
+                !(isa<clang::TagDecl>(ND) || isa<clang::ClassTemplateDecl>(ND)) &&
                 isa<clang::NamespaceDecl>(ND->getDeclContext()))
             addIdent(tqual, Lexer::idPool("_"));
 

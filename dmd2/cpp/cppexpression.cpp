@@ -380,23 +380,11 @@ Expression* ExprMapper::fromExpressionDeclRef(Loc loc, clang::NamedDecl *D)
     if (auto NTTP = dyn_cast<clang::NonTypeTemplateParmDecl>(D))
         return fromExpressionNonTypeTemplateParm(loc, NTTP);
 
-    clang::NamedDecl *Parent = nullptr;
+    auto tqual = static_cast<TypeQualified*>(TypeMapper::FromType(tymap).typeQualifiedFor(D));
+    assert(tqual && "DeclRefExpr decl without a DeclarationName");
 
-    clang::DeclContext *DCParent = D->getDeclContext();
-    while (!isa<clang::NamedDecl>(DCParent))
-        DCParent = DCParent->getParent();
-
-    Parent = cast<clang::NamedDecl>(DCParent);
-    auto t = TypeMapper::FromType(tymap).typeQualifiedFor(Parent);
-
-    auto ident = getIdentifier(D);
-    if (t)
-    {
-        auto e1 = new TypeExp(loc, t);
-        return new DotIdExp(loc, e1, ident);
-    }
-    else
-        return new IdentifierExp(loc, ident);
+    // TODO: Build a proper expression from the type (mostly for reflection and to mimic parse.c, since TypeExp seems to work too)
+    return new TypeExp(loc, tqual);
 }
 
 Expression* ExprMapper::fromExpressionNonTypeTemplateParm(Loc loc, const clang::NonTypeTemplateParmDecl* D)
