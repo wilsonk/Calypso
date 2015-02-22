@@ -209,6 +209,13 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
         else
             return new NullExp(loc);  // TODO replace by D traits
     }
+    else if (auto NE = dyn_cast<clang::CXXNoexceptExpr>(E))
+    {
+        if (!NE->isValueDependent())
+            return new IntegerExp(loc, NE->getValue() ? 1 : 0, Type::tbool);
+        else
+            return new NullExp(loc);
+    }
     else if (auto UEOTT = dyn_cast<clang::UnaryExprOrTypeTraitExpr>(E))
     {
         auto t = tymap.fromType(UEOTT->getTypeOfArgument());
