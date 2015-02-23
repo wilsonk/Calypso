@@ -530,9 +530,15 @@ public:
     const clang::TemplateArgument *TopTempArgBegin,
         *TopTempArgEnd;
 
+    void add(TypeQualified *&tqual,
+                  RootObject *o);
     void addIdent(TypeQualified *&tqual,
                   Identifier *ident);
     void addInst(TypeQualified *&tqual,
+                  TemplateInstance *tempinst);
+
+    void pushInst(TypeQualified *&tqual,
+                RootObject *o,
                 const clang::TemplateDecl *Temp,
                 const clang::TemplateArgument *ArgBegin,
                 const clang::TemplateArgument *ArgEnd,
@@ -548,6 +554,14 @@ public:
     TypeQualified *get(clang::NamedDecl* ND);
 };
 
+void TypeQualifiedBuilder::add(TypeQualified *&tqual, RootObject *o)
+{
+    if (o->dyncast() == DYNCAST_IDENTIFIER)
+        addIdent(tqual, static_cast<Identifier*>(o));
+    else
+        addInst(tqual, static_cast<TemplateInstance*>(o));
+}
+
 void TypeQualifiedBuilder::addIdent(TypeQualified *&tqual,
                                     Identifier *ident)
 {
@@ -558,31 +572,67 @@ void TypeQualifiedBuilder::addIdent(TypeQualified *&tqual,
 }
 
 void TypeQualifiedBuilder::addInst(TypeQualified *&tqual,
+                                   TemplateInstance *tempinst)
+{
+    if (!tqual)
+        tqual = new TypeInstance(Loc(), tempinst);
+    else
+        tqual->addInst(tempinst);
+}
+
+void TypeQualifiedBuilder::pushInst(TypeQualified *&tqual,
+                RootObject *o,
                 const clang::TemplateDecl *Temp,
                 const clang::TemplateArgument *ArgBegin,
                 const clang::TemplateArgument *ArgEnd,
                 clang::NamedDecl *Spec)
 {
-    auto ident = getIdentifier(Temp);
     auto loc = fromLoc(Spec ? Spec->getLocation() : Temp->getLocation());
-
     auto tiargs = from.fromTemplateArguments(ArgBegin, ArgEnd,
             Temp->getTemplateParameters());
 
-    auto tempinst = new cpp::TemplateInstance(loc, ident);
-    tempinst->tiargs = tiargs;
+    cpp::TemplateInstance *tempinst;
+    if (o->dyncast() == DYNCAST_IDENTIFIER)
+    {
+        auto ident = static_cast<Identifier*>(o);
+        tempinst = new cpp::TemplateInstance(loc, ident);
+        tempinst->tiargs = tiargs;
+    }
+    else // templated overloaded operator
+    {
+        tempinst = static_cast<cpp::TemplateInstance*>(o);
+        tempinst->tiargs->append(tiargs);
+    }
 
-    // NOTE: To reduce DMD -> Clang translations to a minimum we don't instantiate ourselves whenever possible, i.e when the template instance is already declared or defined in the PCH. If it's only declared, we tell Sema to complete its instantiation.
+    // NOTE: To reduce DMD -> Clang translations to a minimum we don't instantiate ourselves whenever possible,
+    // i.e when the template instance is already declared or defined in the PCH. If it's only declared, we tell Sema to
+    // complete its instantiation.
     if (Spec)
     {
         tempinst->Inst = Spec;
         tempinst->completeInst();
     }
 
-    if (!tqual)
-        tqual = new TypeInstance(Loc(), tempinst);
+    addInst(tqual, tempinst);
+}
+
+RootObject *getIdentOrTempinst(clang::NamedDecl *D)
+{
+    const char *op = nullptr; // overloaded operator
+    auto ident = getIdentifierOrNull(D, &op);
+    if (!ident)
+        return nullptr;
+
+    if (op)
+    {
+        auto loc = fromLoc(D->getLocation());
+        auto tempinst = new cpp::TemplateInstance(loc, ident);
+        tempinst->tiargs = new Objects;
+        tempinst->tiargs->push(new StringExp(loc, const_cast<char*>(op)));
+        return tempinst;
+    }
     else
-        tqual->addInst(tempinst);
+        return ident;
 }
 
 TypeQualified *TypeQualifiedBuilder::get(clang::NamedDecl *ND)
@@ -612,8 +662,8 @@ TypeQualified *TypeQualifiedBuilder::get(clang::NamedDecl *ND)
         tqual = get(cast<clang::NamedDecl>(
                 ND->getDeclContext()));
 
-    auto ident = getIdentifierOrNull(ND);
-    if (!ident)
+    auto o = getIdentOrTempinst(ND);
+    if (!o)
         return tqual;
 
     clang::NamedDecl *Spec = nullptr;
@@ -635,7 +685,9 @@ TypeQualified *TypeQualifiedBuilder::get(clang::NamedDecl *ND)
     }
     else if (auto Func = dyn_cast<clang::FunctionDecl>(ND)) // functions will always be at the top
     {
-        if (auto ExplicitArgs = Func->getTemplateSpecializationArgsAsWritten())
+        auto ExplicitArgs = Func->getTemplateSpecializationArgsAsWritten();
+
+        if (ExplicitArgs)
         {
             Spec = Func;
             SpecTemp = Func->getPrimaryTemplate();
@@ -650,12 +702,12 @@ TypeQualified *TypeQualifiedBuilder::get(clang::NamedDecl *ND)
 
     if (auto Temp = dyn_cast<clang::TemplateDecl>(ND))
     {
-        addInst(tqual, Temp, TopTempArgBegin, TopTempArgEnd);
+        pushInst(tqual, o, Temp, TopTempArgBegin, TopTempArgEnd);
         TopTempArgBegin = TopTempArgEnd = nullptr;  // e.g there could be multiple TypeAliasTemplateDecl in the same qualified type
     }
     else if (Spec)
     {
-        addInst(tqual, SpecTemp, TempArgs.begin(), TempArgs.end(), Spec);
+        pushInst(tqual, o, SpecTemp, TempArgs.begin(), TempArgs.end(), Spec);
     }
     else
     {
@@ -664,7 +716,7 @@ TypeQualified *TypeQualifiedBuilder::get(clang::NamedDecl *ND)
                 isa<clang::NamespaceDecl>(ND->getDeclContext()))
             addIdent(tqual, Lexer::idPool("_"));
 
-        addIdent(tqual, ident);
+        add(tqual, o);
     }
 
     return tqual;
@@ -682,7 +734,8 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* ND,
     decltype(CXXScope) ScopeStack(tm.CXXScope);
 
     clang::DeclarationName Name;
-    if (ND->getIdentifier())
+    if (ND->getIdentifier() ||
+            ND->getDeclName().getNameKind() == clang::DeclarationName::CXXOperatorName)
         Name =  ND->getDeclName();
     else if (auto Tag = llvm::dyn_cast<clang::TagDecl>(ND))
         if (auto Typedef = Tag->getTypedefNameForAnonDecl())
