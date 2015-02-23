@@ -150,7 +150,7 @@ protected:
     Identifier *getIdentifierForTemplateTypeParm(const clang::TemplateTypeParmType *T);
     Identifier *getIdentifierForTemplateTemplateParm(const clang::TemplateTemplateParmDecl *D);
 
-    bool isInjectedClassName(clang::Decl *D); // misleading name although that's what it is
+    bool isInjectedClassName(const clang::Decl *D); // misleading name although that's what it is
 
     void AddImplicitImportForDecl(const clang::NamedDecl* ND);
 

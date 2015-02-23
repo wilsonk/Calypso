@@ -551,7 +551,7 @@ public:
           TopTempArgBegin(TempArgBegin),
           TopTempArgEnd(TempArgEnd) {}
 
-    TypeQualified *get(clang::NamedDecl* ND);
+    TypeQualified *get(const clang::NamedDecl *ND);
 };
 
 void TypeQualifiedBuilder::add(TypeQualified *&tqual, RootObject *o)
@@ -616,7 +616,7 @@ void TypeQualifiedBuilder::pushInst(TypeQualified *&tqual,
     addInst(tqual, tempinst);
 }
 
-RootObject *getIdentOrTempinst(clang::NamedDecl *D)
+RootObject *getIdentOrTempinst(const clang::NamedDecl *D)
 {
     const char *op = nullptr; // overloaded operator
     auto ident = getIdentifierOrNull(D, &op);
@@ -635,32 +635,38 @@ RootObject *getIdentOrTempinst(clang::NamedDecl *D)
         return ident;
 }
 
-TypeQualified *TypeQualifiedBuilder::get(clang::NamedDecl *ND)
+TypeQualified *TypeQualifiedBuilder::get(const clang::NamedDecl *ND)
 {
     TypeQualified *tqual;
     bool fullyQualified = false;
 
     if (from.prefix)
         tqual = from.prefix; // special case where the prefix has already been determined from a NNS
-    else if (RootEquals(ND->getTranslationUnitDecl()))  // There was a name collision => build a fully qualified type
-    {
-        // build a fake import
-        auto im = tm.BuildImplicitImport(tm.GetNonNestedContext(ND));
-
-        tqual = nullptr;
-        for (size_t i = 1; i < im->packages->dim; i++)
-            addIdent(tqual, (*im->packages)[i]);
-
-        if (!isa<clang::NamespaceDecl>(ND))
-            addIdent(tqual, im->id);
-
-        fullyQualified = true;
-    }
     else if (RootEquals(ND))
         tqual = nullptr;
     else
-        tqual = get(cast<clang::NamedDecl>(
-                ND->getDeclContext()));
+    {
+        ScopeChecker KeyEquals(tm.GetImplicitImportKeyForDecl(ND));
+
+        if (KeyEquals(ND))  // Build fully qualified type
+        {
+            // build a fake import
+            auto Key = tm.GetImplicitImportKeyForDecl(ND);
+            auto im = tm.BuildImplicitImport(Key);
+
+            tqual = nullptr;
+            for (size_t i = 1; i < im->packages->dim; i++)
+                addIdent(tqual, (*im->packages)[i]);
+
+            if (!isa<clang::NamespaceDecl>(Key))
+                addIdent(tqual, im->id);
+
+            fullyQualified = true;
+        }
+        else
+            tqual = get(cast<clang::NamedDecl>(
+                    getDeclContextNamedOrTU(ND)));
+    }
 
     auto o = getIdentOrTempinst(ND);
     if (!o)
@@ -678,7 +684,7 @@ TypeQualified *TypeQualifiedBuilder::get(clang::NamedDecl *ND)
 
         if (!tm.isInjectedClassName(ClassSpec))
         {
-            Spec = ClassSpec;
+            Spec = const_cast<clang::ClassTemplateSpecializationDecl*>(ClassSpec);
             SpecTemp = ClassSpec->getSpecializedTemplate();
             TempArgs = ClassSpec->getTemplateArgs().asArray();
         }
@@ -689,7 +695,7 @@ TypeQualified *TypeQualifiedBuilder::get(clang::NamedDecl *ND)
 
         if (ExplicitArgs)
         {
-            Spec = Func;
+            Spec = const_cast<clang::FunctionDecl*>(Func);
             SpecTemp = Func->getPrimaryTemplate();
 
             for (unsigned i = 0; i < ExplicitArgs->NumTemplateArgs; i++)
@@ -1211,7 +1217,7 @@ Type* TypeMapper::FromType::fromTypePackExpansion(const clang::PackExpansionType
 
 // This is to check whether template arguments have to be omitted
 // There may be a more elegant way but for now that'll do
-bool TypeMapper::isInjectedClassName(clang::Decl *D)
+bool TypeMapper::isInjectedClassName(const clang::Decl *D)
 {
     D = D->getCanonicalDecl();
 
@@ -1306,7 +1312,7 @@ void TypeMapper::AddImplicitImportForDecl(const clang::NamedDecl* ND)
     if (implicitImports[D])
         return;
 
-    auto im = BuildImplicitImport(ND);
+    auto im = BuildImplicitImport(D);
     implicitImports[D] = im;
     mod->members->shift(im);
 }
@@ -1349,6 +1355,9 @@ const clang::Decl *TypeMapper::GetNonNestedContext(const clang::Decl *D)
     if (isa<clang::TranslationUnitDecl>(D))
         return D;
 
+    if (auto ClassTemp = dyn_cast<clang::ClassTemplateDecl>(D))
+        return GetNonNestedContext(ClassTemp->getTemplatedDecl());
+
     if (auto Typedef = dyn_cast<clang::TypedefNameDecl>(D))
         if (auto AnonTag = isAnonTagTypedef(Typedef))
             D = AnonTag;
@@ -1359,28 +1368,26 @@ const clang::Decl *TypeMapper::GetNonNestedContext(const clang::Decl *D)
     if (auto ParentTag = dyn_cast<clang::TagDecl>(ParentDC))
         return GetNonNestedContext(ParentTag);
 
-    if (isa<clang::ClassTemplateDecl>(D) || isa<clang::TagDecl>(D) ||
-        isa<clang::NamespaceDecl>(D))
+    if (isa<clang::TagDecl>(D) ||
+            isa<clang::NamespaceDecl>(D))
         return D;
 
     return GetNonNestedContext(ParentDC);
 }
 
-::Import *TypeMapper::BuildImplicitImport(const clang::Decl *ND)
+::Import *TypeMapper::BuildImplicitImport(const clang::Decl *D)
 {
-    auto loc = fromLoc(ND->getLocation());
+    auto loc = fromLoc(D->getLocation());
 
     auto sPackages = new Identifiers;
     Identifier *sModule = nullptr;
 
-    auto DC = dyn_cast<clang::DeclContext>(ND);
-    if (!DC)
-        DC = ND->getDeclContext();
+    auto DC = cast<clang::DeclContext>(D);
 
     if (!BuildImplicitImportInternal(DC, loc, sPackages, sModule))
     {
-        if (isa<clang::ClassTemplateDecl>(ND))
-            sModule = getIdentifier(cast<clang::NamedDecl>(ND));
+        if (isa<clang::ClassTemplateDecl>(D))
+            sModule = getIdentifier(cast<clang::NamedDecl>(D));
         else
             // ND is neither a tag nor a class template, we need to import the namespace's functions and vars
             sModule = Lexer::idPool("_");
@@ -1531,6 +1538,7 @@ const clang::DeclContext *getDeclContextNamedOrTU(const clang::Decl *D)
     while (isa<clang::LinkageSpecDecl>(DC))
         DC = DC->getParent();
 
+    assert(isa<clang::NamedDecl>(DC) || isa<clang::TranslationUnitDecl>(DC));
     return DC;
 }
 
