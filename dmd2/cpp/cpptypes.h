@@ -155,8 +155,6 @@ protected:
     void AddImplicitImportForDecl(const clang::NamedDecl* ND);
 
     ::Import *BuildImplicitImport(const clang::Decl *ND);
-    bool BuildImplicitImportInternal(const clang::DeclContext *DC, Loc loc,
-                                     Identifiers *sPackages, Identifier *&sModule);
     
     const clang::Decl *GetImplicitImportKeyForDecl(const clang::NamedDecl *D);
     const clang::Decl *GetNonNestedContext(const clang::Decl *D);  // returns the "root" for qualified types
