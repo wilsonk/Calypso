@@ -968,13 +968,16 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
 
         if (!T->isTypeAlias())
         {
-            if (!RT)
+            const clang::RecordDecl *RD;
+            if (RT)
+                RD = RT->getDecl();
+            else
             {
                 auto ICNT = T->castAs<clang::InjectedClassNameType>();
-                return adjustAggregateType(tqual, ICNT->getDecl());
+                RD = ICNT->getDecl();
             }
 
-            return adjustAggregateType(tqual, RT->getDecl());
+            return adjustAggregateType(tqual, RD);
         }
     }
 
