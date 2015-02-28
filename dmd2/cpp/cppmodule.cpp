@@ -512,44 +512,32 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 
         if (wrapInTemp)
         {
+            auto dstringty = new TypeIdentifier(loc, Id::object);
+            dstringty->addIdent(Lexer::idPool("string"));
+
             // Add the opUnary/opBinary/... template declaration
             auto tpl = new TemplateParameters;
-            auto dstring = new TypeIdentifier(loc, Id::object);
-            dstring->addIdent(Lexer::idPool("string"));
             auto tp_specvalue = new StringExp(loc, const_cast<char*>(op));
             tpl->push(new TemplateValueParameter(loc, Lexer::idPool("s"),
-                                                 dstring, tp_specvalue, nullptr));
+                                                 dstringty, tp_specvalue, nullptr));
 
-            auto fwdtf = static_cast<TypeFunction*>(tf->syntaxCopy());
+            auto tf_fwd = static_cast<TypeFunction*>(tf->syntaxCopy());
+            auto f_fwd = new ::FuncDeclaration(loc, loc, opIdent, STCfinal, tf_fwd);
 
-            for (unsigned i = 0; i < D->getNumParams(); i++)
-            {
-                const char *tp_paramname = (i == 0 && D->getNumParams() == 2) ?
-                                    "__lhst" : "__rhst";
-                auto tp_paramident = Lexer::idPool(tp_paramname);
-
-                auto tp_spectype = (*tf->parameters)[i]->type;
-                tpl->push(new TemplateTypeParameter(loc, tp_paramident,
-                                                    tp_spectype, nullptr));
-
-                (*fwdtf->parameters)[i]->type = new TypeIdentifier(loc, tp_paramident);
-            }
-
-            auto ffwd = new ::FuncDeclaration(loc, loc, opIdent, STCfinal, fwdtf);
-
-            // build the body of the forwarding function
+            // Build the body of the forwarding function
             auto args = new Expressions;
-            args->reserve(fwdtf->parameters->dim);
-            for (auto *p: *fwdtf->parameters)
+            args->reserve(tf_fwd->parameters->dim);
+            for (auto *p: *tf_fwd->parameters)
                 args->push(new IdentifierExp(loc, p->ident));
 
             Expression *e = new IdentifierExp(loc, fullIdent);
             e = new CallExp(loc, e, args);
 
-            ffwd->fbody = new ReturnStatement(loc, e);
+            f_fwd->fbody = new ReturnStatement(loc, e);
 
+            // Enclose the forwarding function within the template declaration
             auto decldefs = new Dsymbols;
-            decldefs->push(ffwd);
+            decldefs->push(f_fwd);
 
             auto tempdecl = new ::TemplateDeclaration(loc, opIdent, tpl, nullptr, decldefs);
             a->push(tempdecl);
