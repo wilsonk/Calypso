@@ -120,9 +120,17 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
 
         clang::TemplateArgumentListInfo Args;
 
+        const char *op = nullptr;
+        getIdentifierOrNull(Temp, &op);
+
         // See translateTemplateArgument() in SemaTemplate.cpp
-        for (auto o: *ti->tiargs)
+        for (unsigned i = 0; i < ti->tiargs->dim; i++)
         {
+            if (i == 0 && op)
+                continue; // skip the first parameter of opUnary/opBinary/opOpAssign/...
+
+            auto o = (*ti->tiargs)[i];
+
             Type *ta = isType(o);
             Expression *ea = isExpression(o);
             Dsymbol *sa = isDsymbol(o);

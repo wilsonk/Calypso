@@ -415,6 +415,20 @@ static const char *getOperatorName(const clang::OverloadedOperatorKind OO)
     }
 }
 
+TemplateParameters *initTempParamsForOO(Loc loc, const char *op)
+{
+    auto dstringty = new TypeIdentifier(loc, Id::object);
+    dstringty->addIdent(Lexer::idPool("string"));
+
+    // Add the opUnary/opBinary/... template declaration
+    auto tpl = new TemplateParameters;
+    auto tp_specvalue = new StringExp(loc, const_cast<char*>(op));
+    tpl->push(new TemplateValueParameter(loc, Lexer::idPool("op"),
+                                        dstringty, tp_specvalue, nullptr));
+
+    return tpl;
+}
+
 Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 {
     auto& S = calypso.pch.AST->getSema();
@@ -490,13 +504,13 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
         // NOTE: C++ overloaded operators might be virtual, unlike D which are always final (being templates)
         //   Mapping the C++ operator to opBinary()() directly would make D lose info and overriding the C++ method impossible
 
-        bool wrapInTemp = (op != nullptr);
+        bool wrapInTemp = (op != nullptr) &&
+                    !D->getDescribedFunctionTemplate();  // if it's a templated overloaded operator then the template declaration is already taken care of
 
         Identifier *fullIdent;
         if (wrapInTemp)
         {
             auto OO = D->getOverloadedOperator();
-
             std::string fullName(opIdent->string, opIdent->len);
             fullName += "_";
             fullName += getOperatorName(OO);
@@ -512,26 +526,19 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 
         if (wrapInTemp)
         {
-            auto dstringty = new TypeIdentifier(loc, Id::object);
-            dstringty->addIdent(Lexer::idPool("string"));
-
-            // Add the opUnary/opBinary/... template declaration
-            auto tpl = new TemplateParameters;
-            auto tp_specvalue = new StringExp(loc, const_cast<char*>(op));
-            tpl->push(new TemplateValueParameter(loc, Lexer::idPool("s"),
-                                                 dstringty, tp_specvalue, nullptr));
+            auto tpl = initTempParamsForOO(loc, op);
 
             auto tf_fwd = static_cast<TypeFunction*>(tf->syntaxCopy());
             auto f_fwd = new ::FuncDeclaration(loc, loc, opIdent, STCfinal, tf_fwd);
 
             // Build the body of the forwarding function
-            auto args = new Expressions;
-            args->reserve(tf_fwd->parameters->dim);
+            auto callargs = new Expressions;
+            callargs->reserve(tf_fwd->parameters->dim);
             for (auto *p: *tf_fwd->parameters)
-                args->push(new IdentifierExp(loc, p->ident));
+                callargs->push(new IdentifierExp(loc, p->ident));
 
             Expression *e = new IdentifierExp(loc, fullIdent);
-            e = new CallExp(loc, e, args);
+            e = new CallExp(loc, e, callargs);
 
             f_fwd->fbody = new ReturnStatement(loc, e);
 
@@ -593,21 +600,20 @@ Dsymbols *DeclMapper::VisitRedeclarableTemplateDecl(const clang::RedeclarableTem
         return nullptr; // temporary
 
     if (auto FTD = dyn_cast<clang::FunctionTemplateDecl>(D))
-    {
-        if (FTD->getTemplatedDecl()->isOverloadedOperator())
-            return nullptr;
-
         if (isa<clang::CXXConversionDecl>(FTD->getTemplatedDecl()))
             return nullptr;
-    }
 
     auto loc = fromLoc(D->getLocation());
-    auto id = getIdentifier(D);
+    const char *op = nullptr;
+    auto id = getIdentifierOrNull(D, &op);
+
+    if (!id)
+        return nullptr; // TODO: map unsupported overloaded operators
 
     if (auto CTD = dyn_cast<clang::ClassTemplateDecl>(D))
         D = CTD = getDefinition(CTD);
 
-    auto tpl = new TemplateParameters;
+    auto tpl = !op ? new TemplateParameters : initTempParamsForOO(loc, op);
     auto TPL = D->getTemplateParameters();
 
     templateParameters.push_back(TPL);
