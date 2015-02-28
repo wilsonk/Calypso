@@ -32,6 +32,7 @@
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/Sema.h"
+#include "clang/Sema/Lookup.h"
 
 namespace cpp
 {
@@ -996,6 +997,59 @@ clang::DeclContext::lookup_const_result wideLookup(Loc loc,
     return clang::DeclContext::lookup_const_result();
 }
 
+bool isOverloadedOperatorWithTagOperand(const clang::Decl *D,
+                                const clang::NamedDecl *SpecificTag = nullptr)
+{
+    auto& Context = calypso.getASTContext();
+
+    auto Func = dyn_cast<clang::FunctionDecl>(D);
+    if (auto FuncTemp = dyn_cast<clang::FunctionTemplateDecl>(D))
+        Func = FuncTemp->getTemplatedDecl();
+
+    if (!Func || !Func->isOverloadedOperator())
+        return false;
+
+    assert(Func->getNumParams() > 0);
+    if (Func->getNumParams() > 2)
+        return false; // [] and () cannot be non-member (FIXME: not entirely sure about (), couldn't find the source)
+
+    const clang::NamedDecl *OpTyDecl = nullptr;
+
+    for (unsigned I = 0; I < Func->getNumParams(); I++)
+    {
+        auto ParamTy = Func->getParamDecl(I)->getType().getNonReferenceType()
+                                .getDesugaredType(Context).getCanonicalType();
+        auto Ty = ParamTy.getTypePtr();
+
+        if (auto TagTy = dyn_cast<clang::TagType>(Ty))
+        {
+            OpTyDecl = TagTy->getDecl();
+            break;
+        }
+
+        if (auto TempSpec = dyn_cast<clang::TemplateSpecializationType>(Ty))
+            if (auto Temp = TempSpec->getTemplateName().getAsTemplateDecl())
+            {
+                if (isa<clang::ClassTemplateDecl>(Temp))
+                {
+                    OpTyDecl = Temp;
+                    break;
+                }
+
+                if (isa<clang::TypeAliasTemplateDecl>(Temp))
+                    assert(false && "Wrongly assumed that it would desugared");
+            }
+    }
+
+    if (!OpTyDecl)
+        return false; // neither LHS nor RHS has a tag type
+
+    if (!SpecificTag)
+        return true; // we're not looking for a specific type
+
+    return OpTyDecl->getCanonicalDecl() == SpecificTag->getCanonicalDecl();
+}
+
 // HACK: The C++ "module loading" works more like a hack at the moment.
 // Clang's C++ modules being currently « very experimental and broken », using Clang's module system
 // would add many further obstacles to get Calypso working, so I've decided to stick to one big PCH for the
@@ -1005,8 +1059,12 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
 {
     auto& Context = calypso.getASTContext();
     auto& S = calypso.pch.AST->getSema();
+    auto& Diags = calypso.pch.Diags;
 
     S.CurContext = Context.getTranslationUnitDecl(); // HACK? Needed for declaring implicit ctors and dtors
+    if (!S.TUScope)
+        // Clang BUG? TUScope isn't set when no Parser is used, but required by template instantiations (e.g LazilyCreateBuiltin)
+        S.TUScope = new clang::Scope(nullptr, clang::Scope::DeclScope, *Diags);
 
     const clang::DeclContext *DC = Context.getTranslationUnitDecl();
     Package *pkg = rootPackage;
@@ -1073,15 +1131,18 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
 
                 for (; D != DE; ++D)
                 {
-                    if (llvm::isa<clang::FunctionDecl>(*D) ||
-                            llvm::isa<clang::VarDecl>(*D) ||
-                            llvm::isa<clang::TypedefNameDecl>(*D) ||
-                            llvm::isa<clang::FunctionTemplateDecl>(*D) ||
-                            llvm::isa<clang::TypeAliasTemplateDecl>(*D))
-                    {
-                        if (auto s = mapper.VisitDecl(*D))
-                            m->members->append(s);
-                    }
+                    if (!isa<clang::FunctionDecl>(*D) &&
+                            !isa<clang::VarDecl>(*D) &&
+                            !isa<clang::TypedefNameDecl>(*D) &&
+                            !isa<clang::FunctionTemplateDecl>(*D) &&
+                            !isa<clang::TypeAliasTemplateDecl>(*D))
+                        continue;
+
+                    if (isOverloadedOperatorWithTagOperand(*D))
+                        continue;  // non-member overloaded operators with class/struct/enum operands are included in their own module
+
+                    if (auto s = mapper.VisitDecl(*D))
+                        m->members->append(s);
                 }
             }
         }
@@ -1130,6 +1191,23 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
             for (auto Spec: CTD->specializations())
                 if (auto s = mapper.VisitDecl(Spec->getCanonicalDecl()))
                     m->members->append(s);
+        }
+
+        // Add the non-member overloaded operators that are meant to work with this record/enum
+        for (int Op = 1; Op < clang::NUM_OVERLOADED_OPERATORS; Op++)
+        {
+            auto OpName = Context.DeclarationNames.getCXXOperatorName(
+                        static_cast<clang::OverloadedOperatorKind>(Op));
+            auto Operators = getDeclContextNamedOrTU(D)->lookup(OpName);
+
+            // WARNING: lookups will only search in the top-most namespace for overloaded operators
+            // Can non-member operators be located in a parent namespace or the TU?
+            // Never seen that happening but if it's allowed then it's a FIXME
+
+            for (auto OverOp: Operators)
+                if (isOverloadedOperatorWithTagOperand(OverOp, D))
+                    if (auto s = mapper.VisitDecl(OverOp))
+                        m->members->append(s);
         }
 
 //         srcFilename = AST->getSourceManager().getFilename(TD->getLocation());
