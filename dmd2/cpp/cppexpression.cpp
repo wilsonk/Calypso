@@ -134,7 +134,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
     }
     else if (auto CL = dyn_cast<clang::CharacterLiteral>(E))
     {
-        auto Char = IL->getValue().getZExtValue();
+        auto Char = CL->getValue();
 
         switch (CL->getKind())
         {
@@ -195,7 +195,8 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
     {
         return new NullExp(loc);
     }
-    else if (auto TT = dyn_cast<clang::TypeTraitExpr>(E))
+
+    if (auto TT = dyn_cast<clang::TypeTraitExpr>(E))
     {
         if (!TT->isValueDependent())
             return new IntegerExp(loc, TT->getValue() ? 1 : 0, Type::tbool);
@@ -231,12 +232,14 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
                 assert(false && "Unsupported");
         }
     }
-    else if (auto DR = dyn_cast<clang::DeclRefExpr>(E))
+
+    if (auto DR = dyn_cast<clang::DeclRefExpr>(E))
     {
         return fromExpressionDeclRef(loc,
                             const_cast<clang::ValueDecl*>(DR->getDecl()));
     }
-    else if (auto PE = dyn_cast<clang::PackExpansionExpr>(E))
+
+    if (auto PE = dyn_cast<clang::PackExpansionExpr>(E))
     {
         return fromExpression(PE->getPattern());
     }
