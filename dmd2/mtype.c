@@ -5319,6 +5319,19 @@ d_uns64 TypeValueof::size(Loc loc)
     return ((TypeClass*)next)->sym->size(loc);
 }
 
+MATCH TypeValueof::implicitConvTo(Type *to)
+{
+    assert(next->ty == Tclass);
+
+    if (this->equals(to))
+        return MATCHexact;
+
+    if (next->implicitConvTo(to))
+        return MATCHconvert; // always make implicitCastTo create a cast
+
+    return MATCHnomatch;
+}
+
 Expression *TypeValueof::dotExp(Scope *sc, Expression *e, Identifier *ident, int flag)
 {
     return next->dotExp(sc, e, ident, flag);

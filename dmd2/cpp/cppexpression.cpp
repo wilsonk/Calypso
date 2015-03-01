@@ -352,7 +352,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
     if (e)
     {
         if (!t || !destType ||
-                t->implicitConvTo(destType) >= MATCHconvert)
+                t->implicitConvTo(destType) > MATCHconvert)
             return e;
 
         return new CastExp(loc, e, destType);
