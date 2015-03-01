@@ -187,10 +187,6 @@ bool isNonSupportedType(clang::QualType T)
 {
     auto& Context = calypso.pch.AST->getASTContext();
 
-    // non-POD class values
-    if (isNonPODRecord(T))
-        return true;
-
     // (u)int128_t or any pointer/reference to (TODO: function types as well?)
     auto Pointee = T->getPointeeType();
     while (!Pointee.isNull())
@@ -1240,7 +1236,7 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
     if (FD)
         PI = FD->param_begin();
 
-    // FIXME we're ignoring functions with unhandled types i.e class values
+    // We're ignoring functions with unhandled types i.e int128_t
     if (isNonSupportedType(T->getReturnType()))
         return nullptr;
 
