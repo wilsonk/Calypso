@@ -420,7 +420,6 @@ TemplateParameters *initTempParamsForOO(Loc loc, const char *op)
     auto dstringty = new TypeIdentifier(loc, Id::object);
     dstringty->addIdent(Lexer::idPool("string"));
 
-    // Add the opUnary/opBinary/... template declaration
     auto tpl = new TemplateParameters;
     auto tp_specvalue = new StringExp(loc, const_cast<char*>(op));
     tpl->push(new TemplateValueParameter(loc, Lexer::idPool("op"),
@@ -526,6 +525,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 
         if (wrapInTemp)
         {
+            // Add the opUnary/opBinary/... template declaration
             auto tpl = initTempParamsForOO(loc, op);
 
             auto tf_fwd = static_cast<TypeFunction*>(tf->syntaxCopy());
@@ -847,16 +847,6 @@ Dsymbols *DeclMapper::VisitClassTemplateSpecializationDecl(const clang::ClassTem
         // NOTE: D's partial specializations != C++'s partial specializations
         // The mapping provides a "close" but not exact approximation of equivalent template specs in D (for reflection),
         // but TemplateDeclaration::findBestMatch is skipped since the choice is done by Clang anyway.
-        //
-        // C++ template decl lookup doesn't exactly work like D's. For example:
-        //
-        //    template<typename _Iterator>
-        //    struct __iterator_traits<_Iterator, true> {};
-        //
-        // In C++ you can refer to that partial spec either by __iterator_traits<iterator> or __iterator_traits<iterator, true>
-        // whereas in D only __iterator_traits<iterator> works.
-        // Furthermore in C++ you may have multiple partial specs taking the same number of seemingly identical parameters.
-        // it's not always possible to work around that here.
 
     auto loc = fromLoc(D->getLocation());
     auto id = fromIdentifier(D->getIdentifier());

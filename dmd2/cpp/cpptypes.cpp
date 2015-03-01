@@ -264,7 +264,7 @@ Type *TypeMapper::FromType::fromTypeUnqual(const clang::Type *T)
     else if (auto AT = dyn_cast<clang::AdjustedType>(T))
         return fromType(AT->desugar());
 
-    if (auto MPT = dyn_cast<clang::MemberPointerType>(T)) // what is this seriously? it appears in boost/none_t.hpp and I have no idea what this is supposed to achieve, but CodeGen converts it to ptrdiff_t
+    if (auto MPT = dyn_cast<clang::MemberPointerType>(T)) // rarely used feature of C++, see [expr.mptr.oper]
         return Type::tptrdiff_t;
 
 #define TYPEMAP(Ty) \
@@ -410,7 +410,7 @@ RootObject* TypeMapper::FromType::fromTemplateArgument(const clang::TemplateArgu
             tiarg = fromTemplateName(Arg->getAsTemplate());
             break;
         case clang::TemplateArgument::Pack:
-            tiarg = fromTemplateArgument(Arg->pack_begin(), Param); // WARNING: this only takes the first arg of the pack
+            tiarg = fromTemplateArgument(Arg->pack_begin(), Param); // FIXME: this only takes the first arg of the pack
             break;
         default:
             assert(false && "Unsupported template arg kind");
@@ -519,7 +519,7 @@ public:
 };
 
 // Messy... and also used for expression mapping, because TypeQualified's purpose is very similar
-// to expressions, could TypeQualified be merged with DotIdExp & co?
+// to expressions. Could TypeQualified be merged with DotIdExp & co?
 class TypeQualifiedBuilder
 {
 public:
@@ -551,7 +551,7 @@ public:
           TopTempArgBegin(TempArgBegin),
           TopTempArgEnd(TempArgEnd) {}
 
-    TypeQualified *get(const clang::NamedDecl *ND);
+    TypeQualified *get(const clang::NamedDecl *D);
 };
 
 void TypeQualifiedBuilder::add(TypeQualified *&tqual, RootObject *o)
@@ -606,7 +606,7 @@ void TypeQualifiedBuilder::pushInst(TypeQualified *&tqual,
 
     // NOTE: To reduce DMD -> Clang translations to a minimum we don't instantiate ourselves whenever possible,
     // i.e when the template instance is already declared or defined in the PCH. If it's only declared, we tell Sema to
-    // complete its instantiation.
+    // complete its instantiation and determine whether it is POD or not.
     if (Spec)
     {
         tempinst->Inst = Spec;
@@ -635,20 +635,20 @@ RootObject *getIdentOrTempinst(const clang::NamedDecl *D)
         return ident;
 }
 
-TypeQualified *TypeQualifiedBuilder::get(const clang::NamedDecl *ND)
+TypeQualified *TypeQualifiedBuilder::get(const clang::NamedDecl *D)
 {
     TypeQualified *tqual;
 
     if (from.prefix)
         tqual = from.prefix; // special case where the prefix has already been determined from a NNS
-    else if (RootEquals(ND))
+    else if (RootEquals(D))
         tqual = nullptr;
     else
     {
-        auto Key = tm.GetImplicitImportKeyForDecl(ND);
+        auto Key = tm.GetImplicitImportKeyForDecl(D);
         ScopeChecker KeyEquals(Key);
 
-        if (KeyEquals(ND))  // we'll need a fully qualified type
+        if (KeyEquals(D))  // we'll need a fully qualified type
         {
             // build a fake import
             auto im = tm.BuildImplicitImport(Key);
@@ -663,10 +663,10 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::NamedDecl *ND)
         }
         else
             tqual = get(cast<clang::NamedDecl>(
-                    getDeclContextNamedOrTU(ND)));
+                    getDeclContextNamedOrTU(D)));
     }
 
-    auto o = getIdentOrTempinst(ND);
+    auto o = getIdentOrTempinst(D);
     if (!o)
         return tqual;
 
@@ -676,18 +676,18 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::NamedDecl *ND)
 
     llvm::SmallVector<clang::TemplateArgument, 4> ArgsArray; // temporary array used for function specs only
 
-    if (auto ClassSpec = dyn_cast<clang::ClassTemplateSpecializationDecl>(ND))
+    if (auto ClassSpec = dyn_cast<clang::ClassTemplateSpecializationDecl>(D))
     {
-        assert(!isa<clang::ClassTemplatePartialSpecializationDecl>(ND)); // should never happen?
+        assert(!isa<clang::ClassTemplatePartialSpecializationDecl>(D)); // should never happen?
 
-        if (!tm.isInjectedClassName(ClassSpec))
+        if (!tm.isNonExplicitInjectedClassName(ClassSpec))
         {
             Spec = const_cast<clang::ClassTemplateSpecializationDecl*>(ClassSpec);
             SpecTemp = ClassSpec->getSpecializedTemplate();
             TempArgs = ClassSpec->getTemplateArgs().asArray();
         }
     }
-    else if (auto Func = dyn_cast<clang::FunctionDecl>(ND)) // functions will always be at the top
+    else if (auto Func = dyn_cast<clang::FunctionDecl>(D)) // functions will always be at the top
     {
         auto ExplicitArgs = Func->getTemplateSpecializationArgsAsWritten();
 
@@ -704,7 +704,7 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::NamedDecl *ND)
         // and that's okay (+ avoids argument deduction).
     }
 
-    if (auto Temp = dyn_cast<clang::TemplateDecl>(ND))
+    if (auto Temp = dyn_cast<clang::TemplateDecl>(D))
     {
         pushInst(tqual, o, Temp, TopTempArgBegin, TopTempArgEnd);
         TopTempArgBegin = TopTempArgEnd = nullptr;  // e.g there could be multiple TypeAliasTemplateDecl in the same qualified type
@@ -719,28 +719,30 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::NamedDecl *ND)
     return tqual;
 }
 
-Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* ND,
+Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* D,
     const clang::TemplateArgument *TempArgBegin,
     const clang::TemplateArgument *TempArgEnd)
 {
     if (!TempArgBegin)
-        if (auto subst = tm.trySubstitute(ND)) // HACK for correctTiargs
+        if (auto subst = tm.trySubstitute(D)) // HACK for correctTiargs
             return subst;
 
     const clang::Decl *Root;
     decltype(CXXScope) ScopeStack(tm.CXXScope);
 
     clang::DeclarationName Name;
-    if (ND->getIdentifier() ||
-            ND->getDeclName().getNameKind() == clang::DeclarationName::CXXOperatorName)
-        Name =  ND->getDeclName();
-    else if (auto Tag = llvm::dyn_cast<clang::TagDecl>(ND))
+    if (D->getIdentifier() ||
+            D->getDeclName().getNameKind() == clang::DeclarationName::CXXOperatorName)
+        Name =  D->getDeclName();
+    else if (auto Tag = llvm::dyn_cast<clang::TagDecl>(D))
         if (auto Typedef = Tag->getTypedefNameForAnonDecl())
             Name = Typedef->getDeclName();
 
     if (Name.isEmpty()) // might be an anonymous enum decl for fromExpressionDeclRef
             // TODO: check that this doesn't happen when called from TypeMapper would be more solid
         return nullptr;
+
+    auto NonNestedDC = tm.GetNonNestedContext(D);
 
     // This is currently the only place where a "C++ scope" is used, this is
     // especially needed for identifier lookups during template instantiations
@@ -750,8 +752,8 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* ND,
         ScopeStack.pop();
         ScopeChecker ScopeDeclEquals(ScopeDecl);
 
-        const clang::Decl *DCDecl = ND,
-                            *Previous = ND;
+        const clang::Decl *DCDecl = D,
+                            *Previous = D;
         while(!isa<clang::TranslationUnitDecl>(DCDecl))
         {
             if (ScopeDeclEquals(DCDecl))
@@ -776,7 +778,7 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* ND,
             if (Decl->isImplicit())
                 continue;
 
-            if (ND->getCanonicalDecl() != Decl->getCanonicalDecl())
+            if (D->getCanonicalDecl() != Decl->getCanonicalDecl())
             {
                 fullyQualify = true;
                 break;
@@ -789,21 +791,18 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* ND,
 
         if (fullyQualify)
         {
-            Root = ND->getTranslationUnitDecl(); // to avoid name collisions, we fully qualify the type
+            Root = D->getTranslationUnitDecl(); // to avoid name collisions, we fully qualify the type
             goto LrootDone;
         }
     }
 
-    {
-        auto NonNestedDC = tm.GetNonNestedContext(ND);
-        Root = !isa<clang::TagDecl>(NonNestedDC) ?
-                ND->getTranslationUnitDecl() : NonNestedDC;
-    }
+    Root = !isa<clang::TagDecl>(NonNestedDC) ?
+            D->getTranslationUnitDecl() : NonNestedDC;
 
 LrootDone:
-    tm.AddImplicitImportForDecl(ND);
+    tm.AddImplicitImportForDecl(D);
 
-    return TypeQualifiedBuilder(*this, Root, TempArgBegin, TempArgEnd).get(ND);
+    return TypeQualifiedBuilder(*this, Root, TempArgBegin, TempArgEnd).get(D);
 }
 
 Type *TypeMapper::trySubstitute(const clang::Decl *D)
@@ -1212,7 +1211,7 @@ Type* TypeMapper::FromType::fromTypePackExpansion(const clang::PackExpansionType
 
 // This is to check whether template arguments have to be omitted
 // There may be a more elegant way but for now that'll do
-bool TypeMapper::isInjectedClassName(const clang::Decl *D)
+bool TypeMapper::isNonExplicitInjectedClassName(const clang::Decl *D)
 {
     D = D->getCanonicalDecl();
 
@@ -1292,23 +1291,23 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
 
 // In D if a class is inheriting from another module's class, then its own module has to import the base class' module.
 // So we need to populate the beginning of our virtual module with imports for derived classes.
-void TypeMapper::AddImplicitImportForDecl(const clang::NamedDecl* ND)
+void TypeMapper::AddImplicitImportForDecl(const clang::NamedDecl* D)
 {
     if (!addImplicitDecls)
         return;
 
     assert(mod);
 
-    auto D = GetImplicitImportKeyForDecl(ND);
+    auto Key = GetImplicitImportKeyForDecl(D);
 
-    if (D == mod->rootDecl)
+    if (Key == mod->rootDecl)
         return; // do not import self
 
-    if (implicitImports[D])
+    if (implicitImports[Key])
         return;
 
-    auto im = BuildImplicitImport(D);
-    implicitImports[D] = im;
+    auto im = BuildImplicitImport(Key);
+    implicitImports[Key] = im;
     mod->members->shift(im);
 }
 
@@ -1404,7 +1403,7 @@ static Identifier *BuildImplicitImportInternal(const clang::DeclContext *DC,
         if (isa<clang::ClassTemplateDecl>(D))
             sModule = getIdentifier(cast<clang::NamedDecl>(D));
         else
-            // ND is neither a tag nor a class template, we need to import the namespace's functions and vars
+            // D is neither a tag nor a class template, we need to import the namespace's functions and vars
             sModule = Lexer::idPool("_");
     }
 

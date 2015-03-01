@@ -124,7 +124,7 @@ public:
                     const clang::TemplateArgument *ArgEnd = nullptr);  // returns a template or a template instance
                 // if it's a template it's not actually a type but a symbol, but that's how parsing TemplateAliasParameter works anyway
 
-        Type *typeQualifiedFor(clang::NamedDecl* ND,
+        Type *typeQualifiedFor(clang::NamedDecl* D,
                             const clang::TemplateArgument* ArgBegin = nullptr,
                             const clang::TemplateArgument* ArgEnd = nullptr);
 
@@ -150,11 +150,11 @@ protected:
     Identifier *getIdentifierForTemplateTypeParm(const clang::TemplateTypeParmType *T);
     Identifier *getIdentifierForTemplateTemplateParm(const clang::TemplateTemplateParmDecl *D);
 
-    bool isInjectedClassName(const clang::Decl *D); // misleading name although that's what it is
+    bool isNonExplicitInjectedClassName(const clang::Decl *D); // misleading name although that's what it is
 
-    void AddImplicitImportForDecl(const clang::NamedDecl* ND);
+    void AddImplicitImportForDecl(const clang::NamedDecl* D);
 
-    ::Import *BuildImplicitImport(const clang::Decl *ND);
+    ::Import *BuildImplicitImport(const clang::Decl *D);
     
     const clang::Decl *GetImplicitImportKeyForDecl(const clang::NamedDecl *D);
     const clang::Decl *GetNonNestedContext(const clang::Decl *D);  // returns the "root" for qualified types
