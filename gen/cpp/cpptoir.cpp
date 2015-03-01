@@ -39,6 +39,8 @@
 namespace cpp
 {
 
+namespace clangCG = clang::CodeGen;
+
 void LangPlugin::enterModule(llvm::Module *m)
 {
     if (!getASTUnit())
@@ -47,7 +49,7 @@ void LangPlugin::enterModule(llvm::Module *m)
     auto& Context = getASTContext();
 
     auto CGO = new clang::CodeGenOptions;
-    CGM.reset(new clang::CodeGen::CodeGenModule(Context,
+    CGM.reset(new clangCG::CodeGenModule(Context,
                             *CGO, *m, *gDataLayout, *pch.Diags));
 }
 
@@ -66,7 +68,7 @@ void LangPlugin::enterFunc(::FuncDeclaration *fd)
     if (!getASTUnit())
         return;
 
-    CGF = new clang::CodeGen::CodeGenFunction(*CGM, true);
+    CGF = new clangCG::CodeGenFunction(*CGM, true);
     CGF->CurCodeDecl = nullptr;
 }
 
@@ -186,10 +188,10 @@ LLValue *LangPlugin::toVirtualFunctionPointer(DValue* inst,
     // get instance
     LLValue* vthis = inst->getRVal();
 
-    const clang::CodeGen::CGFunctionInfo *FInfo = nullptr;
+    const clangCG::CGFunctionInfo *FInfo = nullptr;
     if (llvm::isa<clang::CXXConstructorDecl>(MD) || llvm::isa<clang::CXXDestructorDecl>(MD))
         FInfo = &CGM->getTypes().arrangeCXXStructorDeclaration(MD,
-                                                               clang::CodeGen::StructorType::Complete);
+                                                               clangCG::StructorType::Complete);
     else
         FInfo = &CGM->getTypes().arrangeCXXMethodDeclaration(MD);
   
@@ -215,9 +217,9 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
     LLFunctionType* callableTy = DtoExtractFunctionType(callable->getType());
     assert(callableTy);
 
-    clang::CodeGen::RValue RV;
-    clang::CodeGen::ReturnValueSlot ReturnValue(retvar, false);
-    clang::CodeGen::CallArgList Args;
+    clangCG::RValue RV;
+    clangCG::ReturnValueSlot ReturnValue(retvar, false);
+    clangCG::CallArgList Args;
 
     auto FD = getFD(fd);
     auto MD = llvm::dyn_cast<const clang::CXXMethodDecl>(FD);
@@ -243,7 +245,7 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
                 *CGF, MD, This, true);
         }
 
-        Args.add(clang::CodeGen::RValue::get(This),
+        Args.add(clangCG::RValue::get(This),
                  MD->getThisType(getASTContext()));
     }
 
@@ -253,15 +255,15 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
         assert(fnarg);
         DValue* argval = DtoArgument(fnarg,
                         static_cast<::Expression*>(arguments->data[i]));
-        Args.add(clang::CodeGen::RValue::get(argval->getRVal()),
+        Args.add(clangCG::RValue::get(argval->getRVal()),
                  TypeMapper().toType(loc, fnarg->type,
                                      fd->scope, fnarg->storageClass));
     }
     
     if (MD && !MD->isStatic())
     {
-        clang::CodeGen::RequiredArgs required =
-            clang::CodeGen::RequiredArgs::forPrototypePlus(FPT, Args.size());
+        clangCG::RequiredArgs required =
+            clangCG::RequiredArgs::forPrototypePlus(FPT, Args.size());
         
         RV = CGF->EmitCall(CGM->getTypes().arrangeCXXMethodCall(Args, FPT, required),
                     callable, ReturnValue, Args, MD);
@@ -292,7 +294,7 @@ void LangPlugin::toResolveFunction(::FuncDeclaration* fdecl)
     fdecl->ir.setDeclared();
 
     llvm::Constant *Callee = nullptr;
-    const clang::CodeGen::CGFunctionInfo *FInfo;
+    const clangCG::CGFunctionInfo *FInfo;
     llvm::FunctionType *Ty;
 
     auto MD = llvm::dyn_cast<const clang::CXXMethodDecl>(FD);
@@ -302,7 +304,7 @@ void LangPlugin::toResolveFunction(::FuncDeclaration* fdecl)
         if (llvm::isa<const clang::CXXConstructorDecl>(MD) ||
                     llvm::isa<const clang::CXXDestructorDecl>(MD))
             FInfo = &CGM->getTypes().arrangeCXXStructorDeclaration(MD,
-                                                                    clang::CodeGen::StructorType::Complete);
+                                                                    clangCG::StructorType::Complete);
         else
             FInfo = &CGM->getTypes().arrangeCXXMethodDeclaration(MD);
 
@@ -315,7 +317,7 @@ void LangPlugin::toResolveFunction(::FuncDeclaration* fdecl)
     if (MD && (llvm::isa<const clang::CXXConstructorDecl>(MD) ||
                             llvm::isa<const clang::CXXDestructorDecl>(MD)))
         Callee = CGM->getAddrOfCXXStructor(MD,
-                                    clang::CodeGen::StructorType::Complete, FInfo, Ty);
+                                    clangCG::StructorType::Complete, FInfo, Ty);
     else
         Callee = CGM->GetAddrOfFunction(FD, Ty);
 

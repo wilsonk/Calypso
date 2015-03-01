@@ -17,6 +17,8 @@
 namespace cpp
 {
 
+namespace clangCG = clang::CodeGen;
+
 // A D class derived from a C++ one overriding virtual C++ methods must,
 // after the last C++ ctor call, make the C++ vptrs point to a modified vtable.
 // The trick is to make Clang recreate a VTable initializer for the most derived C++ base
@@ -277,8 +279,8 @@ void LangPlugin::emitAdditionalClassSymbols(::ClassDeclaration *cd)
 // Couldn't find a way to trim down redundancies with Clang
 struct DCXXVptrAdjuster
 {
-    clang::CodeGen::CodeGenModule &CGM;
-    clang::CodeGen::CodeGenFunction &CGF;
+    clangCG::CodeGenModule &CGM;
+    clangCG::CodeGenFunction &CGF;
     llvm::IRBuilder<true> &Builder;
 
     ::ClassDeclaration *cd;
@@ -288,7 +290,7 @@ struct DCXXVptrAdjuster
         return calypso.getASTContext();
     }
 
-    DCXXVptrAdjuster(clang::CodeGen::CodeGenModule &CGM,
+    DCXXVptrAdjuster(clangCG::CodeGenModule &CGM,
             llvm::Value *cxxThis, ::ClassDeclaration *cd)
         : CGM(CGM),
           CGF(*calypso.CGF),
@@ -387,7 +389,7 @@ struct DCXXVptrAdjuster
                                             clang::CharUnits OffsetFromNearestVBase,
                                             bool BaseIsNonVirtualPrimaryBase,
                                             const clang::CXXRecordDecl *VTableClass,
-                                            clang::CodeGen::CodeGenFunction::VisitedVirtualBasesSetTy& VBases)
+                                            clangCG::CodeGenFunction::VisitedVirtualBasesSetTy& VBases)
     {
         // If this base is a non-virtual primary base the address point has already
         // been set.
@@ -463,7 +465,7 @@ void LangPlugin::toPostNewClass(Loc& loc, TypeClass* tc, DValue* val)
     CGF->CurGD = *dcxxInfo->mostDerivedCXXBase->RD->method_begin();
 
     // Initialize the vtable pointers for this class and all of its bases.
-    clang::CodeGen::CodeGenFunction::VisitedVirtualBasesSetTy VBases;
+    clangCG::CodeGenFunction::VisitedVirtualBasesSetTy VBases;
     adjuster.InitializeVTablePointers(clang::BaseSubobject(RD, clang::CharUnits::Zero()),
                             /*NearestVBase=*/nullptr,
                             /*OffsetFromNearestVBase=*/clang::CharUnits::Zero(),
