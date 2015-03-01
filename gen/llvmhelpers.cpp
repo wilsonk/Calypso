@@ -733,6 +733,18 @@ DValue* DtoCastVector(Loc& loc, DValue* val, Type* to)
     }
 }
 
+DValue* DtoCastValueof(Loc& loc, DValue* val, Type* to) // CALYPSO
+{
+    Type* fromtype = val->getType()->toBasetype();
+    Type* totype = to->toBasetype();
+
+    assert(fromtype->ty == Tvalueof);
+    assert(totype->ty == Tclass);
+
+    auto refVal = new DImValue(fromtype->nextOf(), val->getLVal());
+    return DtoCast(loc, refVal, totype);
+}
+
 DValue* DtoCast(Loc& loc, DValue* val, Type* to)
 {
     Type* fromtype = val->getType()->toBasetype();
@@ -786,6 +798,9 @@ DValue* DtoCast(Loc& loc, DValue* val, Type* to)
     }
     else if (fromtype->ty == Tdelegate) {
         return DtoCastDelegate(loc, val, to);
+    }
+    else if (fromtype->ty == Tvalueof) { // CALYPSO
+        return DtoCastValueof(loc, val, to);
     }
     else if (fromtype->ty == Tnull) {
         return DtoNullValue(to, loc);

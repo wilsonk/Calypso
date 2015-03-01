@@ -1274,15 +1274,7 @@ void DtoDefineFunction(FuncDeclaration* fd)
             llvm::ReturnInst::Create(gIR->context(), LLConstant::getNullValue(func->getReturnType()), bb);
     }
 
-    // erase alloca point
-    if (allocaPoint->getParent())
-        allocaPoint->eraseFromParent();
-    allocaPoint = 0;
-    gIR->func()->allocapoint = 0;
-
-    gIR->scopes.pop_back();
-
-    //CALYPSO
+    // CALYPSO
     for (auto I = global.langPlugins.begin(),
                 E = global.langPlugins.end();
                 I != E; ++I)
@@ -1290,6 +1282,14 @@ void DtoDefineFunction(FuncDeclaration* fd)
         auto cg = (*I)->codegen();
         cg->leaveFunc();
     }
+
+    // erase alloca point
+    if (allocaPoint->getParent())
+        allocaPoint->eraseFromParent();
+    allocaPoint = 0;
+    gIR->func()->allocapoint = 0;
+
+    gIR->scopes.pop_back();
 
     // get rid of the endentry block, it's never used
     assert(!func->getBasicBlockList().empty());

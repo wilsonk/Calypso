@@ -38,6 +38,8 @@ class TemplateInstance;
 namespace reclang { class ASTUnit; }
 using reclang::ASTUnit;
 
+namespace clangCG = clang::CodeGen;
+
 Identifier *fromIdentifier(const clang::IdentifierInfo *II);
 Identifier *getIdentifier(const clang::NamedDecl *D, const char **op = nullptr);
 Identifier *getIdentifierOrNull(const clang::NamedDecl *D, const char **op = nullptr);
@@ -96,7 +98,8 @@ public:
     // ==== CodeGen ====
     ForeignCodeGen *codegen() { return this; }
 
-    clang::CodeGen::CodeGenFunction *CGF = nullptr; // FIXME: won't work with nested funcs, need stack
+    std::stack<clangCG::CodeGenFunction *> CGFStack;
+    inline clangCG::CodeGenFunction *CGF() { return CGFStack.top(); }
 
     void enterModule(llvm::Module *m) override;
     void leaveModule() override;
@@ -133,7 +136,7 @@ public:
     // settings
     const char *cachePrefix = "calypso_cache"; // prefix of cached files (list of headers, PCH)
 
-    std::unique_ptr<clang::CodeGen::CodeGenModule> CGM;  // selectively emit external C++ declarations, template instances, ...
+    std::unique_ptr<clangCG::CodeGenModule> CGM;  // selectively emit external C++ declarations, template instances, ...
 
     LangPlugin();
     void init();

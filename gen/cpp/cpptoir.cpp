@@ -64,12 +64,15 @@ void LangPlugin::leaveModule()
 }
 
 void LangPlugin::enterFunc(::FuncDeclaration *fd)
-{//FIXME nested
+{
     if (!getASTUnit())
         return;
 
-    CGF = new clangCG::CodeGenFunction(*CGM, true);
-    CGF->CurCodeDecl = nullptr;
+    IrFunction *irFunc = getIrFunc(fd);
+
+    CGFStack.push(new clangCG::CodeGenFunction(*CGM, true));
+    CGF()->CurCodeDecl = nullptr;
+    CGF()->AllocaInsertPt = irFunc->allocapoint;
 }
 
 void LangPlugin::leaveFunc()
@@ -77,14 +80,15 @@ void LangPlugin::leaveFunc()
     if (!getASTUnit())
         return;
     
-    delete CGF;
-    CGF = nullptr;
+    CGF()->AllocaInsertPt = nullptr;
+    delete CGF();
+    CGFStack.pop();
 }
 
 void LangPlugin::updateCGFInsertPoint()
 {
     auto BB = gIR->scope().begin;
-    CGF->Builder.SetInsertPoint(BB);
+    CGF()->Builder.SetInsertPoint(BB);
 }
 
 llvm::Type *LangPlugin::toType(::Type *t)
@@ -197,7 +201,26 @@ LLValue *LangPlugin::toVirtualFunctionPointer(DValue* inst,
   
     llvm::FunctionType *Ty = CGM->getTypes().GetFunctionType(*FInfo);
     
-    return CGM->getCXXABI().getVirtualFunctionPointer(*CGF, MD, vthis, Ty);
+    return CGM->getCXXABI().getVirtualFunctionPointer(*CGF(), MD, vthis, Ty);
+}
+
+static const clangCG::CGFunctionInfo &arrangeFunctionCall(
+                    clangCG::CodeGenModule *CGM,
+                    const clang::FunctionDecl *FD,
+                    clang::CodeGen::CallArgList &Args)
+{
+    auto FPT = FD->getType()->castAs<clang::FunctionProtoType>();
+    auto MD = llvm::dyn_cast<const clang::CXXMethodDecl>(FD);
+
+    if (MD && !MD->isStatic())
+    {
+        clangCG::RequiredArgs required =
+            clangCG::RequiredArgs::forPrototypePlus(FPT, Args.size());
+
+        return CGM->getTypes().arrangeCXXMethodCall(Args, FPT, required);
+    }
+    else
+        return CGM->getTypes().arrangeFreeFunctionCall(Args, FPT, false);
 }
 
 DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval, 
@@ -218,7 +241,6 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
     assert(callableTy);
 
     clangCG::RValue RV;
-    clangCG::ReturnValueSlot ReturnValue(retvar, false);
     clangCG::CallArgList Args;
 
     auto FD = getFD(fd);
@@ -231,7 +253,7 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
     auto Dtor = llvm::dyn_cast<clang::CXXDestructorDecl>(FD);
     if (Dtor && Dtor->isVirtual())
     {
-        CGM->getCXXABI().EmitVirtualDestructorCall(*CGF, Dtor, clang::Dtor_Complete,
+        CGM->getCXXABI().EmitVirtualDestructorCall(*CGF(), Dtor, clang::Dtor_Complete,
                                         This, nullptr);
 
         return new DImValue(nullptr, nullptr); // WARNING ldc never does that, it returns the instruction of the call site instead
@@ -242,7 +264,7 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
     {
         if (MD->isVirtual()) {
             This = CGM->getCXXABI().adjustThisArgumentForVirtualFunctionCall(
-                *CGF, MD, This, true);
+                *CGF(), MD, This, true);
         }
 
         Args.add(clangCG::RValue::get(This),
@@ -259,25 +281,26 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
                  TypeMapper().toType(loc, fnarg->type,
                                      fd->scope, fnarg->storageClass));
     }
+
+//     clangCG::ReturnValueSlot ReturnValue(retvar, false);
+    assert(!retvar); // since LDC doesn't know we're using sret for C++ calls
+            // we could make it aware though (TODO)
     
-    if (MD && !MD->isStatic())
-    {
-        clangCG::RequiredArgs required =
-            clangCG::RequiredArgs::forPrototypePlus(FPT, Args.size());
-        
-        RV = CGF->EmitCall(CGM->getTypes().arrangeCXXMethodCall(Args, FPT, required),
-                    callable, ReturnValue, Args, MD);
-    }
-    else
-    {
-        RV = CGF->EmitCall(CGM->getTypes().arrangeFreeFunctionCall(Args, FPT, false),
-                    callable, ReturnValue, Args, FD);
-    }
+    auto &FInfo = arrangeFunctionCall(CGM.get(), FD, Args);
+    RV = CGF()->EmitCall(FInfo, callable, clangCG::ReturnValueSlot(), Args, FD);
 
     if (tf->isref)
+    {
+        assert(RV.isScalar());
         return new DVarValue(resulttype, RV.getScalarVal());
+    }
 
-    return new DImValue(resulttype, RV.getScalarVal());
+    if (RV.isScalar())
+        return new DImValue(resulttype, RV.getScalarVal());
+    else if (RV.isAggregate())
+        return new DVarValue(resulttype, RV.getAggregateAddr());
+
+    llvm_unreachable("Complex RValue FIXME");
 }
 
 // IMPORTANT NOTE: Clang emits forward decls lazily, which means that no function prototype is actually emitted to LLVM after making a CodeGenerator consume the ASTContext.

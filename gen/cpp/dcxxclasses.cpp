@@ -293,7 +293,7 @@ struct DCXXVptrAdjuster
     DCXXVptrAdjuster(clangCG::CodeGenModule &CGM,
             llvm::Value *cxxThis, ::ClassDeclaration *cd)
         : CGM(CGM),
-          CGF(*calypso.CGF),
+          CGF(*calypso.CGF()),
           Builder(gIR->scope().builder),
           cd(cd),
           cxxThis(cxxThis)
@@ -462,7 +462,7 @@ void LangPlugin::toPostNewClass(Loc& loc, TypeClass* tc, DValue* val)
     auto RD = dcxxInfo->mostDerivedCXXBase->RD;
 
     // HACK HACK UGLY but... just try to comment
-    CGF->CurGD = *dcxxInfo->mostDerivedCXXBase->RD->method_begin();
+    CGF()->CurGD = *dcxxInfo->mostDerivedCXXBase->RD->method_begin();
 
     // Initialize the vtable pointers for this class and all of its bases.
     clangCG::CodeGenFunction::VisitedVirtualBasesSetTy VBases;
