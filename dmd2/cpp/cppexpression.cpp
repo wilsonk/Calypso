@@ -313,7 +313,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
         // FIXME NNS
         auto id = fromIdentifier(UL->getName().getAsIdentifierInfo());
 
-        if (UL->getNumTemplateArgs())
+        if (UL->hasExplicitTemplateArgs())
         {
             auto& ExplicitTempArgs = UL->getExplicitTemplateArgs();
 
