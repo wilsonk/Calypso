@@ -40,6 +40,10 @@ Expression* ExprMapper::fromUnaExp(const clang::UnaryOperator *E)
 {
     auto loc = fromLoc(E->getLocStart());
     auto sub = fromExpression(E->getSubExpr());
+
+    if (!sub)
+        return nullptr;
+
     switch (E->getOpcode())
     {
         case clang::UO_Plus: return sub;
@@ -56,6 +60,9 @@ Expression* ExprMapper::fromBinExp(const clang::BinaryOperator* E)
     auto loc = fromLoc(E->getLocStart());
     auto lhs = fromExpression(E->getLHS());
     auto rhs = fromExpression(E->getRHS());
+
+    if (!lhs || !rhs)
+        return nullptr;
 
     switch (E->getOpcode())
     {
@@ -119,6 +126,9 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
         auto econd = fromExpression(CO->getCond());
         auto e1 = fromExpression(CO->getTrueExpr());
         auto e2 = fromExpression(CO->getFalseExpr());
+
+        if (!econd || !e1 || !e2)
+            return nullptr;
         
         return new CondExp(loc, econd, e1, e2);
     }
@@ -295,6 +305,8 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
     else if (auto C = dyn_cast<clang::CallExpr>(E))
     {
         auto e = fromExpression(C->getCallee());
+        if (!e)
+            return nullptr;
 
         auto args = new Expressions;
         for (auto Arg: C->arguments())
@@ -382,6 +394,12 @@ Expression* ExprMapper::fromExpressionDeclRef(Loc loc, clang::NamedDecl *D)
 {
     if (auto NTTP = dyn_cast<clang::NonTypeTemplateParmDecl>(D))
         return fromExpressionNonTypeTemplateParm(loc, NTTP);
+
+    // BUG FIXME: TypeExp is convenient but not enough because TypeQualified::resolve doesn't resolve function calls
+    // For now we're ignoring overloaded operator calls
+    if (auto FD = dyn_cast<clang::FunctionDecl>(D))
+        if (FD->isOverloadedOperator())
+            return nullptr;
 
     auto tqual = static_cast<TypeQualified*>(TypeMapper::FromType(tymap).typeQualifiedFor(D));
     assert(tqual && "DeclRefExpr decl without a DeclarationName");
