@@ -50,6 +50,8 @@ Expression* ExprMapper::fromUnaExp(const clang::UnaryOperator *E)
         case clang::UO_Minus: return new NegExp(loc, sub);
         case clang::UO_Not: return new NotExp(loc, sub);
         case clang::UO_LNot: return new NotExp(loc, sub);
+        case clang::UO_AddrOf: return new AddrExp(loc, sub);
+        case clang::UO_Deref: return new PtrExp(loc, sub);
     }
 
     llvm::llvm_unreachable_internal("Unhandled C++ unary operation exp");
