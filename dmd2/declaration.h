@@ -238,7 +238,7 @@ public:
 
     AliasDeclaration(Loc loc, Identifier *ident, Type *type);
     AliasDeclaration(Loc loc, Identifier *ident, Dsymbol *s);
-    Dsymbol *syntaxCopy(Dsymbol *);
+    virtual Dsymbol *syntaxCopy(Dsymbol *);
     void semantic(Scope *sc);
     bool overloadInsert(Dsymbol *s);
     const char *kind();
