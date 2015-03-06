@@ -331,7 +331,7 @@ private:
 public:
     ScopeDsymbol();
     ScopeDsymbol(Identifier *id);
-    Dsymbol *syntaxCopy(Dsymbol *s);
+    virtual Dsymbol *syntaxCopy(Dsymbol *s);
     Dsymbol *search(Loc loc, Identifier *ident, int flags = IgnoreNone);
     OverloadSet *mergeOverloadSet(OverloadSet *os, Dsymbol *s);
     void importScope(Dsymbol *s, PROT protection);
