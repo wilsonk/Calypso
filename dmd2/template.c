@@ -531,10 +531,9 @@ TemplateDeclaration::TemplateDeclaration(Loc loc, Identifier *id,
     }
 }
 
-Dsymbol *TemplateDeclaration::syntaxCopy(Dsymbol *)
+Dsymbol *TemplateDeclaration::syntaxCopy(Dsymbol *s)
 {
     //printf("TemplateDeclaration::syntaxCopy()\n");
-    TemplateDeclaration *td;
     TemplateParameters *p;
 
     p = NULL;
@@ -552,7 +551,12 @@ Dsymbol *TemplateDeclaration::syntaxCopy(Dsymbol *)
     if (constraint)
         e = constraint->syntaxCopy();
     Dsymbols *d = Dsymbol::arraySyntaxCopy(members);
-    td = new TemplateDeclaration(loc, ident, p, e, d, ismixin, literal);
+
+    TemplateDeclaration *td;
+    if (s)
+        td = (TemplateDeclaration *)s;
+    else
+        td = new TemplateDeclaration(loc, ident, p, e, d, ismixin, literal);
 #if IN_LLVM
     td->intrinsicName = intrinsicName;
 #endif
