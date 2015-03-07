@@ -354,13 +354,41 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
         if (!isNonPODRecord(Ty))
             e = new PtrExp(loc, e);
     }
+    else if (auto CCE = dyn_cast<clang::CXXConstructExpr>(E))
+    {
+        t = tymap.fromType(E->getType());
+
+        auto args = new Expressions;
+        for (auto Arg: CCE->arguments())
+            args->push(fromExpression(Arg));
+
+        e = new NewExp(loc, nullptr, nullptr, t, args);
+        if (!isNonPODRecord(E->getType()))
+            e = new PtrExp(loc, e);
+    }
+    else if (auto CNE = dyn_cast<clang::CXXNewExpr>(E))
+    {
+        auto Ty = CNE->getAllocatedType();
+        t = tymap.fromType(Ty);
+
+        Expressions *args = nullptr;
+        if (auto Construct = CNE->getConstructExpr())
+        {
+            args = new Expressions;
+            for (auto Arg: Construct->arguments())
+                args->push(fromExpression(Arg));
+        }
+
+        e = new NewExp(loc, nullptr, nullptr, t, args);
+        if (isNonPODRecord(E->getType()))
+            e = new AddrExp(loc, e);
+    }
+
 
     if (isa<clang::InitListExpr>(E)) //TODO
         return new NullExp(loc);
 
-    if (isa<clang::CXXConstructExpr>(E) ||
-        isa<clang::CXXUnresolvedConstructExpr>(E) ||
-        isa<clang::CXXNewExpr>(E)) // TODO implement evaluation
+    if (isa<clang::CXXUnresolvedConstructExpr>(E))
         return new NullExp(loc) /* nullptr */;
 
     if (e)
