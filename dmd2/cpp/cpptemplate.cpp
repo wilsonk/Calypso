@@ -262,7 +262,9 @@ void TemplateDeclaration::correctTempDecl(TemplateInstance *ti)
             break;
         }
     }
-    assert(static_cast<cpp::TemplateDeclaration*>(ti->tempdecl)->TempOrSpec->getCanonicalDecl() == RealTemp);
+    
+    assert(static_cast<cpp::TemplateDeclaration*>(ti->tempdecl)
+            ->TempOrSpec->getCanonicalDecl() == RealTemp);
 }
 
 TemplateInstance::TemplateInstance(Loc loc, Identifier* temp_id)

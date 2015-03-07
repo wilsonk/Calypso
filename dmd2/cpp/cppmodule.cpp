@@ -593,8 +593,7 @@ bool isTemplateParameterPack(const clang::NamedDecl *Param)
 }
 
 Dsymbols *DeclMapper::VisitRedeclarableTemplateDecl(const clang::RedeclarableTemplateDecl *D)
-{   TemplateDeclaration *a;
-
+{
     if (!isa<clang::ClassTemplateDecl>(D) && !isa<clang::TypeAliasTemplateDecl>(D)
          && !isa<clang::FunctionTemplateDecl>(D))
         return nullptr; // temporary
@@ -610,11 +609,12 @@ Dsymbols *DeclMapper::VisitRedeclarableTemplateDecl(const clang::RedeclarableTem
     if (!id)
         return nullptr; // TODO: map unsupported overloaded operators
 
+    auto Def = D;
     if (auto CTD = dyn_cast<clang::ClassTemplateDecl>(D))
-        D = CTD = getDefinition(CTD);
+        Def = getDefinition(CTD);
 
     auto tpl = !op ? new TemplateParameters : initTempParamsForOO(loc, op);
-    auto TPL = D->getTemplateParameters();
+    auto TPL = Def->getTemplateParameters();
 
     templateParameters.push_back(TPL);
 
@@ -635,7 +635,7 @@ Dsymbols *DeclMapper::VisitRedeclarableTemplateDecl(const clang::RedeclarableTem
         tpl->push(tp);
     }
 
-    auto s = VisitDecl(D->getTemplatedDecl()->getCanonicalDecl());
+    auto s = VisitDecl(Def->getTemplatedDecl()->getCanonicalDecl());
 
     if (!s)
         return nullptr;
@@ -645,7 +645,7 @@ Dsymbols *DeclMapper::VisitRedeclarableTemplateDecl(const clang::RedeclarableTem
 
     templateParameters.pop_back();
 
-    a = new TemplateDeclaration(loc, id, tpl, decldefs, D);
+    auto a = new TemplateDeclaration(loc, id, tpl, decldefs, D);
     return oneSymbol(a);
 }
 
