@@ -183,8 +183,8 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
         }
         else if (auto FuncTemp = dyn_cast<clang::FunctionTemplateDecl>(Temp))
         {
-            assert(FuncTemp->getTemplatedDecl() &&
-                    FuncTemp->getTemplatedDecl()->isDefined());
+            assert(FuncTemp->getTemplatedDecl()->isDefined() ||
+                    FuncTemp->getInstantiatedFromMemberTemplate());
 
             // Converts TemplateArgumentListInfo to something suitable for TemplateArgumentList
             llvm::SmallVector<clang::TemplateArgument, 4> Converted;
@@ -262,7 +262,7 @@ void TemplateDeclaration::correctTempDecl(TemplateInstance *ti)
             break;
         }
     }
-    
+
     assert(static_cast<cpp::TemplateDeclaration*>(ti->tempdecl)
             ->TempOrSpec->getCanonicalDecl() == RealTemp);
 }
