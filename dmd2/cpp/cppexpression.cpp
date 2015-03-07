@@ -356,6 +356,9 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
     }
     else if (auto CCE = dyn_cast<clang::CXXConstructExpr>(E))
     {
+        if (CCE->isElidable())
+            return fromExpression(CCE->getArg(0));
+
         t = tymap.fromType(E->getType());
 
         auto args = new Expressions;
@@ -372,7 +375,8 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
         t = tymap.fromType(Ty);
 
         Expressions *args = nullptr;
-        if (auto Construct = CNE->getConstructExpr())
+        auto Construct = CNE->getConstructExpr();
+        if (Construct && !Construct->isElidable())
         {
             args = new Expressions;
             for (auto Arg: Construct->arguments())
