@@ -198,7 +198,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
             postfix = 'w';
         else if (SL->getCharByteWidth() == 4)
             postfix = 'd';
-        else assert(SL->getCharByteWidth() == 0);
+        else assert(SL->getCharByteWidth() == 1);
 
         return new StringExp(loc, const_cast<char*>(SL->getString().data()),
                              SL->getLength(), postfix);
