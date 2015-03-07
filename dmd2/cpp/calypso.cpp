@@ -137,6 +137,20 @@ static Identifier *getOperatorIdentifier(const clang::FunctionDecl *FD,
 
                         if (LHSType.getCanonicalType() == RHSType.getCanonicalType())
                             isIdentityAssign = true;
+
+                        // If RHS is a template specialization with dependent args there's a chance one specialization
+                        // of the templated overloaded operator ends up being the identity assignment
+                        auto LHSTempSpec = dyn_cast<clang::ClassTemplateSpecializationDecl>(MD->getParent());
+                        auto RHSTempSpecTy = RHSType->getAs<clang::TemplateSpecializationType>();
+
+                        if (LHSTempSpec && RHSTempSpecTy)
+                        {
+                            auto LHSTemp = LHSTempSpec->getSpecializedTemplate();
+                            auto RHSTemp = RHSTempSpecTy->getTemplateName().getAsTemplateDecl();
+
+                            if (RHSTemp && LHSTemp->getCanonicalDecl() == RHSTemp->getCanonicalDecl())
+                                isIdentityAssign = true;
+                        }
                     }
 
                     if (isIdentityAssign)
