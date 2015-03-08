@@ -889,8 +889,12 @@ Dsymbols *DeclMapper::VisitClassTemplateSpecializationDecl(const clang::ClassTem
 
 Dsymbols *DeclMapper::VisitEnumDecl(const clang::EnumDecl* D)
 {
-    if (!D->isCompleteDefinition() && D->getDefinition())
+    if (!D->isCompleteDefinition())
+    {
         D = D->getDefinition();
+        if (!D)
+            return nullptr; // forward declaration without definition, skip
+    }
 
     auto loc = fromLoc(D->getLocation());
     auto ident = getIdentifierOrNull(D);

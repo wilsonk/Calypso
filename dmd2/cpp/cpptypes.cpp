@@ -1321,8 +1321,19 @@ const clang::Decl* TypeMapper::GetImplicitImportKeyForDecl(const clang::NamedDec
 // are special cases, they're mapped to D aggregates instead of aliases
 const clang::TagDecl *isAnonTagTypedef(const clang::TypedefNameDecl* D)
 {
-    if (auto TagTy = dyn_cast<clang::TagType>
-            (D->getUnderlyingType()))
+    auto& Context = calypso.getASTContext();
+
+    // Remove sugar other than aliases
+    auto Ty = D->getUnderlyingType();
+    auto OneStepDesugar = Ty.getSingleStepDesugaredType(Context);
+    while (!isa<clang::TypedefType>(*Ty) &&
+            OneStepDesugar.getTypePtr() != Ty.getTypePtr())
+    {
+        Ty = OneStepDesugar;
+        OneStepDesugar = Ty.getSingleStepDesugaredType(Context);
+    }
+
+    if (auto TagTy = dyn_cast<clang::TagType>(Ty.getTypePtr()))
     {
         auto Tag = TagTy->getDecl();
 
