@@ -4817,7 +4817,7 @@ Type *reliesOnTident(Type *t, TemplateParameters *tparams, size_t iStart)
                 t->next->accept(this);
         }
 
-        void visit(TypeIdentifier *t)
+        void visitIdentifier(Type *t, Identifier *id)
         {
             if (!tparams)
             {
@@ -4828,7 +4828,7 @@ Type *reliesOnTident(Type *t, TemplateParameters *tparams, size_t iStart)
             for (size_t i = iStart; i < tparams->dim; i++)
             {
                 TemplateParameter *tp = (*tparams)[i];
-                if (tp->ident->equals(t->ident))
+                if (tp->ident->equals(id))
                 {
                     result = t;
                     return;
@@ -4836,7 +4836,7 @@ Type *reliesOnTident(Type *t, TemplateParameters *tparams, size_t iStart)
             }
         }
 
-        void visit(TypeInstance *t)
+        void visitTempInst(Type *t, TemplateInstance *ti)
         {
             if (!tparams)
                 return;
@@ -4844,17 +4844,17 @@ Type *reliesOnTident(Type *t, TemplateParameters *tparams, size_t iStart)
             for (size_t i = iStart; i < tparams->dim; i++)
             {
                 TemplateParameter *tp = (*tparams)[i];
-                if (t->tempinst->name == tp->ident)
+                if (ti->name == tp->ident)
                 {
                     result = t;
                     return;
                 }
             }
-            if (!t->tempinst->tiargs)
+            if (!ti->tiargs)
                 return;
-            for (size_t i = 0; i < t->tempinst->tiargs->dim; i++)
+            for (size_t i = 0; i < ti->tiargs->dim; i++)
             {
-                Type *ta = isType((*t->tempinst->tiargs)[i]);
+                Type *ta = isType((*ti->tiargs)[i]);
                 if (ta)
                 {
                     ta->accept(this);
@@ -4862,6 +4862,43 @@ Type *reliesOnTident(Type *t, TemplateParameters *tparams, size_t iStart)
                         return;
                 }
             }
+        }
+
+        void visitIdents(TypeQualified *t)
+        {
+            for (size_t i = 0; i < t->idents.dim; i++)
+            {
+                RootObject *o = t->idents[i];
+                if (o->dyncast() == DYNCAST_IDENTIFIER)
+                {
+                    Identifier *id = (Identifier *)o;
+                    visitIdentifier(t, id);
+                }
+                else if (o->dyncast() == DYNCAST_DSYMBOL)
+                {
+                    TemplateInstance *ti = (TemplateInstance *)o;
+                    visitTempInst(t, ti);
+                }
+
+                if (result)
+                    return;
+            }
+        }
+
+        void visit(TypeIdentifier *t)
+        {
+            visitIdentifier(t, t->ident);
+            if (result)
+                return;
+            visitIdents(t);
+        }
+
+        void visit(TypeInstance *t)
+        {
+            visitTempInst(t, t->tempinst);
+            if (result)
+                return;
+            visitIdents(t);
         }
 
         void visit(TypeTuple *t)
