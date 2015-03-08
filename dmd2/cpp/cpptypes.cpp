@@ -1326,7 +1326,9 @@ const clang::TagDecl *isAnonTagTypedef(const clang::TypedefNameDecl* D)
     // Remove sugar other than aliases
     auto Ty = D->getUnderlyingType();
     auto OneStepDesugar = Ty.getSingleStepDesugaredType(Context);
-    while (!isa<clang::TypedefType>(*Ty) &&
+    while ((isa<clang::ElaboratedType>(*Ty) ||
+                isa<clang::ParenType>(*Ty) ||
+                isa<clang::AdjustedType>(*Ty)) &&
             OneStepDesugar.getTypePtr() != Ty.getTypePtr())
     {
         Ty = OneStepDesugar;
