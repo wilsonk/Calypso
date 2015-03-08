@@ -202,12 +202,13 @@ Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
         {
             auto RD = RT->getDecl();
 
-            if (RD->isAnonymousStructOrUnion()) // NOTE: in union {...} myUnion this will be false, see Decl.h
-                return VisitRecordDecl(RD);
-
-            // FIXME how to handle union {...} myUnion? Ignore them for now
-            if (!RD->getIdentifier())
+            // NOTE: in union {...} myUnion isAnonymousStructOrUnion() will be false, see Decl.h
+            if (RD->isAnonymousStructOrUnion() || !RD->getIdentifier())
                 return nullptr;
+
+            // TODO how to handle union {...} myUnion?
+            // We could try adding the aggregate without an id, and assign a TypeClass/TypeStruct straightaway.
+            // Ignore them for now.
         }
     }
 
