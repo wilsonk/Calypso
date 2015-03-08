@@ -251,6 +251,7 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
 {
     auto& Context = calypso.pch.AST->getASTContext();
     auto& S = calypso.pch.AST->getSema();
+    auto Canon = D->getCanonicalDecl();
 
     if (D->isImplicit())
         return nullptr;
@@ -374,8 +375,12 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
     typedef clang::DeclContext::specific_decl_iterator<clang::DECL##Decl> DECL##_iterator; \
     for (DECL##_iterator I(D->decls_begin()), E(D->decls_end()); \
                 I != E; I++) \
+    { \
+        if (cast<clang::Decl>((*I)->getDeclContext())->getCanonicalDecl() != Canon) \
+            continue;  /* only map declarations that are semantically within the RecordDecl */ \
         if (auto s = VisitDecl(*I)) \
-            members->append(s);
+            members->append(s); \
+    }
 
     SPECIFIC_ADD(Tag)
     SPECIFIC_ADD(Var)
@@ -1117,12 +1122,17 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
             for (; I != E; ++I)
             {
                 DC = *I;
+                auto CanonDC = cast<clang::Decl>(DC)->getCanonicalDecl();
 
                 auto D = DC->decls_begin(),
                         DE = DC->decls_end();
 
                 for (; D != DE; ++D)
                 {
+                    if (cast<clang::Decl>(D->getDeclContext())->getCanonicalDecl()
+                            != CanonDC)
+                        continue;  // only map declarations that are semantically within the DeclContext
+
                     if (!isa<clang::FunctionDecl>(*D) &&
                             !isa<clang::VarDecl>(*D) &&
                             !isa<clang::TypedefNameDecl>(*D) &&
