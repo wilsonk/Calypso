@@ -345,7 +345,13 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
     else if (auto SVI = dyn_cast<clang::CXXScalarValueInitExpr>(E))
     {
         t = tymap.fromType(E->getType());
-        return new DotIdExp(loc, new TypeExp(loc, t), Id::init);
+
+        e = new DotIdExp(loc, new TypeExp(loc, t), Id::init);
+        auto args = new Expressions;
+        args->push(e);
+
+        e = new NewExp(loc, nullptr, nullptr, t, args);
+        e = new PtrExp(loc, e);
     }
     else if (auto MT = dyn_cast<clang::MaterializeTemporaryExpr>(E))
     {
