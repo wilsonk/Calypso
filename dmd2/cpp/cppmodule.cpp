@@ -190,6 +190,9 @@ Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
     if (isNonSupportedType(D->getType()))
         return nullptr;
 
+    if (isa<clang::IndirectFieldDecl>(D)) // implicit fields injected from anon unions/structs, which are already mapped
+        return nullptr;
+
     auto loc = fromLoc(D->getLocation());
     auto Ty = D->getType().getDesugaredType(Context);
 
