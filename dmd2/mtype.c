@@ -8992,6 +8992,10 @@ int TypeClass::isBaseOf(Type *t, int *poffset)
 MATCH TypeClass::implicitConvTo(Type *to)
 {
     //printf("TypeClass::implicitConvTo(to = '%s') %s\n", to->toChars(), toChars());
+    if (to->ty == Tvalueof) // CALYPSO
+        if (implicitConvTo(to->nextOf()) > MATCHnomatch)
+            return MATCHconvert;
+
     MATCH m = constConv(to);
     if (m > MATCHnomatch)
         return m;
