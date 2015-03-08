@@ -114,8 +114,12 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
     if (auto PE = dyn_cast<clang::ParenExpr>(E))
         return fromExpression(PE->getSubExpr());
     else if (auto ICE = dyn_cast<clang::CastExpr>(E))
-        return fromExpression(ICE->getSubExpr(),
-                            tymap.fromType(ICE->getType()));
+    {
+        if (ICE->getCastKind() != clang::CK_NoOp)
+            t = tymap.fromType(ICE->getType());
+
+        return fromExpression(ICE->getSubExpr(), t);
+    }
     else if (auto CDA = dyn_cast<clang::CXXDefaultArgExpr>(E))
         return fromExpression(CDA->getExpr());
 
@@ -395,7 +399,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
     if (e)
     {
         if (!t || !destType ||
-                t->implicitConvTo(destType) > MATCHconvert)
+                t->implicitConvTo(destType) > MATCHconst)
             return e;
 
         return new CastExp(loc, e, destType);
