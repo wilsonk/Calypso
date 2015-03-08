@@ -738,8 +738,6 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* D,
             // TODO: check that this doesn't happen when called from TypeMapper would be more solid
         return nullptr;
 
-    auto NonNestedDC = tm.GetNonNestedContext(D);
-
     // This is currently the only place where a "C++ scope" is used, this is
     // especially needed for identifier lookups during template instantiations
     while (!ScopeStack.empty())
@@ -759,41 +757,37 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* D,
             }
 
             Previous = DCDecl;
-            auto DC = DCDecl->getDeclContext();
-            while (!isa<clang::Decl>(DC))
-                DC = DC->getParent();
-            DCDecl = cast<clang::Decl>(DC);
+            DCDecl = cast<clang::Decl>(getDeclContextNamedOrTU(DCDecl));
         }
 
-        bool fullyQualify = false;
-
-        auto ScopeDC = cast<clang::DeclContext>(ScopeDecl);
-        auto LookupResult = ScopeDC->lookup(Name);
-        for (auto Decl: LookupResult)
-        {
-            if (Decl->isImplicit())
-                continue;
-
-            if (D->getCanonicalDecl() != Decl->getCanonicalDecl())
-            {
-                fullyQualify = true;
-                break;
-            }
-        }
-
-        if (auto Named = dyn_cast<clang::NamedDecl>(ScopeDecl))
-            if (clang::DeclarationName::compare(Named->getDeclName(), Name) == 0)
-                fullyQualify = true;
-
-        if (fullyQualify)
-        {
-            Root = D->getTranslationUnitDecl(); // to avoid name collisions, we fully qualify the type
-            goto LrootDone;
-        }
+//         bool fullyQualify = false;
+//
+//         auto ScopeDC = cast<clang::DeclContext>(ScopeDecl);
+//         auto LookupResult = ScopeDC->lookup(Name);
+//         for (auto Decl: LookupResult)
+//         {
+//             if (Decl->isImplicit())
+//                 continue;
+//
+//             fullyQualify = true;
+//             break;
+//         }
+//
+//         if (auto Named = dyn_cast<clang::NamedDecl>(ScopeDecl))
+//             if (clang::DeclarationName::compare(Named->getDeclName(), Name) == 0)
+//                 fullyQualify = true;
+//
+        // NOTE: this isn't enough to check for collisions, imported symbols might collide too
+        // and implicit imports aren't known until the end of the mapping.
+//
+//         if (fullyQualify)
+//         {
+//             Root = D->getTranslationUnitDecl(); // to avoid name collisions, we fully qualify the type
+//             goto LrootDone;
+//         }
     }
 
-    Root = !isa<clang::TagDecl>(NonNestedDC) ?
-            D->getTranslationUnitDecl() : NonNestedDC;
+    Root = D->getTranslationUnitDecl();
 
 LrootDone:
     tm.AddImplicitImportForDecl(D);
