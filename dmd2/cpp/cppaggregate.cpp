@@ -164,13 +164,7 @@ FuncDeclaration *ClassDeclaration::findMethod(const clang::CXXMethodDecl* MD)
     TypeMapper tmap;
     tmap.addImplicitDecls = false;
 
-    Identifier *ident;
-    if (isa<clang::CXXConstructorDecl>(MD))
-        ident = Id::ctor;
-    else if (isa<clang::CXXDestructorDecl>(MD))
-        ident = Id::dtor;
-    else
-        ident = fromIdentifier(MD->getIdentifier());
+    auto ident = getExtendedIdentifier(MD);
 
     auto s = ScopeDsymbol::search(loc, ident);
     if (s)

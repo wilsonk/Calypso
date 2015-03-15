@@ -42,6 +42,17 @@ Identifier *fromIdentifier(const clang::IdentifierInfo *II)
         // Is this the cost of interfacing with Clang or is there another way? (probably not an easy one)
 }
 
+static const char *getOperatorName(const clang::OverloadedOperatorKind OO)
+{
+    switch (OO)
+    {
+#   define OVERLOADED_OPERATOR(Name,Spelling,Token,Unary,Binary,MemberOnly) \
+        case clang::OO_##Name: return #Name;
+#   include "clang/Basic/OperatorKinds.def"
+        default: return "None";
+    }
+}
+
 static const char *getDOperatorSpelling(const clang::OverloadedOperatorKind OO)
 {
     switch (OO)
@@ -219,6 +230,24 @@ Identifier *getIdentifier(const clang::NamedDecl *D, const char **op)
     assert(result);
 
     return result;
+}
+
+Identifier *getExtendedIdentifier(const clang::NamedDecl *D)
+{
+    const char *op;
+    auto ident = getIdentifier(D, &op);
+
+    auto FD = dyn_cast<clang::FunctionDecl>(D);
+    if (op && FD)
+    {
+        auto OO = FD->getOverloadedOperator();
+        std::string fullName(ident->string, ident->len);
+        fullName += "_";
+        fullName += getOperatorName(OO);
+        ident = Lexer::idPool(fullName.c_str());
+    }
+
+    return ident;
 }
 
 Loc fromLoc(clang::SourceLocation L)

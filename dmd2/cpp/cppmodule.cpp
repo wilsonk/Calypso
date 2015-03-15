@@ -413,17 +413,6 @@ Dsymbols *DeclMapper::VisitTypedefNameDecl(const clang::TypedefNameDecl* D)
     return oneSymbol(a);
 }
 
-static const char *getOperatorName(const clang::OverloadedOperatorKind OO)
-{
-    switch (OO)
-    {
-#   define OVERLOADED_OPERATOR(Name,Spelling,Token,Unary,Binary,MemberOnly) \
-        case clang::OO_##Name: return #Name;
-#   include "clang/Basic/OperatorKinds.def"
-        default: return "None";
-    }
-}
-
 TemplateParameters *initTempParamsForOO(Loc loc, const char *op)
 {
     auto dstringty = new TypeIdentifier(loc, Id::object);
@@ -517,13 +506,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 
         Identifier *fullIdent;
         if (wrapInTemp)
-        {
-            auto OO = D->getOverloadedOperator();
-            std::string fullName(opIdent->string, opIdent->len);
-            fullName += "_";
-            fullName += getOperatorName(OO);
-            fullIdent = Lexer::idPool(fullName.c_str());
-        }
+            fullIdent = getExtendedIdentifier(D);
         else
             fullIdent = opIdent;
 

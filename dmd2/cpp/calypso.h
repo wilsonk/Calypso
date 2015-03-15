@@ -43,6 +43,7 @@ namespace clangCG = clang::CodeGen;
 Identifier *fromIdentifier(const clang::IdentifierInfo *II);
 Identifier *getIdentifier(const clang::NamedDecl *D, const char **op = nullptr);
 Identifier *getIdentifierOrNull(const clang::NamedDecl *D, const char **op = nullptr);
+Identifier *getExtendedIdentifier(const clang::NamedDecl *D); // will return the name of the non-templated method for operators, same than getIdentifier() for other Decls
 
 Loc fromLoc(clang::SourceLocation L);
 
