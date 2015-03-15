@@ -915,6 +915,7 @@ Dsymbols *DeclMapper::VisitEnumDecl(const clang::EnumDecl* D)
     }
 
     auto e = new EnumDeclaration(loc, ident, memtype, D);
+    CXXScope.push(D);
 
     for (auto ECD: D->enumerators())
     {
@@ -931,6 +932,7 @@ Dsymbols *DeclMapper::VisitEnumDecl(const clang::EnumDecl* D)
         e->members->push(em);
     }
 
+    CXXScope.pop();
     return oneSymbol(e);
 }
 
