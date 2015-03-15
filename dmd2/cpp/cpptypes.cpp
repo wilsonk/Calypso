@@ -720,6 +720,9 @@ const clang::Decl *TypeMapper::GetRootForTypeQualified(clang::NamedDecl *D)
     clang::DeclarationName Name;
     decltype(CXXScope) ScopeStack(CXXScope);
 
+    if (mod && D->getCanonicalDecl() == mod->rootDecl->getCanonicalDecl())
+        return D;
+
     if (D->getIdentifier() ||
             D->getDeclName().getNameKind() == clang::DeclarationName::CXXOperatorName)
         Name =  D->getDeclName();
