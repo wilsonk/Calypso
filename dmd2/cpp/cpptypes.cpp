@@ -715,18 +715,11 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::NamedDecl *D)
     return tqual;
 }
 
-Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* D,
-    const clang::TemplateArgument *TempArgBegin,
-    const clang::TemplateArgument *TempArgEnd)
+const clang::Decl *TypeMapper::GetRootForTypeQualified(clang::NamedDecl *D)
 {
-    if (!TempArgBegin)
-        if (auto subst = tm.trySubstitute(D)) // HACK for correctTiargs
-            return subst;
-
-    const clang::Decl *Root;
-    decltype(CXXScope) ScopeStack(tm.CXXScope);
-
     clang::DeclarationName Name;
+    decltype(CXXScope) ScopeStack(CXXScope);
+
     if (D->getIdentifier() ||
             D->getDeclName().getNameKind() == clang::DeclarationName::CXXOperatorName)
         Name =  D->getDeclName();
@@ -751,10 +744,7 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* D,
         while(!isa<clang::TranslationUnitDecl>(DCDecl))
         {
             if (ScopeDeclEquals(DCDecl))
-            {
-                Root = Previous;
-                goto LrootDone;
-            }
+                return Previous;
 
             Previous = DCDecl;
             DCDecl = cast<clang::Decl>(getDeclContextNamedOrTU(DCDecl));
@@ -787,11 +777,20 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* D,
 //         }
     }
 
-    Root = D->getTranslationUnitDecl();
+    return D->getTranslationUnitDecl();
+}
 
-LrootDone:
+Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* D,
+    const clang::TemplateArgument *TempArgBegin,
+    const clang::TemplateArgument *TempArgEnd)
+{
+    if (!TempArgBegin)
+        if (auto subst = tm.trySubstitute(D)) // HACK for correctTiargs
+            return subst;
+
+    auto Root = tm.GetRootForTypeQualified(D);
+
     tm.AddImplicitImportForDecl(D);
-
     return TypeQualifiedBuilder(*this, Root, TempArgBegin, TempArgEnd).get(D);
 }
 

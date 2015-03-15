@@ -152,10 +152,10 @@ protected:
 
     bool isNonExplicitInjectedClassName(const clang::Decl *D); // misleading name although that's what it is
 
-    void AddImplicitImportForDecl(const clang::NamedDecl* D);
+    const clang::Decl *GetRootForTypeQualified(clang::NamedDecl* D);
 
+    void AddImplicitImportForDecl(const clang::NamedDecl* D);
     ::Import *BuildImplicitImport(const clang::Decl *D);
-    
     const clang::Decl *GetImplicitImportKeyForDecl(const clang::NamedDecl *D);
     const clang::Decl *GetNonNestedContext(const clang::Decl *D);  // returns the "root" for qualified types
 
