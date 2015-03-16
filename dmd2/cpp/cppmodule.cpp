@@ -1123,6 +1123,8 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
     // HACK « hardcoded modules »
     if (strcmp(id->string, "_") == 0)
     {
+        m->rootDecl = cast<clang::Decl>(DC)->getCanonicalDecl();
+
         // All non-tag declarations inside the namespace go in _ (this is horrible for C functions of course, this will be fixed by the switch to Clang module system)
         auto NS = dyn_cast<clang::NamespaceDecl>(DC);
 
@@ -1133,8 +1135,6 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
         }
         else
         {
-            m->rootDecl = NS->getCanonicalDecl();
-
             auto I = NS->redecls_begin(),
                     E = NS->redecls_end();
 
