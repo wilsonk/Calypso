@@ -218,6 +218,9 @@ Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
     if (!t)
         return nullptr;
 
+    if (t->isConst())
+        t = t->immutableOf();
+
     auto a = new VarDeclaration(loc, id, D, t);
 
     if (auto Var = dyn_cast<clang::VarDecl>(D))
@@ -231,16 +234,14 @@ Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
         if (Var->isStaticDataMember())
             a->storage_class |= STCstatic;
 
-        if (Var->isConstexpr() && Var->getAnyInitializer())
+        if ((Var->isConstexpr() || t->isImmutable()) &&
+                Var->getAnyInitializer())
         {
-            // we avoid initializer expressions except for constexpr variables
+            // we avoid initializer expressions except for const/constexpr variables
             auto e = expmap.fromExpression(Var->getAnyInitializer(),
                                            nullptr, true);
-            if (e->op != TOKnull)
-            {
+            if (e && e->op != TOKnull)
                 a->init = new ExpInitializer(loc, e);
-                a->storage_class |= STCimmutable;
-            }
         }
     }
 
