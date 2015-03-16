@@ -658,8 +658,13 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::NamedDecl *D)
                 return tqual;
         }
         else
-            tqual = get(cast<clang::NamedDecl>(
-                    getDeclContextNamedOrTU(D)));
+        {
+            auto DC = getDeclContextNamedOrTU(D);
+            if (auto NamedDC = dyn_cast<clang::NamedDecl>(DC))
+                tqual = get(NamedDC);
+            else
+                tqual = new TypeIdentifier(Loc(), Lexer::idPool("_"));
+        }
     }
 
     auto o = getIdentOrTempinst(D);
