@@ -54,11 +54,11 @@ void main()
     write('\n');
     writeln("b as ulong = \t ", b.to_ulong); // '13' is correct
 
+// FAILURE seems like a template argument error due to enum
+//    writeln("A bit is still = ", usedColors[A]);  // false
+
 // FAILURE in phobos format.d
 //    writeln(b);
-
-// FAILURE because the [] operator isn't recognised
-//    writeln(usedColors[C]);
 
 // FAILURE on operators again
 //    auto d = a&b;
