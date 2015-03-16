@@ -436,7 +436,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 
     auto loc = fromLoc(D->getLocation());
 
-    auto FPT = cast<clang::FunctionProtoType>(D->getType().getTypePtr());
+    auto FPT = D->getType()->castAs<clang::FunctionProtoType>();
     auto MD = dyn_cast<clang::CXXMethodDecl>(D);
     
     auto tf = FromType(*this).fromTypeFunction(FPT, D);
