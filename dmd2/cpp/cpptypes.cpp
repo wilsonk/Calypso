@@ -1359,8 +1359,8 @@ const clang::Decl *TypeMapper::GetNonNestedContext(const clang::Decl *D)
     auto ParentDC = cast<clang::Decl>(
                         getDeclContextNamedOrTU(D));
 
-    if (auto ParentTag = dyn_cast<clang::TagDecl>(ParentDC))
-        return GetNonNestedContext(ParentTag);
+    if (isa<clang::TagDecl>(ParentDC))
+        return GetNonNestedContext(ParentDC);
 
     if (isa<clang::TagDecl>(D))
         return D;
@@ -1526,7 +1526,11 @@ const clang::DeclContext *getDeclContextNamedOrTU(const clang::Decl *D)
     while (isa<clang::LinkageSpecDecl>(DC))
         DC = DC->getParent();
 
-    assert(isa<clang::NamedDecl>(DC) || isa<clang::TranslationUnitDecl>(DC));
+    auto NamedDC = dyn_cast<clang::NamedDecl>(DC);
+    if (NamedDC && !NamedDC->getIdentifier())
+        return getDeclContextNamedOrTU(NamedDC);
+
+    assert(NamedDC || isa<clang::TranslationUnitDecl>(DC));
     return DC;
 }
 

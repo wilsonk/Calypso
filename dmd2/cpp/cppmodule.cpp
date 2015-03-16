@@ -1119,7 +1119,10 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
                             != CanonDC)
                         continue;  // only map declarations that are semantically within the DeclContext
 
-                    if (!isa<clang::FunctionDecl>(*D) &&
+                    auto Enum = dyn_cast<clang::EnumDecl>(*D);
+                    if (Enum && Enum->getIdentifier())
+                        continue; // anonymous enums will be added as well (could this happen for records/unions too?)
+                    else if (!isa<clang::FunctionDecl>(*D) &&
                             !isa<clang::VarDecl>(*D) &&
                             !isa<clang::TypedefNameDecl>(*D) &&
                             !isa<clang::FunctionTemplateDecl>(*D) &&
