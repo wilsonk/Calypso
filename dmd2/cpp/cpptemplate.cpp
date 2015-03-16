@@ -202,10 +202,14 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
             if (Instantiating.isInvalid())
                 assert(false && "InstantiatingTemplate is invalid");
 
-            auto FuncInst = cast<clang::FunctionDecl>(
+            auto FuncInst = llvm::cast_or_null<clang::FunctionDecl>(
                             S.SubstDecl(FuncTemp->getTemplatedDecl(),
                                         Temp->getDeclContext(), MultiList));
-            assert(FuncInst && "Sema::SubstDecl failed");
+            if (!FuncInst)
+            {
+                ti->errors = true; // probably an attempt from functionResolve()
+                return ti;
+            }
 
             // Then the definition
             S.InstantiateFunctionDefinition(Temp->getLocation(), FuncInst, true);
