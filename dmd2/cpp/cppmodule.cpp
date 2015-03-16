@@ -1033,6 +1033,39 @@ bool isOverloadedOperatorWithTagOperand(const clang::Decl *D,
     return OpTyDecl->getCanonicalDecl() == SpecificTag->getCanonicalDecl();
 }
 
+static void mapTUOrNamespace(DeclMapper &mapper,
+                             const clang::DeclContext *DC,
+                             Dsymbols *members)
+{
+    auto CanonDC = cast<clang::Decl>(DC)->getCanonicalDecl();
+
+    auto D = DC->decls_begin(),
+            DE = DC->decls_end();
+
+    for (; D != DE; ++D)
+    {
+        if (cast<clang::Decl>(D->getDeclContext())->getCanonicalDecl()
+                != CanonDC)
+            continue;  // only map declarations that are semantically within the DeclContext
+
+        auto Enum = dyn_cast<clang::EnumDecl>(*D);
+        if (Enum && Enum->getIdentifier())
+            continue; // anonymous enums are added as well (should this be done for records/unions too?)
+        else if (!isa<clang::FunctionDecl>(*D) &&
+                !isa<clang::VarDecl>(*D) &&
+                !isa<clang::TypedefNameDecl>(*D) &&
+                !isa<clang::FunctionTemplateDecl>(*D) &&
+                !isa<clang::TypeAliasTemplateDecl>(*D))
+            continue;
+
+        if (isOverloadedOperatorWithTagOperand(*D))
+            continue;  // non-member overloaded operators with class/struct/enum operands are included in their own module
+
+        if (auto s = mapper.VisitDecl(*D))
+            members->append(s);
+    }
+}
+
 // HACK: The C++ "module loading" works more like a hack at the moment.
 // Clang's C++ modules being currently « very experimental and broken », using Clang's module system
 // would add many further obstacles to get Calypso working, so I've decided to stick to one big PCH for the
@@ -1095,8 +1128,8 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
 
         if (!NS)
         {
-            warning(Loc(), "package isn't a C++ namespace yet module is '_', ignoring this module for now (testing, will add TU later)");
-//             warning(Loc(), "_ identifiers will lose their special meaning after the switch to Clang's module system");
+            assert(isa<clang::TranslationUnitDecl>(DC));
+            mapTUOrNamespace(mapper, DC, m->members);
         }
         else
         {
@@ -1108,33 +1141,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
             for (; I != E; ++I)
             {
                 DC = *I;
-                auto CanonDC = cast<clang::Decl>(DC)->getCanonicalDecl();
-
-                auto D = DC->decls_begin(),
-                        DE = DC->decls_end();
-
-                for (; D != DE; ++D)
-                {
-                    if (cast<clang::Decl>(D->getDeclContext())->getCanonicalDecl()
-                            != CanonDC)
-                        continue;  // only map declarations that are semantically within the DeclContext
-
-                    auto Enum = dyn_cast<clang::EnumDecl>(*D);
-                    if (Enum && Enum->getIdentifier())
-                        continue; // anonymous enums will be added as well (could this happen for records/unions too?)
-                    else if (!isa<clang::FunctionDecl>(*D) &&
-                            !isa<clang::VarDecl>(*D) &&
-                            !isa<clang::TypedefNameDecl>(*D) &&
-                            !isa<clang::FunctionTemplateDecl>(*D) &&
-                            !isa<clang::TypeAliasTemplateDecl>(*D))
-                        continue;
-
-                    if (isOverloadedOperatorWithTagOperand(*D))
-                        continue;  // non-member overloaded operators with class/struct/enum operands are included in their own module
-
-                    if (auto s = mapper.VisitDecl(*D))
-                        m->members->append(s);
-                }
+                mapTUOrNamespace(mapper, DC, m->members);
             }
         }
     }
