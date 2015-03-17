@@ -1045,7 +1045,7 @@ bool isOverloadedOperatorWithTagOperand(const clang::Decl *D,
     return OpTyDecl->getCanonicalDecl() == SpecificTag->getCanonicalDecl();
 }
 
-static void mapTUOrNamespace(DeclMapper &mapper,
+static void mapNamespace(DeclMapper &mapper,
                              const clang::DeclContext *DC,
                              Dsymbols *members)
 {
@@ -1143,7 +1143,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
         if (!NS)
         {
             assert(isa<clang::TranslationUnitDecl>(DC));
-            mapTUOrNamespace(mapper, DC, m->members);
+            mapNamespace(mapper, DC, m->members);
         }
         else
         {
@@ -1153,7 +1153,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
             for (; I != E; ++I)
             {
                 DC = *I;
-                mapTUOrNamespace(mapper, DC, m->members);
+                mapNamespace(mapper, DC, m->members);
             }
         }
     }
