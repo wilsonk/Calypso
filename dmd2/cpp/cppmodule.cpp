@@ -948,48 +948,14 @@ std::string moduleName(Identifiers *packages, Identifier *ident)
 }
 
 // Look into namespace redecls if there are any
-clang::DeclContext::lookup_const_result wideLookup(Loc loc,
-                                                   const clang::DeclContext *DC,
-                                                   Identifier *id,
-                                                   bool lookupInRedecls = true)
+static clang::DeclContext::lookup_const_result lookup(const clang::DeclContext *DC,
+                                                   Identifier *id)
 {
     auto& AST = calypso.pch.AST;
     auto& Table = AST->getPreprocessor().getIdentifierTable();
     auto& II = Table.get(id->string);
 
-    if (lookupInRedecls)
-        if (auto NS = dyn_cast<clang::NamespaceDecl>(DC))
-        {
-            for (auto Redecl: NS->redecls())
-            {
-                auto R = wideLookup(loc, Redecl, id, false);
-                if (!R.empty())
-                    return R;
-            }
-        }
-
-    typedef clang::DeclContext::specific_decl_iterator<clang::LinkageSpecDecl>
-        linkagespec_iterator;
-    linkagespec_iterator LSI(DC->decls_begin()), LSE(DC->decls_end());
-
-    do
-    {
-        auto R = DC->lookup(clang::DeclarationName(&II));
-
-        if (!R.empty())
-            return R;
-
-        if (LSI != LSE)
-        {
-            DC = *LSI;
-            LSI++;
-        }
-        else
-            DC = nullptr;
-
-    } while(DC);
-
-    return clang::DeclContext::lookup_const_result();
+    return DC->lookup(clang::DeclarationName(&II));
 }
 
 bool isOverloadedOperatorWithTagOperand(const clang::Decl *D,
@@ -1103,7 +1069,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
     {
         Identifier *pid = (*packages)[i];
 
-        auto R = wideLookup(loc, DC, pid);
+        auto R = lookup(DC, pid);
         if (R.empty())
         {
             ::error(loc, "no C++ package named %s", pid->toChars());
@@ -1159,7 +1125,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
     }
     else
     {
-        auto R = wideLookup(loc, DC, id);
+        auto R = lookup(DC, id);
         if (R.empty())
         {
             ::error(loc, "no C++ module named %s", id->toChars());
