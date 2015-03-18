@@ -1361,16 +1361,15 @@ const clang::Decl *TypeMapper::GetNonNestedContext(const clang::Decl *D)
         if (auto AnonTag = isAnonTagTypedef(Typedef))
             D = AnonTag;
 
-    auto ParentDC = cast<clang::Decl>(
-                        getDeclContextNamedOrTU(D));
+    if (auto TagDC = dyn_cast<clang::TagDecl>(D->getDeclContext()))
+        return GetNonNestedContext(TagDC);
 
-    if (isa<clang::TagDecl>(ParentDC))
-        return GetNonNestedContext(ParentDC);
-
-    if (isa<clang::TagDecl>(D))
+    auto Tag = dyn_cast<clang::TagDecl>(D);
+    if (Tag && Tag->getIdentifier())
         return D;
 
-    return GetNonNestedContext(ParentDC);
+    return GetNonNestedContext(cast<clang::Decl>(
+                        getDeclContextNamedOrTU(D)));
 }
 
 static Identifier *BuildImplicitImportInternal(const clang::DeclContext *DC,
