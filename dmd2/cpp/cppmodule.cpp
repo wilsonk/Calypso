@@ -1026,9 +1026,9 @@ static void mapNamespace(DeclMapper &mapper,
                 != CanonDC)
             continue;  // only map declarations that are semantically within the DeclContext
 
-        auto Enum = dyn_cast<clang::EnumDecl>(*D);
-        if (Enum && Enum->getIdentifier())
-            continue; // anonymous enums are added as well (should this be done for records/unions too?)
+        auto Tag = dyn_cast<clang::TagDecl>(*D);
+        if (Tag && Tag->getIdentifier())
+            continue; // anonymous tags are added as well
         else if (!isa<clang::FunctionDecl>(*D) &&
                 !isa<clang::VarDecl>(*D) &&
                 !isa<clang::TypedefNameDecl>(*D) &&
