@@ -4326,7 +4326,7 @@ MATCH deduceType(RootObject *o, Scope *sc, Type *tparam, TemplateParameters *par
             auto tsym = (TypeQualified *) tparam->syntaxCopy();
 
             while (tsym->idents.dim &&
-                    reliesOnTident(tparam, parameters, inferStart))
+                    reliesOnTident(tsym, parameters, inferStart))
                 tsym->idents.dim--;
             size_t firstDepIdent = tsym->idents.dim;
 
@@ -4468,7 +4468,7 @@ MATCH deduceType(RootObject *o, Scope *sc, Type *tparam, TemplateParameters *par
                     TypeQualified *tqual = (TypeQualified *) t;
                     if (tqual->idents.dim)
                     {
-                        auto o = tqual->idents.pop();
+                        auto o = tqual->idents.back();
                         if (isDsymbol(o))
                             return Tinstance;
                         else
