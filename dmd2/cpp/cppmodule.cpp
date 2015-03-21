@@ -1116,6 +1116,8 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
         if (!NS)
         {
             assert(isa<clang::TranslationUnitDecl>(DC));
+
+#if 0
             mapNamespace(mapper, DC, m->members);
 
             // Adds the implicit __va_list_tag
@@ -1125,6 +1127,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
             auto a = mapper.VisitRecordDecl(VaListTag, DeclMapper::MapImplicit);
             assert(a);
             m->members->append(a);
+#endif
         }
         else
         {
