@@ -153,31 +153,33 @@ Dsymbols *DeclMapper::VisitDeclContext(const clang::DeclContext *DC)
     return decldefs;
 }
 
-Dsymbols *DeclMapper::VisitDecl(const clang::Decl *D)
+Dsymbols *DeclMapper::VisitDecl(const clang::Decl *D, unsigned flags)
 {
     if (!D->isCanonicalDecl())
         return nullptr;
 
     Dsymbols *s = nullptr;
 
-    // Unfortunately a long ugly list of if (... dyn_cast...) is more solid and
-    // future-proof than a pretty switch à la decl_visitor
-
 #define DECL(BASE) \
     else if (const clang::BASE##Decl *BASE##D = \
                             dyn_cast<clang::BASE##Decl>(D)) \
         s = Visit##BASE##Decl(BASE##D);
+#define DECLWF(BASE) \
+    else if (const clang::BASE##Decl *BASE##D = \
+                            dyn_cast<clang::BASE##Decl>(D)) \
+        s = Visit##BASE##Decl(BASE##D, flags);
 
     if (0) ;
     DECL(TypedefName)
     DECL(ClassTemplateSpecialization)
-    DECL(Record)
+    DECLWF(Record)
     DECL(Function)
     DECL(RedeclarableTemplate)
     DECL(Enum)
     DECL(Value)
 
 #undef DECL
+#undef DECLWF
 
     return s;
 }
@@ -1119,14 +1121,6 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
 
 #if 0
             mapNamespace(mapper, DC, m->members);
-
-            // Adds the implicit __va_list_tag
-            auto VaListTagTy = Context.getVaListTagType()->getAs<clang::RecordType>();
-            auto VaListTag = VaListTagTy->getDecl();
-
-            auto a = mapper.VisitRecordDecl(VaListTag, DeclMapper::MapImplicit);
-            assert(a);
-            m->members->append(a);
 #endif
         }
         else
@@ -1143,14 +1137,26 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
     }
     else
     {
-        auto R = lookup(DC, id);
-        if (R.empty())
+        clang::NamedDecl *D;
+
+        // Lookups can't find the implicit __va_list_tag record
+        if (id == Lexer::idPool("__va_list_tag") && packages->dim == 1)
         {
-            ::error(loc, "no C++ module named %s", id->toChars());
-            fatal();
+            D = Context.getVaListTagType()
+                ->getAs<clang::RecordType>()->getDecl();
+        }
+        else
+        {
+            auto R = lookup(DC, id);
+            if (R.empty())
+            {
+                ::error(loc, "no C++ module named %s", id->toChars());
+                fatal();
+            }
+
+            D = R[0];
         }
 
-        auto D = R[0];
         if (auto TD = dyn_cast<clang::TypedefNameDecl>(D))
         {
             auto UT = TD->getUnderlyingType().getDesugaredType(Context);
@@ -1169,7 +1175,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
         D = cast<clang::NamedDecl>(D->getCanonicalDecl());
         m->rootDecl = D;
 
-        if (auto s = mapper.VisitDecl(D))
+        if (auto s = mapper.VisitDecl(D, DeclMapper::MapImplicit))
             m->members->append(s);
 
         // Special case for class template, we need to add explicit specializations to the module as well

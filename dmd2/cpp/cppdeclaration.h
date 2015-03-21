@@ -130,7 +130,7 @@ public:
     // Declarations
     Dsymbols *VisitDeclContext(const clang::DeclContext *DC);
 
-    Dsymbols *VisitDecl(const clang::Decl *D);
+    Dsymbols *VisitDecl(const clang::Decl *D, unsigned flags = 0);
 
     Dsymbols *VisitValueDecl(const clang::ValueDecl *D);
     Dsymbols *VisitRecordDecl(const clang::RecordDecl* D, unsigned flags = 0);

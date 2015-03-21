@@ -1315,10 +1315,6 @@ const clang::Decl* TypeMapper::GetImplicitImportKeyForDecl(const clang::NamedDec
     if (auto Spec = dyn_cast<clang::ClassTemplateSpecializationDecl>(TopMost))
         return GetImplicitImportKeyForDecl(Spec->getSpecializedTemplate());
 
-    if (auto Tag = dyn_cast<clang::TagDecl>(TopMost))
-        if (Tag->isImplicit())
-            return D->getTranslationUnitDecl(); // builtin tag decl, e.g __va_list_tag
-
     return TopMost->getCanonicalDecl();
 }
 
