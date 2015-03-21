@@ -14,6 +14,7 @@
 
 #include "gen/runtime.h"
 #include "gen/metadata.h"
+#include "gen/attributes.h"
 
 #define DEBUG_TYPE "dgc2stack"
 
@@ -159,7 +160,9 @@ namespace {
             APInt Mask = APInt::getLowBitsSet(Bits, BitsLimit);
             Mask.flipAllBits();
             APInt KnownZero(Bits, 0), KnownOne(Bits, 0);
-#if LDC_LLVM_VER >= 305
+#if LDC_LLVM_VER >= 307
+            computeKnownBits(Val, KnownZero, KnownOne, A.DL);
+#elif LDC_LLVM_VER >= 305
             computeKnownBits(Val, KnownZero, KnownOne, &A.DL);
 #else
             ComputeMaskedBits(Val, KnownZero, KnownOne, &A.DL);
@@ -415,7 +418,9 @@ namespace {
 
         virtual void getAnalysisUsage(AnalysisUsage &AU) const {
 #if LDC_LLVM_VER >= 305
+#if LDC_LLVM_VER < 307
             AU.addRequired<DataLayoutPass>();
+#endif
             AU.addRequired<DominatorTreeWrapperPass>();
             AU.addPreserved<CallGraphWrapperPass>();
 #else
@@ -479,7 +484,12 @@ static bool isSafeToStackAllocate(Instruction* Alloc, Value* V, DominatorTree& D
 bool GarbageCollect2Stack::runOnFunction(Function &F) {
     DEBUG(errs() << "\nRunning -dgc2stack on function " << F.getName() << '\n');
 
-#if LDC_LLVM_VER >= 305
+#if LDC_LLVM_VER >= 307
+    const DataLayout &DL = F.getParent()->getDataLayout();
+    DominatorTree &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
+    CallGraphWrapperPass *CGPass = getAnalysisIfAvailable<CallGraphWrapperPass>();
+    CallGraph *CG = CGPass ? &CGPass->getCallGraph() : 0;
+#elif LDC_LLVM_VER >= 305
     DataLayoutPass *DLP = getAnalysisIfAvailable<DataLayoutPass>();
     assert(DLP && "required DataLayoutPass is null");
     const DataLayout &DL = DLP->getDataLayout();
@@ -855,15 +865,7 @@ bool isSafeToStackAllocate(Instruction* Alloc, Value* V, DominatorTree& DT,
       CallSite::arg_iterator B = CS.arg_begin(), E = CS.arg_end();
       for (CallSite::arg_iterator A = B; A != E; ++A)
         if (A->get() == V) {
-          if (!CS.paramHasAttr(A - B + 1,
-#if LDC_LLVM_VER >= 303
-              Attribute::NoCapture
-#elif LDC_LLVM_VER == 302
-              Attributes::NoCapture
-#else
-              Attribute::NoCapture
-#endif
-          )) {
+          if (!CS.paramHasAttr(A - B + 1, LDC_ATTRIBUTE(NoCapture))) {
             // The parameter is not marked 'nocapture' - captured.
             return false;
           }

@@ -246,12 +246,13 @@ void AggrTypeBuilder::addTailPadding(unsigned aggregateSize)
 
 IrTypeAggr::IrTypeAggr(AggregateDeclaration * ad)
 :   IrType(ad->type, LLStructType::create(gIR->context(), ad->toPrettyChars())),
-    diCompositeType(NULL), aggr(ad)
+    diCompositeType(), aggr(ad)
 {
 }
 
 bool IrTypeAggr::isPacked(AggregateDeclaration* ad)
 {
+    if (ad->isUnionDeclaration()) return true;
     for (unsigned i = 0; i < ad->fields.dim; i++)
     {
         VarDeclaration* vd = static_cast<VarDeclaration*>(ad->fields.data[i]);
