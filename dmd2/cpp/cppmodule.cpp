@@ -254,7 +254,7 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
     auto& S = calypso.pch.AST->getSema();
     auto Canon = D->getCanonicalDecl();
 
-    if (D->isImplicit())
+    if (D->isImplicit() && !(flags & MapImplicit))
         return nullptr;
 
     auto loc = fromLoc(D->getLocation());
@@ -1117,6 +1117,14 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
         {
             assert(isa<clang::TranslationUnitDecl>(DC));
             mapNamespace(mapper, DC, m->members);
+
+            // Adds the implicit __va_list_tag
+            auto VaListTagTy = Context.getVaListTagType()->getAs<clang::RecordType>();
+            auto VaListTag = VaListTagTy->getDecl();
+
+            auto a = mapper.VisitRecordDecl(VaListTag, DeclMapper::MapImplicit);
+            assert(a);
+            m->members->append(a);
         }
         else
         {
