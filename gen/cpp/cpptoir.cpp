@@ -312,7 +312,9 @@ void LangPlugin::toResolveFunction(::FuncDeclaration* fdecl)
 {
     auto FD = getFD(fdecl);
 
-    DtoFunctionType(fdecl);
+//     DtoFunctionType(fdecl);
+    auto irFunc = getIrFunc(fdecl, true);
+    auto &irFty = irFunc->irFty;
 
     fdecl->ir.setDeclared();
 
@@ -344,8 +346,8 @@ void LangPlugin::toResolveFunction(::FuncDeclaration* fdecl)
     else
         Callee = CGM->GetAddrOfFunction(FD, Ty);
 
-    auto irFunc = getIrFunc(fdecl, true);
     irFunc->func = llvm::cast<llvm::Function>(Callee);
+    irFty.funcType = Ty;
 }
 
 void LangPlugin::toDefineFunction(::FuncDeclaration* fdecl)
