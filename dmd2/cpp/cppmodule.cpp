@@ -403,10 +403,13 @@ Ldeclaration:
 
 Dsymbols *DeclMapper::VisitTypedefNameDecl(const clang::TypedefNameDecl* D)
 {
+    auto& Context = calypso.pch.AST->getASTContext();
+    auto Ty = D->getUnderlyingType();
+
     if (isAnonTagTypedef(D))
         return nullptr;  // the anon tag will be mapped by VisitRecordDecl to an aggregate named after the typedef identifier
 
-    if (auto TagTy = D->getUnderlyingType()->getAs<clang::TagType>())
+    if (auto TagTy = Ty->getAs<clang::TagType>())
     {
         auto Tag = TagTy->getDecl();
 
@@ -417,6 +420,10 @@ Dsymbols *DeclMapper::VisitTypedefNameDecl(const clang::TypedefNameDecl* D)
                 TagParent->getCanonicalDecl() == Parent->getCanonicalDecl())
             return nullptr; // e.g typedef union pthread_attr_t pthread_attr_t needs to be discarded
     }
+
+    if (D->isImplicit())
+        if (Ty == Context.Int128Ty || Ty == Context.UnsignedInt128Ty)
+            return nullptr; // any function using those typedefs will be discarded anyway
 
     auto loc = fromLoc(D->getLocation());
     auto id = fromIdentifier(D->getIdentifier());
