@@ -252,7 +252,8 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
     if (auto DR = dyn_cast<clang::DeclRefExpr>(E))
     {
         return fromExpressionDeclRef(loc,
-                            const_cast<clang::ValueDecl*>(DR->getDecl()));
+                        const_cast<clang::ValueDecl*>(DR->getDecl()),
+                        DR->getQualifier());
     }
 
     if (auto PE = dyn_cast<clang::PackExpansionExpr>(E))
@@ -431,7 +432,8 @@ Expression* ExprMapper::fromAPInt(const APInt& Val)
             getAPIntDType(Val));
 }
 
-Expression* ExprMapper::fromExpressionDeclRef(Loc loc, clang::NamedDecl *D)
+Expression* ExprMapper::fromExpressionDeclRef(Loc loc, clang::NamedDecl *D,
+                                    const clang::NestedNameSpecifier *NNS)
 {
     if (auto NTTP = dyn_cast<clang::NonTypeTemplateParmDecl>(D))
         return fromExpressionNonTypeTemplateParm(loc, NTTP);
@@ -442,7 +444,11 @@ Expression* ExprMapper::fromExpressionDeclRef(Loc loc, clang::NamedDecl *D)
         if (FD->isOverloadedOperator())
             return nullptr;
 
-    auto tqual = static_cast<TypeQualified*>(TypeMapper::FromType(tymap).typeQualifiedFor(D));
+    TypeQualified *prefix = nullptr;
+    if (NNS)
+        prefix = TypeMapper::FromType(tymap).fromNestedNameSpecifier(NNS);
+
+    auto tqual = static_cast<TypeQualified*>(TypeMapper::FromType(tymap, prefix).typeQualifiedFor(D));
     assert(tqual && "DeclRefExpr decl without a DeclarationName");
 
     // TODO: Build a proper expression from the type (mostly for reflection and to mimic parse.c, since TypeExp seems to work too)

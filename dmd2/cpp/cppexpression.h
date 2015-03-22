@@ -38,8 +38,10 @@ public:
     Expression *fromExpression(const clang::Expr *E, Type *destType = nullptr,
                                bool interpret = false);
 
-    Expression *fromExpressionDeclRef(Loc loc, clang::NamedDecl* D);
-    Expression *fromExpressionNonTypeTemplateParm(Loc loc, const clang::NonTypeTemplateParmDecl* D);
+    Expression *fromExpressionDeclRef(Loc loc, clang::NamedDecl* D,
+                                    const clang::NestedNameSpecifier *NNS = nullptr);
+    Expression *fromExpressionNonTypeTemplateParm(Loc loc,
+                                    const clang::NonTypeTemplateParmDecl* D);
 
     static Expression *fromAPInt(const llvm::APInt &Val);
 
