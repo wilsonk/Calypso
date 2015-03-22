@@ -452,31 +452,47 @@ Objects* TypeMapper::FromType::fromTemplateArguments(const clang::TemplateArgume
 class ScopeChecker // determines if a C++ decl is "scopingly" equivalent to another's
 {
 public:
-    const clang::Decl *Scope, *Pattern;
+    const clang::Decl *Scope, *Pattern = nullptr;
 
-    ScopeChecker(const clang::Decl *ScopeDecl)
-        : Scope(ScopeDecl->getCanonicalDecl())
+    const clang::Decl *getScope(const clang::Decl *D)
     {
-        Pattern = dyn_cast<clang::ClassTemplateDecl>(ScopeDecl); // non dependent type decls might have the template as the decl context rather than the instance
+        if (auto Temp = dyn_cast<clang::ClassTemplateDecl>(D))
+            return Temp->getTemplatedDecl();
 
-        if (auto Spec = dyn_cast<clang::ClassTemplateSpecializationDecl>(ScopeDecl))
-            if (!Spec->isExplicitSpecialization())
-                Pattern = getTemplateSpecializedDecl(Spec);
+        return D;
+    }
 
-        if (auto Temp = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(Pattern))
-            Pattern = Temp->getTemplatedDecl();
+    const clang::Decl *getPattern(const clang::Decl *D)
+    {
+        const clang::Decl *Result;
 
-        if (Pattern)
-            Pattern = Pattern->getCanonicalDecl();
+        auto Spec = dyn_cast<clang::ClassTemplateSpecializationDecl>(D);
+        if (Spec && !Spec->isExplicitSpecialization())
+        {
+            auto Temp = getTemplateSpecializedDecl(Spec);
+            if (auto ClassTemp = dyn_cast<clang::ClassTemplateDecl>(Temp))
+                Result = ClassTemp->getTemplatedDecl();
+            else
+                Result = cast<clang::ClassTemplatePartialSpecializationDecl>(Temp);
+        }
+
+        if (Result)
+            return Result->getCanonicalDecl();
+        else
+            return nullptr;
+    }
+
+    ScopeChecker(const clang::Decl *D)
+    {
+        Scope = getScope(D);
+        Pattern = getPattern(D);
     }
 
     bool operator()(const clang::Decl *D)
     {
-        if (auto Temp = dyn_cast<clang::ClassTemplateDecl>(D))
-            D = Temp->getTemplatedDecl();
-
-        auto Canon = D->getCanonicalDecl();
-        if (Canon == Scope || Canon == Pattern)
+        auto CanonScope = getScope(D);
+        auto CanonPattern = getPattern(D);
+        if (CanonScope == Scope || CanonPattern == Pattern)
             return true;
 
         if (auto Record = dyn_cast<clang::CXXRecordDecl>(Scope))
