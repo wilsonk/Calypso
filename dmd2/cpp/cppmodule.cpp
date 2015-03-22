@@ -431,6 +431,9 @@ Dsymbols *DeclMapper::VisitTypedefNameDecl(const clang::TypedefNameDecl* D)
     auto id = fromIdentifier(D->getIdentifier());
     auto t = fromType(D->getUnderlyingType());
 
+    if (!t)
+        return nullptr;
+
     auto a = new AliasDeclaration(loc, id, t, D);
     return oneSymbol(a);
 }

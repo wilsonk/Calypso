@@ -12,6 +12,7 @@
 #include "template.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
+#include "clang/AST/StmtVisitor.h"
 #include "clang/AST/Type.h"
 #include "clang/Sema/Sema.h"
 
@@ -208,7 +209,7 @@ bool isNonSupportedType(clang::QualType T)
 // As soon as the type is or might be a non-POD record, wrap it in TypeValueof
 inline static Type *adjustAggregateType(Type *t, const clang::RecordDecl *RD = nullptr)
 {
-    if (!RD || RD->isDependentType() || isNonPODRecord(RD))
+    if (t && (!RD || RD->isDependentType() || isNonPODRecord(RD)))
         return new TypeValueof(t);
     else
         return t;
@@ -897,10 +898,150 @@ Type *TypeMapper::FromType::fromTypeElaborated(const clang::ElaboratedType *T)
     return FromType(tm, tqual)(T->getNamedType());
 }
 
+namespace
+{
+// Checks (roughly) if a template specialization type will lead to recursive instantiation of a class template
+// See for example boost/mpl/aux_/integral_wrapper.hpp's "next" and "prev" constants. In C++ they're instantiated lazily
+// so it's not a problem, in D they make DMD instantiate the template endlessly.
+// The workaround is to discard the decls and cross fingers that they're aren't required elsewhere.
+
+typedef unsigned RCResult;
+const RCResult RC_Not = 0;
+const RCResult RC_Literal = 1 << 0;
+const RCResult RC_Dependent = 1 << 1;
+const RCResult RC_RecursiveMaybe = RC_Literal | RC_Dependent;
+
+class RecursiveInstChecker : public clang::ConstStmtVisitor<RecursiveInstChecker, RCResult>
+{
+public:
+    const clang::CXXRecordDecl *InjectedName;
+    RecursiveInstChecker(const clang::CXXRecordDecl *InjectedName)
+            : InjectedName(InjectedName) {}
+
+    RCResult VisitStmt(const clang::Stmt *) { return RC_Not; }
+
+#define FALLTHROUGH(CLASS, SUBEXPR) \
+    RCResult Visit##CLASS(const clang::CLASS *E) { return Visit(E->SUBEXPR()); }
+
+    FALLTHROUGH(CXXStaticCastExpr, getSubExpr)
+    FALLTHROUGH(ParenExpr, getSubExpr)
+    FALLTHROUGH(CXXDefaultArgExpr, getExpr)
+    FALLTHROUGH(ImplicitCastExpr, getSubExpr)
+#undef FALLTHROUGH
+
+    RCResult VisitSubstNonTypeTemplateParmExpr(const clang::SubstNonTypeTemplateParmExpr *E) {
+        return RC_Dependent;
+    }
+
+    RCResult VisitDeclRefExpr(const clang::DeclRefExpr *E) {
+        auto Var = dyn_cast<clang::VarDecl>(E->getDecl());
+        if (Var && cast<clang::Decl>(Var->getDeclContext())->getCanonicalDecl()
+                            == InjectedName->getCanonicalDecl())
+            if (auto Init = Var->getAnyInitializer())
+                return Visit(Init);
+
+        return RC_Not;
+    }
+
+    RCResult VisitIntegerLiteral(const clang::IntegerLiteral *E) {
+        return RC_Literal;
+    }
+
+    RCResult VisitUnaryOperator(const clang::UnaryOperator *E) {
+        switch (E->getOpcode())
+        {
+            case clang::UO_PostInc:
+            case clang::UO_PostDec:
+            case clang::UO_PreInc:
+            case clang::UO_PreDec:
+                if (Visit(E->getSubExpr()) & RC_Dependent)
+                    return RC_RecursiveMaybe;
+                break;
+            case clang::UO_Plus:
+            case clang::UO_Minus:
+                return Visit(E->getSubExpr());
+            default:
+                break;
+        }
+        return RC_Not;
+    }
+
+    RCResult VisitBinaryOperator(const clang::BinaryOperator *E) {
+        RCResult Result = RC_Not;
+
+        switch (E->getOpcode())
+        {
+            case clang::BO_Add:
+            case clang::BO_Sub:
+            case clang::BO_Mul:
+            case clang::BO_Shl:
+            case clang::BO_Shr:
+                Result = Visit(E->getLHS()) | Visit(E->getRHS());
+                break;
+            default:
+                break;
+        }
+        return Result;
+    }
+};
+
+}
+
+bool TypeMapper::isRecursivelyInstantiated(const clang::TemplateName Name,
+                const clang::TemplateArgument *ArgBegin,
+                const clang::TemplateArgument *ArgEnd)
+{
+    auto Temp = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(Name.getAsTemplateDecl());
+    if (!Temp)
+        return false;
+    auto Pattern = Temp->getTemplatedDecl();
+
+    const clang::CXXRecordDecl *InjectedName = nullptr;
+    decltype(CXXScope) ScopeStack(CXXScope);
+    while (!ScopeStack.empty())
+    {
+        auto ScopeDecl = ScopeStack.top();
+        ScopeStack.pop();
+
+        auto ScopePattern = ScopeDecl;
+        if (auto Spec = dyn_cast<clang::ClassTemplateSpecializationDecl>(ScopePattern))
+            ScopePattern = Spec->getSpecializedTemplate()->getTemplatedDecl();
+
+        if (Pattern->getCanonicalDecl() ==
+                ScopePattern->getCanonicalDecl())
+        {
+            InjectedName = dyn_cast<clang::CXXRecordDecl>(ScopeDecl);
+            break;
+        }
+    }
+
+    if (InjectedName)
+    {
+        for (auto Arg = ArgBegin; Arg != ArgEnd; Arg++)
+        {
+            switch (Arg->getKind())
+            {
+                case clang::TemplateArgument::Expression:
+                    if (RecursiveInstChecker(InjectedName).Visit(Arg->getAsExpr()) == RC_RecursiveMaybe)
+                        return true;
+                case clang::TemplateArgument::Type:
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    return false;
+}
+
 TypeQualified *TypeMapper::FromType::fromTemplateName(const clang::TemplateName Name,
                 const clang::TemplateArgument *ArgBegin,
                 const clang::TemplateArgument *ArgEnd)
 {
+    if (ArgBegin && tm.isRecursivelyInstantiated(Name, ArgBegin, ArgEnd))
+        return nullptr;
+
     Identifier *tempIdent;
 
     switch (Name.getKind())
@@ -954,11 +1095,13 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
     auto tqual = fromTemplateName(T->getTemplateName(),
                             T->begin(), T->end());
 
+    if (!tqual)
+        return nullptr; // discard types leading to recursive template expansion
+
     if (T->isSugared())
     {
         // NOTE: To reduce DMD -> Clang translations to a minimum we don't instantiate ourselves whenever possible, i.e when
-        // the template instance is already declared or defined in the PCH. If it's only declared, there's a chance the specialization
-        // wasn't emitted in the C++ libraries, so we tell Sema to complete its instantiation.
+        // the template instance is already declared or defined in the PCH. If it's only declared, we tell Sema to complete its instantiation.
 
         auto RT = T->getAs<clang::RecordType>();
 

@@ -150,7 +150,10 @@ protected:
     Identifier *getIdentifierForTemplateTypeParm(const clang::TemplateTypeParmType *T);
     Identifier *getIdentifierForTemplateTemplateParm(const clang::TemplateTemplateParmDecl *D);
 
-    bool isNonExplicitInjectedClassName(const clang::Decl *D); // misleading name although that's what it is
+    bool isNonExplicitInjectedClassName(const clang::Decl *D); // misleading name? not InjectedClassNameType
+    bool isRecursivelyInstantiated(const clang::TemplateName Name,
+                    const clang::TemplateArgument *ArgBegin,
+                    const clang::TemplateArgument *ArgEnd);
 
     const clang::Decl *GetRootForTypeQualified(clang::NamedDecl* D);
 
