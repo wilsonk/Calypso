@@ -496,7 +496,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
             stc |= STCoverride;
 
         if (isa<clang::CXXDestructorDecl>(D))
-            stc &= ~STCoverride; // dtors aren't added to D's VTBLs
+            stc &= ~(STCoverride|STCabstract); // dtors aren't added to D's VTBLs
     }
     tf->addSTC(stc);
     
