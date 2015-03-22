@@ -657,20 +657,21 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::NamedDecl *D)
         tqual = nullptr;
     else
     {
-        auto Key = tm.GetImplicitImportKeyForDecl(D);
-        ScopeChecker KeyEquals(Key);
+        auto LeftMost = tm.GetNonNestedContext(D);
+        ScopeChecker LeftMostEquals(LeftMost);
 
-        if (KeyEquals(D))  // we'll need a fully qualified type
+        if (LeftMostEquals(D))  // we'll need a fully qualified type
         {
             // build a fake import
-            auto im = tm.BuildImplicitImport(Key);
+            auto im = tm.BuildImplicitImport(
+                    tm.GetImplicitImportKeyForDecl(D));
 
             tqual = nullptr;
             for (size_t i = 1; i < im->packages->dim; i++)
                 addIdent(tqual, (*im->packages)[i]);
             addIdent(tqual, im->id);
 
-            if (isa<clang::NamespaceDecl>(Key))
+            if (isa<clang::NamespaceDecl>(LeftMost))
                 return tqual;
         }
         else
