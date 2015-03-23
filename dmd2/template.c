@@ -5887,18 +5887,18 @@ void TemplateValueParameter::declareParameter(Scope *sc)
 
 void TemplateValueParameter::semantic(Scope *sc, TemplateParameters *parameters)
 {
-    bool wasSame = (sparam->type == valType);
-    sparam->semantic(sc);
-    if (sparam->type == Type::terror && wasSame)
-    {
-        /* If sparam has a type error, avoid duplicate errors
-         * The simple solution of leaving that function if sparam->type == Type::terror
-         * doesn't quite work because it causes failures in xtest46 for bug 6295
-         */
-        valType = Type::terror;
-        return;
-    }
-    valType = valType->semantic(loc, sc);
+//     bool wasSame = (sparam->type == valType);
+//     sparam->semantic(sc);
+//     if (sparam->type == Type::terror && wasSame)
+//     {
+//         /* If sparam has a type error, avoid duplicate errors
+//          * The simple solution of leaving that function if sparam->type == Type::terror
+//          * doesn't quite work because it causes failures in xtest46 for bug 6295
+//          */
+//         valType = Type::terror;
+//         return;
+//     }
+//     valType = valType->semantic(loc, sc);
 
 #if 0   // defer semantic analysis to arg match
     if (specValue)
