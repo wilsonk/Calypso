@@ -5311,7 +5311,7 @@ Type *TypeValueof::semantic(Loc loc, Scope *sc)
         deco = NULL;
     next = n;
     transitive();
-    if (next->ty == Tstruct || next->ty == Tvalueof)
+    if (next->isTypeBasic() || next->ty == Tstruct || next->ty == Tvalueof)
         return next->merge();
     return merge();
 }
