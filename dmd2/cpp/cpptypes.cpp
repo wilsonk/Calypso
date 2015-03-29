@@ -1650,7 +1650,9 @@ clang::QualType TypeMapper::toType(Loc loc, Type* t, Scope *sc, StorageClass stc
         case Tpointer:
         case Treference:
         {
-            auto Pointee = toType(loc, t->nextOf(), sc);
+            auto next = t->nextOf()->ty == Tclass ?
+                        new TypeValueof(t->nextOf()) : t->nextOf();
+            auto Pointee = toType(loc, next, sc);
 
             if (t->ty == Tpointer)
                 return Context.getPointerType(Pointee);
