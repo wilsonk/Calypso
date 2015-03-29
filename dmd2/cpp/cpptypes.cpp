@@ -685,6 +685,12 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::NamedDecl *D)
         }
     }
 
+    auto DC = getDeclContextNamedOrTU(D);
+    if (isa<clang::EnumConstantDecl>(D) &&
+            from.prefix && DC->isTransparentContext())
+        add(tqual, getIdentOrTempinst(cast<clang::NamedDecl>(DC))); // if the enum constant is prefixed in the DeclRef and the enum isn't a C++11 static enum, append its name
+            // FIXME: generalize for any transparent context?
+
     auto o = getIdentOrTempinst(D);
     if (!o)
         return tqual;
