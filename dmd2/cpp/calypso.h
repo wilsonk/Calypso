@@ -149,6 +149,7 @@ private:
 };
 
 extern LangPlugin calypso;
+bool isCPP(Type* t);
 bool isCPP(Dsymbol *s);
 cpp::ClassDeclaration *isDCXX(Dsymbol *s);
 

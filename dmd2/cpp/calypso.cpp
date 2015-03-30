@@ -485,10 +485,8 @@ clang::ASTContext& LangPlugin::getASTContext()
     return getASTUnit()->getASTContext();
 }
 
-bool isCPP(Dsymbol* s)
-{
-    return s->langPlugin() == &calypso;
-}
+bool isCPP(Type* t) { return t->langPlugin() == &calypso; }
+bool isCPP(Dsymbol* s) { return s->langPlugin() == &calypso; }
 
 cpp::ClassDeclaration *isDCXX(Dsymbol* s)
 {

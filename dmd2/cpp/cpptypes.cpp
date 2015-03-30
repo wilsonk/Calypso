@@ -34,28 +34,34 @@ void TypeBasic::toDecoBuffer(OutBuffer *buf, int flag)
 {
     Type::toDecoBuffer(buf, flag);
 
-    switch(T->getKind())
-    {
-        case clang::BuiltinType::WChar_S:
-        case clang::BuiltinType::WChar_U: // do the same for long/tint128 too?
-            buf->writeByte('#');
-            break;
-        default:
-            break;
-    }
+    buf->writeByte('#');
+    buf->writeByte('0' + unsigned(T->getKind()));
+    buf->writeByte('#');
 }
 
 unsigned short TypeBasic::sizeType()
 {
-    return sizeof(cpp::TypeBasic);
+    return sizeof(*this);
 }
 
 void BuiltinTypes::map(clang::CanQualType &CQT, Type* t)
 {
     auto T = CQT.getTypePtr()->castAs<clang::BuiltinType>();
 
-    toD[T] = t;
-    toClang[t] = T;
+    // If a C++ type has more than one D correspondance its Deco needs to be tweaked.
+    // Hence NOTE that map() calls need to be ordered by priority.
+    if (!toClang.count(t))
+    {
+        toD[T] = t;
+        toClang[t] = T;
+    }
+    else
+    {
+        assert(t->isTypeBasic() && !isCPP(t));
+        auto c_t = new cpp::TypeBasic(t->ty, T);
+        toD[T] = c_t;
+        toClang[c_t] = T;
+    }
 }
 
 void BuiltinTypes::build(clang::ASTContext &Context)
