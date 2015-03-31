@@ -234,7 +234,7 @@ Identifier *getIdentifier(const clang::NamedDecl *D, const char **op)
 
 Identifier *getExtendedIdentifier(const clang::NamedDecl *D)
 {
-    const char *op;
+    const char *op = nullptr;
     auto ident = getIdentifier(D, &op);
 
     auto FD = dyn_cast<clang::FunctionDecl>(D);
