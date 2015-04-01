@@ -303,6 +303,7 @@ public:
     virtual bool allowMultipleInheritance() { return false; }  // will allow more than one non-interface base
     virtual bool allowInheritFromStruct() { return false; }
     virtual void initVtbl();
+    virtual void finalizeVtbl() {}
     virtual void buildLayout(); // determine the agg size and field offsets
     AggregateDeclaration *foreignBase();
 

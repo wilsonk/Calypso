@@ -214,14 +214,11 @@ void ClassDeclaration::makeNested()
 
 // Why is this needed? Because D vtbls are only built after the first base class, so this is actually the cleanest and easiest way
 // to take C++ multiple inheritance into account. No change to FuncDeclaration::semantic needed.
-void ClassDeclaration::initVtbl()
+void ClassDeclaration::finalizeVtbl()
 {
-    ::ClassDeclaration::initVtbl();
-
     clang::CXXFinalOverriderMap FinaOverriders;
     RD->getFinalOverriders(FinaOverriders);
 
-    auto cb = isClassDeclarationOrNull(baseClass);
     llvm::DenseSet<const clang::CXXMethodDecl*> inVtbl;
 
     for (auto I = FinaOverriders.begin(), E = FinaOverriders.end();
@@ -232,27 +229,14 @@ void ClassDeclaration::initVtbl()
             continue;
 
         auto md = findMethod(OverMD);
-#if 0
-        if (!md)
-            md = findMethod(OverMD);
-        assert(md && "CXXFinalOverrider not in cpp::ClassDeclaration");
-#else
         if (!md)
             continue;
-#endif
 
         inVtbl.insert(OverMD);
 
-        if (cb)
-        {
-            auto vi = md->findVtblIndex(&cb->vtbl, cb->vtbl.dim);
-            if (vi >= 0)
-            {
-                vtbl[vi] = md;
-                continue;
-            }
-        }
-        vtbl.push(md);
+        auto vi = md->findVtblIndex(&vtbl, vtbl.dim);
+        if (vi < 0)
+            vtbl.push(md);
     }
 }
 

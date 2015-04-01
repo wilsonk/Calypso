@@ -717,6 +717,7 @@ Lancestorsdone:
     // CALYPSO moved to buildLayout
     
     buildLayout();
+    finalizeVtbl();
 
     if (global.errors != errors)
     {
