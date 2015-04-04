@@ -1122,7 +1122,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
         {
             assert(isa<clang::TranslationUnitDecl>(DC));
 
-#if 0
+#if 1
             mapNamespace(mapper, DC, m->members);
 #endif
         }
