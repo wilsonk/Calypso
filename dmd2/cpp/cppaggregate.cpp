@@ -146,19 +146,6 @@ void ClassDeclaration::interfaceSemantic(Scope *sc)
 {
 }
 
-static FuncDeclaration *funcMatch(Dsymbol *s, const clang::CXXMethodDecl* MD)
-{
-    auto md = s->isFuncDeclaration();
-    if (!md || !isCPP(md))
-        return nullptr;
-
-    auto FD = getFD(md);
-    if (FD->getCanonicalDecl() == MD->getCanonicalDecl())
-        return static_cast<FuncDeclaration*>(md);
-
-    return nullptr;
-}
-
 FuncDeclaration *ClassDeclaration::findMethod(const clang::CXXMethodDecl* MD)
 {
     TypeMapper tmap;
@@ -167,24 +154,13 @@ FuncDeclaration *ClassDeclaration::findMethod(const clang::CXXMethodDecl* MD)
     auto ident = getExtendedIdentifier(MD);
 
     auto s = ScopeDsymbol::search(loc, ident);
-    if (s)
+    if (s && s->isFuncDeclaration())
     {
-//         if (auto os = s->isOverloadSet())
-//         {
-//             for (auto *s2: os->a)
-//             {
-//                 if (auto md = funcMatch(s2, MD))
-//                     return md;
-//             }
-//         }
-
-        if (auto fd = s->isFuncDeclaration())
-        {
-            fd = fd->overloadExactMatch(tmap.fromType(MD->getType()));
-            if (fd)
-                if (auto md = funcMatch(fd, MD))
-                    return md;
-        }
+        assert(isCPP(s));
+        auto fd = static_cast<FuncDeclaration*>(s);
+        fd = fd->overloadCppMatch(MD);
+        if (fd)
+            return fd;
     }
 
     // search in base classes

@@ -53,6 +53,7 @@ public:
     Dsymbol *syntaxCopy(Dsymbol *s) override;
     void semantic(Scope *sc) override;
     bool allowFinalOverride() override { return true; }
+    FuncDeclaration *overloadCppMatch(const clang::FunctionDecl* FD);
 };
 
 class CtorDeclaration : public ::CtorDeclaration

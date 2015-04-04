@@ -39,6 +39,36 @@ FuncDeclaration::FuncDeclaration(const FuncDeclaration& o)
 {
 }
 
+FuncDeclaration *FuncDeclaration::overloadCppMatch(const clang::FunctionDecl* FD)
+{
+    struct FDEquals
+    {
+        const clang::FunctionDecl* FD;            // type to match
+        FuncDeclaration *f; // return value
+
+        static int fp(void *param, Dsymbol *s)
+        {
+            if (!s->isFuncDeclaration() || !isCPP(s))
+                return 0;
+            FuncDeclaration *f = static_cast<FuncDeclaration*>(s);
+            FDEquals *p = (FDEquals *)param;
+
+            if (p->FD == f->FD)
+            {
+                p->f = f;
+                return 1;
+            }
+
+            return 0;
+        }
+    };
+    FDEquals p;
+    p.FD = FD;
+    p.f = nullptr;
+    overloadApply(this, &p, &FDEquals::fp);
+    return p.f;
+}
+
 CtorDeclaration::CtorDeclaration(Loc loc, StorageClass storage_class,
                                  Type* type, const clang::CXXConstructorDecl* CCD)
     : ::CtorDeclaration(loc, loc, storage_class, type)
