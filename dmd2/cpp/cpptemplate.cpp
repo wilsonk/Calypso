@@ -227,6 +227,7 @@ LcorrectTempDecl:
     ti->correctTiargs();
 
     ti->semanticRun = PASSinit; // WARNING: may disrupt something?
+    ti->semantictiargsdone = false;
     ti->semantic(sc);
     instCollector.tempinsts.pop();
     return ti;
