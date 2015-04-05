@@ -111,13 +111,13 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
     // Track function instantiations during the mapping of template instantiation (e.g by default arg exprs)
     instCollector.tempinsts.push(ti);
 
+    if (!ti->semanticTiargs(sc))
+        assert(false && "foreignInstance semanticTiargs failed");
+
     if (ti->Inst) // the instance is already there, so we only need to correct the tempdecl and start semantic over again (to fix tdtypes notably)
         goto LcorrectTempDecl;
 
     {
-        if (!ti->semanticTiargs(sc))
-            assert(false && "foreignInstance semanticTiargs failed");
-
         clang::TemplateArgumentListInfo Args;
 
         const char *op = nullptr;
