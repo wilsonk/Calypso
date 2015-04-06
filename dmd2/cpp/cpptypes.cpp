@@ -23,6 +23,135 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
+// Internal Calypso types (unlike TypeValueof which might used by normal D code) essential for template arguments matching.
+// D's const being transitive, there's no way around and since Calypso only needs logical const internally, keeping it outside of DMD seemed like the better idea..
+
+// #define \
+
+class TypePointer : public ::TypePointer
+{
+public:
+    CALYPSO_LANGPLUGIN
+
+    TypePointer(Type *t)
+        : ::TypePointer(t) {}
+
+    void toDecoBuffer(OutBuffer *buf, int flag) override
+    {
+        buf->writeByte('~');
+        ::TypePointer::toDecoBuffer(buf, flag);
+    }
+
+    Type *syntaxCopy(Type *o = nullptr) override
+    {
+        TypePointer *t;
+        if (o)
+        {
+            assert(isCPP(o) && o->ty == Tpointer);
+            t = static_cast<TypePointer*>(o);
+        }
+        else
+            t = new TypePointer(nullptr);
+
+        return ::TypePointer::syntaxCopy(t);
+    }
+
+    bool checkTransitiveMod() override { return false; }
+    void transitive() override {}
+
+    Type *makeConst() override
+    {
+        if (cto)
+        {
+            assert(cto->mod == MODconst);
+            return cto;
+        }
+        return Type::makeConst();
+    }
+
+    Type *makeImmutable() override
+    {
+        if (ito)
+        {
+            assert(ito->isImmutable());
+            return ito;
+        }
+        return Type::makeImmutable();
+    }
+};
+
+class TypeReference : public ::TypeReference
+{
+public:
+    CALYPSO_LANGPLUGIN
+
+    TypeReference(Type *t)
+        : ::TypeReference(t) {}
+
+    void toDecoBuffer(OutBuffer *buf, int flag) override
+    {
+        buf->writeByte('~');
+        ::TypeReference::toDecoBuffer(buf, flag);
+    }
+
+    Type *syntaxCopy(Type *o = nullptr) override
+    {
+        TypeReference *t;
+        if (o)
+        {
+            assert(isCPP(o) && o->ty == Treference);
+            t = static_cast<TypeReference*>(o);
+        }
+        else
+            t = new TypeReference(nullptr);
+
+        return ::TypeReference::syntaxCopy(t);
+    }
+
+    bool checkTransitiveMod() override { return false; }
+    void transitive() override {}
+
+    Type *makeConst() override
+    {
+        if (cto)
+        {
+            assert(cto->mod == MODconst);
+            return cto;
+        }
+        return Type::makeConst();
+    }
+
+    Type *makeImmutable() override
+    {
+        if (ito)
+        {
+            assert(ito->isImmutable());
+            return ito;
+        }
+        return Type::makeImmutable();
+    }
+};
+
+namespace
+{
+inline Type *pointerTo(Type *t) { return (new TypePointer(t))->merge(); }
+}
+
+//  There are a few D builtin types that are mapped to several C++ ones, such as wchar_t/dchar <=> wchar_t. Even though they're the same, we have to differentiate them (e.g char_traits<wchar_t>char_traits<char32>) or else two template instances might have different tempdecl while their aggregate member get the same deco
+class TypeBasic : public ::TypeBasic
+{
+public:
+    CALYPSO_LANGPLUGIN
+
+    const clang::BuiltinType *T;
+
+    static TypeBasic *twchar_t;
+
+    TypeBasic(TY ty, const clang::BuiltinType *T = nullptr);
+    void toDecoBuffer(OutBuffer *buf, int flag = 0) override;
+    unsigned short sizeType() override;
+};
+
 TypeBasic *TypeBasic::twchar_t;
 
 TypeBasic::TypeBasic(TY ty, const clang::BuiltinType *T)
@@ -43,6 +172,8 @@ unsigned short TypeBasic::sizeType()
 {
     return sizeof(*this);
 }
+
+/***** Builtin type correspondances *****/
 
 void BuiltinTypes::map(clang::CanQualType &CQT, Type* t)
 {
@@ -305,12 +436,15 @@ Type *TypeMapper::FromType::fromTypeUnqual(const clang::Type *T)
 
         auto t2 = pt;
         while (t2->ty == Tvalueof)
-            t2 = t2->nextOf();
+            t2 = t2->nextOf()->addMod(t2->mod);
 
+        Type *t;
         if (Pointer)
-            return t2->pointerTo();
+            t = new TypePointer(t2);
         else
-            return (pt->ty != Tvalueof) ? pt->referenceTo() : t2;
+            t = (pt->ty != Tvalueof) ? new TypeReference(pt) : t2;
+
+        return t->merge();
     }
 
     llvm::llvm_unreachable_internal("Unrecognized C++ type");
@@ -357,7 +491,7 @@ Type* TypeMapper::FromType::fromTypeArray(const clang::ArrayType* T)
     }
     else if (auto IAT = dyn_cast<clang::IncompleteArrayType>(T))
     {
-        return t->pointerTo();
+        return pointerTo(t);
     }
 
     llvm::llvm_unreachable_internal("Unrecognized C++ array type");

@@ -247,7 +247,7 @@ public:
     Type(TY ty);
     virtual const char *kind();
     Type *copy();
-    virtual Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     bool equals(RootObject *o);
     // kludge for template.isType()
     int dyncast() { return DYNCAST_TYPE; }
@@ -260,6 +260,7 @@ public:
     // CALYPSO
     virtual LangPlugin *langPlugin();
     virtual unsigned short sizeType();
+    virtual bool checkTransitiveMod() { return true; }
 
     #define SIZE_INVALID (~(d_uns64)0)
     d_uns64 size();
@@ -378,7 +379,7 @@ class TypeError : public Type
 {
 public:
     TypeError();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
 
     d_uns64 size(Loc loc);
     Expression *getProperty(Loc loc, Identifier *ident, int flag);
@@ -394,12 +395,12 @@ public:
     Type *next;
 
     TypeNext(TY ty, Type *next);
-    void toDecoBuffer(OutBuffer *buf, int flag);
+    virtual void toDecoBuffer(OutBuffer *buf, int flag); // CALYPSO
     void checkDeprecated(Loc loc, Scope *sc);
     int hasWild();
     Type *nextOf();
-    Type *makeConst();
-    Type *makeImmutable();
+    virtual Type *makeConst();
+    virtual Type *makeImmutable();
     Type *makeShared();
     Type *makeSharedConst();
     Type *makeWild();
@@ -409,7 +410,7 @@ public:
     Type *makeMutable();
     MATCH constConv(Type *to);
     unsigned char deduceWild(Type *t, bool isRef);
-    void transitive();
+    virtual void transitive(); // CALYPSO
     void accept(Visitor *v) { v->visit(this); }
 };
 
@@ -421,7 +422,7 @@ public:
 
     TypeBasic(TY ty);
     const char *kind();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     d_uns64 size(Loc loc);
     unsigned alignsize();
 #if IN_LLVM
@@ -454,7 +455,7 @@ public:
 
     TypeVector(Loc loc, Type *basetype);
     const char *kind();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     Type *semantic(Loc loc, Scope *sc);
     d_uns64 size(Loc loc);
     unsigned alignsize();
@@ -492,7 +493,7 @@ public:
 
     TypeSArray(Type *t, Expression *dim);
     const char *kind();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     d_uns64 size(Loc loc);
     unsigned alignsize();
     Type *semantic(Loc loc, Scope *sc);
@@ -521,7 +522,7 @@ class TypeDArray : public TypeArray
 public:
     TypeDArray(Type *t);
     const char *kind();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     d_uns64 size(Loc loc);
     unsigned alignsize();
     Type *semantic(Loc loc, Scope *sc);
@@ -550,7 +551,7 @@ public:
     TypeAArray(Type *t, Type *index);
     static TypeAArray *create(Type *t, Type *index);
     const char *kind();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     d_uns64 size(Loc loc);
     Type *semantic(Loc loc, Scope *sc);
     void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
@@ -577,7 +578,7 @@ class TypePointer : public TypeNext
 public:
     TypePointer(Type *t);
     const char *kind();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     Type *semantic(Loc loc, Scope *sc);
     d_uns64 size(Loc loc);
     MATCH implicitConvTo(Type *to);
@@ -596,7 +597,7 @@ class TypeReference : public TypeNext
 public:
     TypeReference(Type *t);
     const char *kind();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     Type *semantic(Loc loc, Scope *sc);
     d_uns64 size(Loc loc);
     Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);
@@ -611,7 +612,7 @@ class TypeValueof : public TypeNext
 public:
     TypeValueof(Type *t);
     const char *kind();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     Type *semantic(Loc loc, Scope *sc);
     d_uns64 size(Loc loc);
     MATCH implicitConvTo(Type *to);
@@ -678,7 +679,7 @@ public:
     TypeFunction(Parameters *parameters, Type *treturn, int varargs, LINK linkage, StorageClass stc = 0);
     static TypeFunction *create(Parameters *parameters, Type *treturn, int varargs, LINK linkage, StorageClass stc = 0);
     const char *kind();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     Type *semantic(Loc loc, Scope *sc);
     void purityLevel();
     void toDecoBuffer(OutBuffer *buf, int flag);
@@ -705,7 +706,7 @@ public:
 
     TypeDelegate(Type *t);
     const char *kind();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     Type *semantic(Loc loc, Scope *sc);
     d_uns64 size(Loc loc);
     unsigned alignsize();
@@ -746,7 +747,7 @@ public:
 
     TypeIdentifier(Loc loc, Identifier *ident);
     const char *kind();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     //char *toChars();
     void toDecoBuffer(OutBuffer *buf, int flag);
     void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
@@ -765,7 +766,7 @@ public:
 
     TypeInstance(Loc loc, TemplateInstance *tempinst);
     const char *kind();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     //char *toChars();
     //void toDecoBuffer(OutBuffer *buf, int flag);
     void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
@@ -783,7 +784,7 @@ public:
 
     TypeTypeof(Loc loc, Expression *exp);
     const char *kind();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     Dsymbol *toDsymbol(Scope *sc);
     void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
     Type *semantic(Loc loc, Scope *sc);
@@ -796,7 +797,7 @@ class TypeReturn : public TypeQualified
 public:
     TypeReturn(Loc loc);
     const char *kind();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     Dsymbol *toDsymbol(Scope *sc);
     void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
     Type *semantic(Loc loc, Scope *sc);
@@ -829,7 +830,7 @@ public:
     d_uns64 size(Loc loc);
     unsigned alignsize();
     char *toChars();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     Type *semantic(Loc loc, Scope *sc);
     Dsymbol *toDsymbol(Scope *sc);
     void toDecoBuffer(OutBuffer *buf, int flag);
@@ -866,7 +867,7 @@ public:
 
     TypeEnum(EnumDeclaration *sym);
     const char *kind();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     d_uns64 size(Loc loc);
     unsigned alignsize();
     char *toChars();
@@ -906,7 +907,7 @@ public:
 
     TypeTypedef(TypedefDeclaration *sym);
     const char *kind();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     d_uns64 size(Loc loc);
     unsigned alignsize();
     char *toChars();
@@ -954,7 +955,7 @@ public:
     const char *kind();
     d_uns64 size(Loc loc);
     char *toChars();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     Type *semantic(Loc loc, Scope *sc);
     Dsymbol *toDsymbol(Scope *sc);
     void toDecoBuffer(OutBuffer *buf, int flag);
@@ -988,7 +989,7 @@ public:
     TypeTuple(Type *t1);
     TypeTuple(Type *t1, Type *t2);
     const char *kind();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     Type *semantic(Loc loc, Scope *sc);
     bool equals(RootObject *o);
     void toDecoBuffer(OutBuffer *buf, int flag);
@@ -1006,7 +1007,7 @@ public:
 
     TypeSlice(Type *next, Expression *lwr, Expression *upr);
     const char *kind();
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     Type *semantic(Loc loc, Scope *sc);
     void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
     void accept(Visitor *v) { v->visit(this); }
@@ -1018,7 +1019,7 @@ public:
     TypeNull();
     const char *kind();
 
-    Type *syntaxCopy();
+    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     void toDecoBuffer(OutBuffer *buf, int flag);
     MATCH implicitConvTo(Type *to);
     bool checkBoolean();

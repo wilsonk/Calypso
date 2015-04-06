@@ -168,7 +168,7 @@ Type *Type::copy()
     return t;
 }
 
-Type *Type::syntaxCopy()
+Type *Type::syntaxCopy(Type *)
 {
     print();
     fprintf(stderr, "ty = %d\n", ty);
@@ -886,22 +886,25 @@ void Type::check()
     if (tn && ty != Tfunction && tn->ty != Tfunction && ty != Tenum)
     {
         // Verify transitivity
-        switch (mod)
+        if (checkTransitiveMod())
         {
-            case 0:
-            case MODconst:
-            case MODwild:
-            case MODwildconst:
-            case MODshared:
-            case MODshared | MODconst:
-            case MODshared | MODwild:
-            case MODshared | MODwildconst:
-            case MODimmutable:
-                assert(tn->mod == MODimmutable || (tn->mod & mod) == mod);
-                break;
+            switch (mod)
+            {
+                case 0:
+                case MODconst:
+                case MODwild:
+                case MODwildconst:
+                case MODshared:
+                case MODshared | MODconst:
+                case MODshared | MODwild:
+                case MODshared | MODwildconst:
+                case MODimmutable:
+                    assert(tn->mod == MODimmutable || (tn->mod & mod) == mod);
+                    break;
 
-            default:
-                assert(0);
+                default:
+                    assert(0);
+            }
         }
         tn->check();
     }
@@ -1591,7 +1594,7 @@ char *MODtoChars(MOD mod)
 
 void Type::toDecoBuffer(OutBuffer *buf, int flag)
 {
-    if (flag != mod && flag != 0x100)
+//     if (flag != mod && flag & 0x100) // CALYPSO HACK: mod must always be written since nextOf might have a "lesser" mod
     {
         MODtoDecoBuffer(buf, mod);
     }
@@ -2592,7 +2595,7 @@ TypeError::TypeError()
 {
 }
 
-Type *TypeError::syntaxCopy()
+Type *TypeError::syntaxCopy(Type *)
 {
     // No semantic analysis done, no need to copy
     return this;
@@ -3036,7 +3039,7 @@ const char *TypeBasic::kind()
     return dstring;
 }
 
-Type *TypeBasic::syntaxCopy()
+Type *TypeBasic::syntaxCopy(Type *)
 {
     // No semantic analysis done on basic types, no need to copy
     return this;
@@ -3647,7 +3650,7 @@ const char *TypeVector::kind()
     return "vector";
 }
 
-Type *TypeVector::syntaxCopy()
+Type *TypeVector::syntaxCopy(Type *)
 {
     return new TypeVector(Loc(), basetype->syntaxCopy());
 }
@@ -3947,7 +3950,7 @@ const char *TypeSArray::kind()
     return "sarray";
 }
 
-Type *TypeSArray::syntaxCopy()
+Type *TypeSArray::syntaxCopy(Type *)
 {
     Type *t = next->syntaxCopy();
     Expression *e = dim->syntaxCopy();
@@ -4469,7 +4472,7 @@ const char *TypeDArray::kind()
     return "darray";
 }
 
-Type *TypeDArray::syntaxCopy()
+Type *TypeDArray::syntaxCopy(Type *)
 {
     Type *t = next->syntaxCopy();
     if (t == next)
@@ -4687,7 +4690,7 @@ const char *TypeAArray::kind()
     return "aarray";
 }
 
-Type *TypeAArray::syntaxCopy()
+Type *TypeAArray::syntaxCopy(Type *)
 {
     Type *t = next->syntaxCopy();
     Type *ti = index->syntaxCopy();
@@ -5051,15 +5054,19 @@ const char *TypePointer::kind()
     return "pointer";
 }
 
-Type *TypePointer::syntaxCopy()
+Type *TypePointer::syntaxCopy(Type *o)
 {
-    Type *t = next->syntaxCopy();
-    if (t == next)
+    TypePointer *t;
+    Type *n = next->syntaxCopy();
+    if (o)
+        t = (TypePointer *)(o);
+    else if (n == next)
         t = this;
     else
-    {   t = new TypePointer(t);
-        t->mod = mod;
-    }
+        t = new TypePointer(n);
+
+    t->next = n;
+    t->mod = mod;
     return t;
 }
 
@@ -5225,15 +5232,19 @@ const char *TypeReference::kind()
     return "reference";
 }
 
-Type *TypeReference::syntaxCopy()
+Type *TypeReference::syntaxCopy(Type *o)
 {
-    Type *t = next->syntaxCopy();
-    if (t == next)
+    TypeReference *t;
+    Type *n = next->syntaxCopy();
+    if (o)
+        t = (TypeReference *)(o);
+    else if (n == next)
         t = this;
     else
-    {   t = new TypeReference(t);
-        t->mod = mod;
-    }
+        t = new TypeReference(n);
+
+    t->next = n;
+    t->mod = mod;
     return t;
 }
 
@@ -5292,27 +5303,31 @@ const char *TypeValueof::kind()
     return "valueof";
 }
 
-Type *TypeValueof::syntaxCopy()
+Type *TypeValueof::syntaxCopy(Type *o)
 {
-    Type *t = next->syntaxCopy();
-    if (t == next)
+    TypeValueof *t;
+    Type *n = next->syntaxCopy();
+    if (o)
+        t = (TypeValueof *)(o);
+    else if (n == next)
         t = this;
     else
-    {   t = new TypeValueof(t);
-        t->mod = mod;
-    }
+        t = new TypeValueof(n);
+
+    t->next = n;
+    t->mod = mod;
     return t;
 }
 
 Type *TypeValueof::semantic(Loc loc, Scope *sc)
 {
     Type *n = next->semantic(loc, sc);
+    if (n->isTypeBasic() || n->ty == Tstruct || n->ty == Tvalueof)
+        return n->addMod(mod)->semantic(loc, sc);
     if (n != next)
         deco = NULL;
     next = n;
     transitive();
-    if (next->isTypeBasic() || next->ty == Tstruct || next->ty == Tvalueof)
-        return next->merge();
     return merge();
 }
 
@@ -5397,7 +5412,7 @@ const char *TypeFunction::kind()
     return "function";
 }
 
-Type *TypeFunction::syntaxCopy()
+Type *TypeFunction::syntaxCopy(Type *)
 {
     Type *treturn = next ? next->syntaxCopy() : NULL;
     Parameters *params = Parameter::arraySyntaxCopy(parameters);
@@ -6476,7 +6491,7 @@ const char *TypeDelegate::kind()
     return "delegate";
 }
 
-Type *TypeDelegate::syntaxCopy()
+Type *TypeDelegate::syntaxCopy(Type *)
 {
     Type *t = next->syntaxCopy();
     if (t == next)
@@ -6890,7 +6905,7 @@ const char *TypeIdentifier::kind()
 }
 
 
-Type *TypeIdentifier::syntaxCopy()
+Type *TypeIdentifier::syntaxCopy(Type *)
 {
     TypeIdentifier *t;
 
@@ -7052,7 +7067,7 @@ const char *TypeInstance::kind()
     return "instance";
 }
 
-Type *TypeInstance::syntaxCopy()
+Type *TypeInstance::syntaxCopy(Type *)
 {
     //printf("TypeInstance::syntaxCopy() %s, %d\n", toChars(), idents.dim);
     TypeInstance *t;
@@ -7174,7 +7189,7 @@ const char *TypeTypeof::kind()
     return "typeof";
 }
 
-Type *TypeTypeof::syntaxCopy()
+Type *TypeTypeof::syntaxCopy(Type *)
 {
     //printf("TypeTypeof::syntaxCopy() %s\n", toChars());
     TypeTypeof *t;
@@ -7340,7 +7355,7 @@ const char *TypeReturn::kind()
     return "return";
 }
 
-Type *TypeReturn::syntaxCopy()
+Type *TypeReturn::syntaxCopy(Type *)
 {
     TypeReturn *t = new TypeReturn(loc);
     t->syntaxCopyHelper(this);
@@ -7465,7 +7480,7 @@ char *TypeEnum::toChars()
     return sym->toChars();
 }
 
-Type *TypeEnum::syntaxCopy()
+Type *TypeEnum::syntaxCopy(Type *)
 {
     return this;
 }
@@ -7688,7 +7703,7 @@ const char *TypeTypedef::kind()
     return "typedef";
 }
 
-Type *TypeTypedef::syntaxCopy()
+Type *TypeTypedef::syntaxCopy(Type *)
 {
     return this;
 }
@@ -7987,7 +8002,7 @@ char *TypeStruct::toChars()
     return sym->toChars();
 }
 
-Type *TypeStruct::syntaxCopy()
+Type *TypeStruct::syntaxCopy(Type *)
 {
     return this;
 }
@@ -8544,7 +8559,7 @@ char *TypeClass::toChars()
     return (char *)sym->toPrettyChars();
 }
 
-Type *TypeClass::syntaxCopy()
+Type *TypeClass::syntaxCopy(Type *)
 {
     return this;
 }
@@ -9177,7 +9192,7 @@ const char *TypeTuple::kind()
     return "tuple";
 }
 
-Type *TypeTuple::syntaxCopy()
+Type *TypeTuple::syntaxCopy(Type *)
 {
     Parameters *args = Parameter::arraySyntaxCopy(arguments);
     Type *t = new TypeTuple(args);
@@ -9310,7 +9325,7 @@ const char *TypeSlice::kind()
     return "slice";
 }
 
-Type *TypeSlice::syntaxCopy()
+Type *TypeSlice::syntaxCopy(Type *)
 {
     Type *t = new TypeSlice(next->syntaxCopy(), lwr->syntaxCopy(), upr->syntaxCopy());
     t->mod = mod;
@@ -9438,7 +9453,7 @@ const char *TypeNull::kind()
     return "null";
 }
 
-Type *TypeNull::syntaxCopy()
+Type *TypeNull::syntaxCopy(Type *)
 {
     // No semantic analysis done, no need to copy
     return this;
