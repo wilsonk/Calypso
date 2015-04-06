@@ -268,7 +268,7 @@ void TemplateDeclaration::correctTempDecl(TemplateInstance *ti)
         }
     }
 
-    assert(static_cast<cpp::TemplateDeclaration*>(ti->tempdecl)
+    assert(ti->tempdecl && static_cast<cpp::TemplateDeclaration*>(ti->tempdecl)
             ->TempOrSpec->getCanonicalDecl() == RealTemp);
 }
 

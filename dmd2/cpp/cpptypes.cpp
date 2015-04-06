@@ -24,9 +24,7 @@ using llvm::dyn_cast;
 using llvm::isa;
 
 // Internal Calypso types (unlike TypeValueof which might used by normal D code) essential for template arguments matching.
-// D's const being transitive, there's no way around and since Calypso only needs logical const internally, keeping it outside of DMD seemed like the better idea..
-
-// #define \
+// D's const being transitive and since Calypso only needs logical const internally, keeping it outside of DMD seemed like the better idea..
 
 class TypePointer : public ::TypePointer
 {
