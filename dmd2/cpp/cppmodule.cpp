@@ -458,6 +458,9 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     if (isa<clang::CXXConversionDecl>(D))
         return nullptr; // TODO
 
+    if (isa<clang::FunctionNoProtoType>(D->getType()))
+        return nullptr; // functions without prototypes are afaik builtins, and since D needs a prototype they can't be mapped
+
     auto loc = fromLoc(D->getLocation());
 
     auto FPT = D->getType()->castAs<clang::FunctionProtoType>();
