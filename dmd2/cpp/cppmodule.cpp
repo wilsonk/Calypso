@@ -1039,7 +1039,13 @@ static void mapNamespace(DeclMapper &mapper,
             continue;  // only map declarations that are semantically within the DeclContext
 
         auto Tag = dyn_cast<clang::TagDecl>(*D);
-        if (Tag && Tag->getIdentifier())
+
+        if (auto LinkSpec = dyn_cast<clang::LinkageSpecDecl>(*D))
+        {
+            mapNamespace(mapper, LinkSpec, members);
+            continue;
+        }
+        else if (Tag && Tag->getIdentifier())
             continue; // anonymous tags are added as well
         else if (!isa<clang::FunctionDecl>(*D) &&
                 !isa<clang::VarDecl>(*D) &&
