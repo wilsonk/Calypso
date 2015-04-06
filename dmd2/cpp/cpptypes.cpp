@@ -592,6 +592,7 @@ class ScopeChecker // determines if a C++ decl is "scopingly" equivalent to anot
 {
 public:
     const clang::Decl *Scope, *Pattern = nullptr;
+    bool skipBases;
 
     const clang::Decl *getScope(const clang::Decl *D)
     {
@@ -621,7 +622,8 @@ public:
             return nullptr;
     }
 
-    ScopeChecker(const clang::Decl *D)
+    ScopeChecker(const clang::Decl *D, bool skipBases = false)
+        : skipBases(skipBases)
     {
         Scope = getScope(D);
         Pattern = getPattern(D);
@@ -634,7 +636,8 @@ public:
         if (CanonScope == Scope || CanonPattern == Pattern)
             return true;
 
-        if (auto Record = dyn_cast<clang::CXXRecordDecl>(Scope))
+        auto Record = dyn_cast<clang::CXXRecordDecl>(Scope);
+        if (!skipBases && Record)
         {
             if (Record = Record->getDefinition())
             {
@@ -901,13 +904,13 @@ const clang::Decl *TypeMapper::GetRootForTypeQualified(clang::NamedDecl *D)
             // TODO: check that this doesn't happen when called from TypeMapper would be more solid
         return nullptr;
 
-    // This is currently the only place where a "C++ scope" is used, this is
-    // especially needed for identifier lookups during template instantiations
+    bool skipBases = scopeSkipTopBases;
+
     while (!ScopeStack.empty())
     {
         auto ScopeDecl = ScopeStack.top();
         ScopeStack.pop();
-        ScopeChecker ScopeDeclEquals(ScopeDecl);
+        ScopeChecker ScopeDeclEquals(ScopeDecl, skipBases);
 
         const clang::Decl *DCDecl = D,
                             *Previous = D;
@@ -919,6 +922,8 @@ const clang::Decl *TypeMapper::GetRootForTypeQualified(clang::NamedDecl *D)
             Previous = DCDecl;
             DCDecl = cast<clang::Decl>(getDeclContextNamedOrTU(DCDecl));
         }
+
+        skipBases = false;
 
 //         bool fullyQualify = false;
 //
@@ -1347,17 +1352,19 @@ Type* TypeMapper::FromType::fromTypeSubstTemplateTypeParm(const clang::SubstTemp
     auto Temp = cast<clang::Decl>(ParmDecl->getDeclContext());
 
     decltype(CXXScope) ScopeStack(tm.CXXScope);
+    bool skipBases = tm.scopeSkipTopBases;
     while (!ScopeStack.empty())
     {
         auto ScopeDecl = ScopeStack.top();
         ScopeStack.pop();
-        ScopeChecker ScopeDeclEquals(ScopeDecl);
+        ScopeChecker ScopeDeclEquals(ScopeDecl, skipBases);
 
         if (ScopeDeclEquals.extended(Temp))
         {
             isEscaped = false;
             break;
         }
+        skipBases = false;
     }
 
     if (isEscaped)

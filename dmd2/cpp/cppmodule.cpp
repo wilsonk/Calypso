@@ -313,6 +313,8 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
 
             if (CRD)
             {
+                scopeSkipTopBases = true;
+
                 for (auto B = CRD->bases_begin(),
                         BEnd = CRD->bases_end(); B != BEnd; ++B)
                 {
@@ -323,6 +325,8 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
                     baseclasses->push(new BaseClass(brt,
                                                     toPROT(B->getAccessSpecifier())));
                 }
+
+                scopeSkipTopBases = false;
             }
 
             auto cd = new ClassDeclaration(loc, id, baseclasses, CRD);

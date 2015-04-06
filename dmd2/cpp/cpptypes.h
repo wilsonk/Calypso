@@ -59,6 +59,7 @@ public:
     Dsymbols *substsyms = nullptr; // only for TempateInstance::correctTiargs (partial spec arg deduction)
 
     std::stack<const clang::Decl *> CXXScope;
+    bool scopeSkipTopBases = false; // when mapping base classes do not make ScopeChecker look into base classes of CXXScope.top() (FIXME: ugly)
 
     // Clang -> DMD
     Type *fromType(const clang::QualType T);
