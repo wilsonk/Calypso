@@ -1728,7 +1728,7 @@ static Identifier *BuildImplicitImportInternal(const clang::DeclContext *DC,
             sModule = Lexer::idPool("_");
     }
 
-    return new cpp::Import(loc, sPackages, sModule, nullptr, 0);
+    return new cpp::Import(loc, sPackages, sModule, nullptr, 1);
 }
 
 /***** DMD -> Clang types *****/
