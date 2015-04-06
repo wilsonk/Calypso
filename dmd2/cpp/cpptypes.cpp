@@ -1637,9 +1637,10 @@ clang::QualType TypeMapper::toType(Loc loc, Type* t, Scope *sc, StorageClass stc
         }
         case Tvalueof:
         {
-            auto RefTy = cast<clang::ReferenceType>(toType(loc,
-                                    static_cast<TypeValueof*>(t)->nextOf(), sc, stc));
-            return RefTy->getPointeeType();
+            auto Ty = toType(loc, t->nextOf(), sc, stc);
+            auto Ref = cast<clang::ReferenceType>(Ty.getTypePtr());
+            auto CVR = Ty.getCVRQualifiers();
+            return Ref->getPointeeType().withCVRQualifiers(CVR);
         }
         case Tenum:
         {
