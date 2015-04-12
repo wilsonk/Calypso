@@ -592,7 +592,6 @@ class ScopeChecker // determines if a C++ decl is "scopingly" equivalent to anot
 {
 public:
     const clang::Decl *Scope, *Pattern = nullptr;
-    bool skipBases;
 
     const clang::Decl *getScope(const clang::Decl *D)
     {
@@ -622,14 +621,13 @@ public:
             return nullptr;
     }
 
-    ScopeChecker(const clang::Decl *D, bool skipBases = false)
-        : skipBases(skipBases)
+    ScopeChecker(const clang::Decl *D)
     {
         Scope = getScope(D);
         Pattern = getPattern(D);
     }
 
-    bool operator()(const clang::Decl *D)
+    bool operator()(const clang::Decl *D, bool checkBases = true)
     {
         auto CanonScope = getScope(D);
         auto CanonPattern = getPattern(D);
@@ -637,25 +635,30 @@ public:
             return true;
 
         auto Record = dyn_cast<clang::CXXRecordDecl>(Scope);
-        if (!skipBases && Record)
+        if (checkBases && Record && Record->getDefinition())
         {
-            if (Record = Record->getDefinition())
+            Record = Record->getDefinition();
+            for (auto& B: Record->bases())
             {
-                for (auto& B: Record->bases())
-                {
-                    auto BRT = B.getType()->getAs<clang::RecordType>();
+                auto BRT = B.getType()->getAs<clang::RecordType>();
 
-                    if (!BRT)
-                        continue;
+                if (!BRT)
+                    continue;
 
-                    auto BRD = BRT->getDecl();
-                    if (ScopeChecker(BRD)(D))
-                        return true;
-                }
+                auto BRD = BRT->getDecl();
+                if (ScopeChecker(BRD)(D))
+                    return true;
             }
         }
 
         return false;
+    }
+
+    bool isDirectParent(const clang::Decl *D)
+    {
+        auto Parent = cast<clang::Decl>(
+                        getDeclContextNamedOrTU(D));
+        return operator()(Parent);
     }
 
     bool extended(const clang::Decl *D)
@@ -681,6 +684,7 @@ public:
     TypeMapper &tm;
 
     ScopeChecker RootEquals;
+    const clang::NamedDecl *TopDecl;
     const clang::TemplateArgument *TopTempArgBegin,
         *TopTempArgEnd;
 
@@ -699,13 +703,15 @@ public:
                 clang::NamedDecl *Spec = nullptr);
 
     TypeQualifiedBuilder(TypeMapper::FromType &from, const clang::Decl* Root,
+        const clang::NamedDecl *TopDecl = nullptr,
         const clang::TemplateArgument *TempArgBegin = nullptr,
         const clang::TemplateArgument *TempArgEnd = nullptr)
         : from(from), tm(from.tm), RootEquals(Root),
+          TopDecl(TopDecl),
           TopTempArgBegin(TempArgBegin),
           TopTempArgEnd(TempArgEnd) {}
 
-    TypeQualified *get(const clang::NamedDecl *D);
+    TypeQualified *get(const clang::Decl *D);
 };
 
 void TypeQualifiedBuilder::add(TypeQualified *&tqual, RootObject *o)
@@ -770,10 +776,14 @@ void TypeQualifiedBuilder::pushInst(TypeQualified *&tqual,
     addInst(tqual, tempinst);
 }
 
-RootObject *getIdentOrTempinst(const clang::NamedDecl *D)
+RootObject *getIdentOrTempinst(const clang::Decl *D)
 {
+    auto Named = dyn_cast<clang::NamedDecl>(D);
+    if (!Named)
+        return nullptr;
+
     const char *op = nullptr; // overloaded operator
-    auto ident = getIdentifierOrNull(D, &op);
+    auto ident = getIdentifierOrNull(Named, &op);
     if (!ident)
         return nullptr;
 
@@ -789,40 +799,37 @@ RootObject *getIdentOrTempinst(const clang::NamedDecl *D)
         return ident;
 }
 
-TypeQualified *TypeQualifiedBuilder::get(const clang::NamedDecl *D)
+TypeQualified *TypeQualifiedBuilder::get(const clang::Decl *D)
 {
     TypeQualified *tqual;
 
     if (from.prefix)
         tqual = from.prefix; // special case where the prefix has already been determined from a NNS
-    else if (RootEquals(D))
+    else if (!isa<clang::TranslationUnitDecl>(D) && RootEquals(D))
         tqual = nullptr;
     else
     {
         auto LeftMost = tm.GetNonNestedContext(D);
-        ScopeChecker LeftMostEquals(LeftMost);
+        ScopeChecker LeftMostCheck(LeftMost);
 
-        if (LeftMostEquals(D))  // we'll need a fully qualified type
+        if (LeftMostCheck(D))  // we'll need a fully qualified type
         {
             // build a fake import
-            auto im = tm.BuildImplicitImport(
-                    tm.GetImplicitImportKeyForDecl(D));
+            auto im = tm.AddImplicitImportForDecl(TopDecl, true);
 
             tqual = nullptr;
             for (size_t i = 1; i < im->packages->dim; i++)
                 addIdent(tqual, (*im->packages)[i]);
             addIdent(tqual, im->id);
 
-            if (isa<clang::NamespaceDecl>(LeftMost))
+            if (isa<clang::NamespaceDecl>(D) || isa<clang::TranslationUnitDecl>(D))
                 return tqual;
         }
         else
         {
-            auto DC = getDeclContextNamedOrTU(D);
-            if (auto NamedDC = dyn_cast<clang::NamedDecl>(DC))
-                tqual = get(NamedDC);
-            else
-                tqual = new TypeIdentifier(Loc(), Lexer::idPool("_"));
+            auto Parent = cast<clang::Decl>(
+                        getDeclContextNamedOrTU(D));
+            tqual = get(Parent);
         }
     }
 
@@ -903,26 +910,26 @@ const clang::Decl *TypeMapper::GetRootForTypeQualified(clang::NamedDecl *D)
             // TODO: check that this doesn't happen when called from TypeMapper would be more solid
         return nullptr;
 
-    bool skipBases = scopeSkipTopBases;
-
+    // This is currently the only place where a "C++ scope" is used, this is
+    // especially needed for identifier lookups during template instantiations
     while (!ScopeStack.empty())
     {
         auto ScopeDecl = ScopeStack.top();
         ScopeStack.pop();
-        ScopeChecker ScopeDeclEquals(ScopeDecl, skipBases);
+        ScopeChecker ScopeDeclCheck(ScopeDecl);
 
-        const clang::Decl *DCDecl = D,
-                            *Previous = D;
-        while(!isa<clang::TranslationUnitDecl>(DCDecl))
+        if (ScopeDeclCheck(D, false))
+            return D;
+
+        const clang::Decl *DI = D;
+        while(!isa<clang::TranslationUnitDecl>(DI))
         {
-            if (ScopeDeclEquals(DCDecl))
-                return Previous;
+            if (ScopeDeclCheck.isDirectParent(DI))
+                return DI;
 
-            Previous = DCDecl;
-            DCDecl = cast<clang::Decl>(getDeclContextNamedOrTU(DCDecl));
+            DI = cast<clang::Decl>(
+                    getDeclContextNamedOrTU(DI));
         }
-
-        skipBases = false;
 
 //         bool fullyQualify = false;
 //
@@ -965,7 +972,7 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* D,
     auto Root = tm.GetRootForTypeQualified(D);
 
     tm.AddImplicitImportForDecl(D);
-    return TypeQualifiedBuilder(*this, Root, TempArgBegin, TempArgEnd).get(D);
+    return TypeQualifiedBuilder(*this, Root, D, TempArgBegin, TempArgEnd).get(D);
 }
 
 Type *TypeMapper::trySubstitute(const clang::Decl *D)
@@ -1351,19 +1358,17 @@ Type* TypeMapper::FromType::fromTypeSubstTemplateTypeParm(const clang::SubstTemp
     auto Temp = cast<clang::Decl>(ParmDecl->getDeclContext());
 
     decltype(CXXScope) ScopeStack(tm.CXXScope);
-    bool skipBases = tm.scopeSkipTopBases;
     while (!ScopeStack.empty())
     {
         auto ScopeDecl = ScopeStack.top();
         ScopeStack.pop();
-        ScopeChecker ScopeDeclEquals(ScopeDecl, skipBases);
+        ScopeChecker ScopeDeclEquals(ScopeDecl);
 
         if (ScopeDeclEquals.extended(Temp))
         {
             isEscaped = false;
             break;
         }
-        skipBases = false;
     }
 
     if (isEscaped)
