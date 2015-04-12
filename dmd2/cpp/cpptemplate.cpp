@@ -89,6 +89,7 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
     auto& Context = calypso.pch.AST->getASTContext();
     auto& S = calypso.pch.AST->getSema();
     auto& instCollector = calypso.pch.instCollector;
+    auto& Diags = calypso.pch.AST->getDiagnostics();
 
     if (isForeignInstance(tithis))
         return nullptr;
@@ -202,9 +203,12 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
             if (Instantiating.isInvalid())
                 assert(false && "InstantiatingTemplate is invalid");
 
+            Diags.setSuppressAllDiagnostics(true);
             auto FuncInst = llvm::cast_or_null<clang::FunctionDecl>(
                             S.SubstDecl(FuncTemp->getTemplatedDecl(),
                                         Temp->getDeclContext(), MultiList));
+            Diags.setSuppressAllDiagnostics(false);
+
             if (!FuncInst)
             {
                 ti->errors = true; // probably an attempt from functionResolve()
@@ -315,9 +319,11 @@ void TemplateInstance::completeInst()
     auto& Context = calypso.pch.AST->getASTContext();
     auto& S = calypso.pch.AST->getSema();
     auto& instCollector = calypso.pch.instCollector;
+    auto& Diags = calypso.pch.AST->getDiagnostics();
 
     auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(Inst);
 
+    Diags.setSuppressAllDiagnostics(true); // silence failed instantiations (while Clang instantiate lazily DMD tries to instantiate everything)
     instCollector.tempinsts.push(this);
 
     if (CTSD && !CTSD->hasDefinition() &&
@@ -343,6 +349,7 @@ void TemplateInstance::completeInst()
         }
 
     instCollector.tempinsts.pop();
+    Diags.setSuppressAllDiagnostics(false);
 }
 
 // HACK-ish unfortunately.. but partial spec arg deduction isn't trivial. Can't think of a simpler way.
