@@ -140,6 +140,20 @@ ASTUnit::~ASTUnit() {
   }
 }
 
+void ASTUnit::findFileRegionDecls(FileID File, unsigned Offset, unsigned Length,
+                                  SmallVectorImpl<Decl *> &Decls) {
+  if (File.isInvalid())
+    return;
+
+  if (SourceMgr->isLoadedFileID(File)) {
+    assert(Ctx->getExternalSource() && "No external source!");
+    return Ctx->getExternalSource()->FindFileRegionDecls(File, Offset, Length,
+                                                         Decls);
+  }
+
+  llvm_unreachable("PCH decls should always be external");
+}
+
 /// \brief Configure the diagnostics object for use with ASTUnit.
 void ASTUnit::ConfigureDiags(IntrusiveRefCntPtr<DiagnosticsEngine> &Diags,
                              const char **ArgBegin, const char **ArgEnd,
@@ -230,8 +244,6 @@ ASTUnit *ASTUnit::LoadFromASTFile(const std::string &Filename,
     AST->getDiagnostics().Report(diag::err_fe_unable_to_load_pch);
     return nullptr;
   }
-
-//   AST->OriginalSourceFile = AST->Reader->getOriginalSourceFile();
 
   PP.setCounterValue(Counter);
 

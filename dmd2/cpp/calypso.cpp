@@ -13,12 +13,13 @@
 #include "lexer.h"
 #include "expression.h"
 
-#include "../../driver/tool.h"
-#include "../../driver/cl_options.h"
+#include "driver/tool.h"
+#include "driver/cl_options.h"
 
 #include "clang/AST/DeclTemplate.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
+#include "clang/Lex/ModuleMap.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "llvm/Support/Program.h"
 #include "llvm/IR/LLVMContext.h"
@@ -429,6 +430,23 @@ void PCH::update()
 
     AST = ASTUnit::LoadFromASTFile(pchFilename,
                                 Diags, FileSystemOpts, &instCollector);
+
+    /* If a Clang module map file was passed, parse it */
+    if (!opts::cppModuleMap.empty())
+    {
+        MMap = new clang::ModuleMap(AST->getSourceManager(), *Diags, AST->getASTFileLangOpts(),
+                                &AST->getTargetInfo(), AST->getHeaderSearch());
+
+        auto MMapFile = AST->getFileManager().getFile(opts::cppModuleMap);
+        auto MMapHomeDir = AST->getFileManager().getDirectory(opts::cppModuleHomeDir);
+        assert(MMapFile && MMapHomeDir);
+
+        if (MMap->parseModuleMapFile(MMapFile, false, MMapHomeDir))
+        {
+            ::error(Loc(), "Clang module map file parsing failed");
+            fatal();
+        }
+    }
 
     // Build the builtin type map
     calypso.builtinTypes.build(AST->getASTContext());

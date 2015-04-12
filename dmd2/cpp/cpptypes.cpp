@@ -888,7 +888,8 @@ const clang::Decl *TypeMapper::GetRootForTypeQualified(clang::NamedDecl *D)
     clang::DeclarationName Name;
     decltype(CXXScope) ScopeStack(CXXScope);
 
-    if (mod && D->getCanonicalDecl() == mod->rootDecl->getCanonicalDecl())
+    if (mod && mod->rootDecl
+            && D->getCanonicalDecl() == mod->rootDecl->getCanonicalDecl())
         return D;
 
     if (D->getIdentifier() ||
@@ -1596,26 +1597,72 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
     return tf;
 }
 
+static clang::Module *GetClangModuleForDecl(const clang::Decl* D)
+{
+    auto& SrcMgr = calypso.getASTUnit()->getSourceManager();
+    auto MMap = calypso.pch.MMap;
+
+    if (!MMap)
+        return nullptr;
+
+    auto DLoc = SrcMgr.getFileLoc(D->getLocation());
+    if (!DLoc.isFileID())
+        return nullptr;
+
+    auto FID = SrcMgr.getFileID(DLoc);
+    auto Header = SrcMgr.getFileEntryForID(FID);
+
+    auto KH = MMap->findModuleForHeader(Header);
+    if (!KH)
+        return nullptr;
+
+    return KH.getModule();
+}
+
 // In D if a class is inheriting from another module's class, then its own module has to import the base class' module.
 // So we need to populate the beginning of our virtual module with imports for derived classes.
-void TypeMapper::AddImplicitImportForDecl(const clang::NamedDecl* D)
+::Import *TypeMapper::AddImplicitImportForDecl(const clang::NamedDecl *D, bool fake)
 {
-    if (!addImplicitDecls)
-        return;
+    if (!fake)
+    {
+        if (!addImplicitDecls)
+            return nullptr;
 
-    assert(mod);
+        assert(mod);
+    }
 
-    auto Key = GetImplicitImportKeyForDecl(D);
+    auto KeyDecl = GetImplicitImportKeyForDecl(D);
 
-    if (Key == mod->rootDecl)
-        return; // do not import self
+    const clang::Module *Mod = nullptr;
+    if (isa<clang::TranslationUnitDecl>(KeyDecl)
+                || isa<clang::NamespaceDecl>(KeyDecl))
+        Mod = GetClangModuleForDecl(D); // see if there's a Clang module which contains the decl
 
-    if (implicitImports[Key])
-        return;
+    const void *Key;
+    if (Mod) Key = Mod; else Key = KeyDecl;
 
-    auto im = BuildImplicitImport(Key);
-    implicitImports[Key] = im;
-    mod->members->shift(im);
+    if (!fake)
+    {
+        if (Key == mod->rootKey())
+            return nullptr; // do not import self
+
+        if (implicitImports[Key])
+            return nullptr; // already imported
+    }
+
+    ::Import *im;
+    if (Mod)
+        im = BuildImplicitImport(Mod);
+    else
+        im = BuildImplicitImport(KeyDecl);
+
+    if (!fake)
+    {
+        implicitImports[Key] = im;
+        mod->members->shift(im);
+    }
+
+    return im;
 }
 
 const clang::Decl* TypeMapper::GetImplicitImportKeyForDecl(const clang::NamedDecl* D)
@@ -1724,6 +1771,22 @@ static Identifier *BuildImplicitImportInternal(const clang::DeclContext *DC,
         else
             // D is neither a tag nor a class template, we need to import the namespace's functions and vars
             sModule = Lexer::idPool("_");
+    }
+
+    return new cpp::Import(loc, sPackages, sModule, nullptr, 1);
+}
+
+::Import *TypeMapper::BuildImplicitImport(const clang::Module *Mod)
+{
+    auto loc = Loc();
+    auto sPackages = new Identifiers;
+    auto sModule = Lexer::idPool(Mod->Name.c_str());
+
+    auto M = Mod->Parent;
+    while (M)
+    {
+        sPackages->shift(Lexer::idPool(M->Name.c_str()));
+        M = M->Parent;
     }
 
     return new cpp::Import(loc, sPackages, sModule, nullptr, 1);

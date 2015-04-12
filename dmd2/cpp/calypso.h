@@ -26,6 +26,7 @@ namespace clang
 class IdentifierInfo;
 class CodeGenFunction;
 class Sema;
+class ModuleMap;
 }
 
 namespace cpp
@@ -64,6 +65,8 @@ struct PCH
     ASTUnit *AST = nullptr;
     InstantiationCollector instCollector;
     clang::IntrusiveRefCntPtr<clang::DiagnosticsEngine> Diags;
+    
+    clang::ModuleMap *MMap = nullptr;
 
     void init(); // load the list of headers already cached in the PCH
     void add(StringRef header);

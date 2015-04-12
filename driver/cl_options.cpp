@@ -417,6 +417,15 @@ cl::list<std::string> cppArgs("cpp-args",
 cl::opt<bool> cppDebug("cpp-debug",
     cl::desc("CALYPSO DEBUG"));
 
+cl::opt<std::string> cppModuleMap("cM",
+    cl::desc("Clang module map file"),
+    cl::value_desc("cpp-module-map"));
+
+cl::opt<std::string> cppModuleHomeDir("cMH",
+    cl::desc("Clang module map home dir"),
+    cl::value_desc("cpp-module-map-home"),
+    cl::init("/usr/include"));
+
 static cl::extrahelp footer("\n"
 "-d-debug can also be specified without options, in which case it enables all\n"
 "debug checks (i.e. (asserts, boundchecks, contracts and invariants) as well\n"

@@ -121,6 +121,12 @@ public:
   const ASTContext &getASTContext() const { return *Ctx; }
         ASTContext &getASTContext()       { return *Ctx; }
 
+  const TargetInfo &getTargetInfo() const { return *Target; }
+        TargetInfo &getTargetInfo()       { return *Target; }
+
+  const HeaderSearch &getHeaderSearch() const { return *HeaderInfo; }
+        HeaderSearch &getHeaderSearch()       { return *HeaderInfo; }
+
   void setASTContext(ASTContext *ctx) { Ctx = ctx; }
   void setPreprocessor(Preprocessor *pp);
 
@@ -135,8 +141,18 @@ public:
     return *LangOpts;
   }
 
+  const LangOptions &getASTFileLangOpts() const {
+    return ASTFileLangOpts;
+  }
+
   const FileManager &getFileManager() const { return *FileMgr; }
         FileManager &getFileManager()       { return *FileMgr; }
+
+  /// \brief Get the decls that are contained in a file in the Offset/Length
+  /// range. \p Length can be 0 to indicate a point at \p Offset instead of
+  /// a range.
+  void findFileRegionDecls(FileID File, unsigned Offset, unsigned Length,
+                           SmallVectorImpl<Decl *> &Decls);
 
   static void ConfigureDiags(IntrusiveRefCntPtr<DiagnosticsEngine> &Diags,
                              const char **ArgBegin, const char **ArgEnd,
