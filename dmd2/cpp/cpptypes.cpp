@@ -844,8 +844,6 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::NamedDecl *D)
 
     if (auto ClassSpec = dyn_cast<clang::ClassTemplateSpecializationDecl>(D))
     {
-        assert(!isa<clang::ClassTemplatePartialSpecializationDecl>(D)); // should never happen?
-
         if (!tm.isNonExplicitInjectedClassName(ClassSpec))
         {
             Spec = const_cast<clang::ClassTemplateSpecializationDecl*>(ClassSpec);
