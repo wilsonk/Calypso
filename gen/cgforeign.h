@@ -27,6 +27,7 @@ public:
     virtual void toResolveFunction(FuncDeclaration* fdecl) = 0;
     virtual void toDefineFunction(FuncDeclaration* fdecl) = 0;
     virtual void toDeclareVariable(VarDeclaration* vd) = 0;
+    virtual void toDefineVariable(VarDeclaration* vd) = 0;
     virtual void toDefineTemplateInstance(TemplateInstance *tempinst) = 0;
 
     virtual LLValue *toVirtualFunctionPointer(DValue* inst, FuncDeclaration* fdecl, char* name) = 0;

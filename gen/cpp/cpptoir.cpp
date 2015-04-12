@@ -405,6 +405,11 @@ void LangPlugin::toDeclareVariable(::VarDeclaration* vd)
     getIrGlobal(vd)->value = v;
 }
 
+void LangPlugin::toDefineVariable(::VarDeclaration* vd)
+{
+    // FIXME: initialize static variables from template instantiations
+}
+
 void LangPlugin::toDefineTemplateInstance(::TemplateInstance *inst)
 {
     auto& Context = getASTContext();

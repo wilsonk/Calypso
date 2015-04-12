@@ -257,8 +257,13 @@ public:
 
             const llvm::GlobalValue::LinkageTypes llLinkage = DtoLinkage(decl);
 
+            bool isExtern = !(decl->storage_class & STCextern);
+            auto lp = decl->langPlugin();
+
             // Check if we are defining or just declaring the global in this module.
-            if (!(decl->storage_class & STCextern))
+            if (isExtern && lp)  // CALYPSO
+                lp->codegen()->toDefineVariable(decl);
+            else if (isExtern)
             {
                 // Build the initializer. Might use this->ir.irGlobal->value!
                 LLConstant *initVal = DtoConstInitializer(decl->loc, decl->type, decl->init);
