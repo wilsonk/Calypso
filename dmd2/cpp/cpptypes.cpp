@@ -416,6 +416,7 @@ Type *TypeMapper::FromType::fromTypeUnqual(const clang::Type *T)
     TYPEMAP(Decltype)
     TYPEMAP(TypeOfExpr)
     TYPEMAP(PackExpansion)
+    TYPEMAP(Vector)
 #undef TYPEMAP
 
     // Array types
@@ -471,6 +472,14 @@ Type *TypeMapper::FromType::fromTypeComplex(const clang::ComplexType *T)
 
     assert(false && "unknown complex number type");
     return nullptr;
+}
+
+Type* TypeMapper::FromType::fromTypeVector(const clang::VectorType* T)
+{
+    auto t = fromType(T->getElementType());
+    auto dim = new IntegerExp(T->getNumElements());
+
+    return new TypeVector(Loc(), new TypeSArray(t, dim));
 }
 
 Type* TypeMapper::FromType::fromTypeArray(const clang::ArrayType* T)
