@@ -476,13 +476,10 @@ Type *TypeMapper::FromType::fromTypeComplex(const clang::ComplexType *T)
 
 Type* TypeMapper::FromType::fromTypeVector(const clang::VectorType* T)
 {
-    if (auto CVT = dyn_cast<clang::ExtVectorType>(T))
-        return fromType(CVT->desugar());
+    auto t = fromType(T->getElementType());
+    auto dim = new IntegerExp(T->getNumElements());
 
-    if (T->isSugared())
-        return fromType(T->desugar());
-    else
-        return fromType(T->getElementType());
+    return new TypeSArray(t, dim);
 }
 
 Type* TypeMapper::FromType::fromTypeArray(const clang::ArrayType* T)
