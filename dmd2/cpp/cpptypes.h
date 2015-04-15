@@ -78,6 +78,7 @@ public:
         Type *fromTypeBuiltin(const clang::BuiltinType *T);
         Type *fromTypeComplex(const clang::ComplexType *T);
         Type *fromTypeArray(const clang::ArrayType *T);
+        Type *fromTypeVector(const clang::VectorType *T);
         Type *fromTypeTypedef(const clang::TypedefType *T);
         Type *fromTypeEnum(const clang::EnumType *T);
         Type *fromTypeRecord(const clang::RecordType *T);
