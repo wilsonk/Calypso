@@ -39,6 +39,10 @@
 namespace cpp
 {
 
+using llvm::cast;
+using llvm::dyn_cast;
+using llvm::isa;
+
 namespace clangCG = clang::CodeGen;
 
 void LangPlugin::enterModule(llvm::Module *m)
@@ -116,7 +120,6 @@ llvm::Constant *LangPlugin::createInitializerConstant(IrAggr *irAggr,
         return nullptr;
 
     auto DestType = Context.getRecordType(RD).withConst();
-    llvm::Constant *c;
 
     // TODO: What we probably want is to have a default value if there's no constructor or a default trivial one,
     // but a null value if that's not the case i.e when context matters.
@@ -129,20 +132,31 @@ llvm::Constant *LangPlugin::createInitializerConstant(IrAggr *irAggr,
 //     clang::Expr::EvalResult Result;
 //     ILE->EvaluateAsLValue(Result, Context);
 
-    c = CGM->EmitNullConstant(DestType);  // NOTE: neither EmitConstantExpr nor EmitConstantValue will work with CXXConstructExpr
-
-    auto irSt = llvm::cast<llvm::StructType>(c->getType());
+    auto C = CGM->EmitNullConstant(DestType);  // NOTE: neither EmitConstantExpr nor EmitConstantValue will work with CXXConstructExpr
+    auto irSt = llvm::cast<llvm::StructType>(C->getType());
 
     if (initializerType)
     {
         assert(initializerType->isOpaque());
         initializerType->setBody(llvm::ArrayRef<llvm::Type*>(irSt->element_begin(),
-                                                             irSt->element_end()),
-                                                             irSt->isPacked());
+                                irSt->element_end()),  irSt->isPacked());
     }
 
-    c->mutateType(initializerType);  // dangerous?
-    return c;
+    // Reconstruct the constant with LDC's type, not Clang's
+    // NOTE: Constant::mutateType is too dangerous because EmitNullConstant might return
+    // the same constant e.g for empty records.
+
+    if (auto CAZ = dyn_cast<llvm::ConstantAggregateZero>(C))
+        return llvm::ConstantAggregateZero::get(initializerType);
+    else if (auto CS = dyn_cast<llvm::ConstantStruct>(C))
+    {
+        llvm::SmallVector<llvm::Constant *, 8> AggrElts;
+        for (unsigned i = 0; i < initializerType->getNumElements(); i++)
+            AggrElts.push_back(CS->getAggregateElement(i));
+        return llvm::ConstantStruct::get(initializerType, AggrElts);
+    }
+
+    llvm_unreachable("Unhandled null constant");
 }
 
 void LangPlugin::buildGEPIndices(IrTypeAggr *irTyAgrr,
