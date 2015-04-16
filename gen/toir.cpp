@@ -24,6 +24,7 @@
 #include "gen/classes.h"
 #include "gen/cgforeign.h"
 #include "gen/complex.h"
+#include "gen/coverage.h"
 #include "gen/dvalue.h"
 #include "gen/functions.h"
 #include "gen/irstate.h"
@@ -341,6 +342,11 @@ public:
         LLType* ct = voidToI8(DtoType(cty));
         LLArrayType* at = LLArrayType::get(ct, e->len+1);
 
+#if LDC_LLVM_VER >= 305
+        llvm::StringMap<llvm::GlobalVariable*>* stringLiteralCache = 0;
+#else
+        std::map<llvm::StringRef, llvm::GlobalVariable*>* stringLiteralCache = 0;
+#endif
         LLConstant* _init;
         switch (cty->size())
         {
@@ -348,26 +354,41 @@ public:
             llvm_unreachable("Unknown char type");
         case 1:
             _init = toConstantArray(ct, at, static_cast<uint8_t *>(e->string), e->len);
+            stringLiteralCache = &(gIR->stringLiteral1ByteCache);
             break;
         case 2:
             _init = toConstantArray(ct, at, static_cast<uint16_t *>(e->string), e->len);
+            stringLiteralCache = &(gIR->stringLiteral2ByteCache);
             break;
         case 4:
             _init = toConstantArray(ct, at, static_cast<uint32_t *>(e->string), e->len);
+            stringLiteralCache = &(gIR->stringLiteral4ByteCache);
             break;
         }
 
-        llvm::GlobalValue::LinkageTypes _linkage = llvm::GlobalValue::InternalLinkage;
-        IF_LOG {
-            Logger::cout() << "type: " << *at << '\n';
-            Logger::cout() << "init: " << *_init << '\n';
+        llvm::StringRef key(e->toChars());
+        llvm::GlobalVariable* gvar = (stringLiteralCache->find(key) ==
+                                      stringLiteralCache->end())
+                                     ? 0 : (*stringLiteralCache)[key];
+        if (gvar == 0)
+        {
+            llvm::GlobalValue::LinkageTypes _linkage = llvm::GlobalValue::PrivateLinkage;
+            IF_LOG {
+                Logger::cout() << "type: " << *at << '\n';
+                Logger::cout() << "init: " << *_init << '\n';
+            }
+            gvar = new llvm::GlobalVariable(*gIR->module, at, true, _linkage, _init, ".str");
+            gvar->setUnnamedAddr(true);
+            (*stringLiteralCache)[key] = gvar;
         }
-        llvm::GlobalVariable* gvar = new llvm::GlobalVariable(*gIR->module, at, true, _linkage, _init, ".str");
-        gvar->setUnnamedAddr(true);
 
         llvm::ConstantInt* zero = LLConstantInt::get(LLType::getInt32Ty(gIR->context()), 0, false);
         LLConstant* idxs[2] = { zero, zero };
+#if LDC_LLVM_VER >= 307
+        LLConstant* arrptr = llvm::ConstantExpr::getGetElementPtr(isaPointer(gvar)->getElementType(), gvar, idxs, true);
+#else
         LLConstant* arrptr = llvm::ConstantExpr::getGetElementPtr(gvar, idxs, true);
+#endif
 
         if (dtype->ty == Tarray) {
             LLConstant* clen = LLConstantInt::get(DtoSize_t(), e->len, false);
@@ -1791,7 +1812,7 @@ public:
                 offset = LLConstantInt::get(DtoSize_t(), static_cast<uint64_t>(-1), true);
             post = llvm::GetElementPtrInst::Create(
 #if LDC_LLVM_VER >= 307
-                val->getType(),
+                isaPointer(val)->getElementType(),
 #endif
                 val, offset, "",  p->scopebb());
         }
@@ -2128,6 +2149,7 @@ public:
         llvm::BranchInst::Create(andand, andandend, ubool, p->scopebb());
 
         p->scope() = IRScope(andand, andandend);
+        emitCoverageLinecountInc(e->e2->loc);
         DValue* v = toElemDtor(e->e2);
 
         LLValue* vbool = 0;
@@ -2175,6 +2197,7 @@ public:
         llvm::BranchInst::Create(ororend,oror,ubool,p->scopebb());
 
         p->scope() = IRScope(oror, ororend);
+        emitCoverageLinecountInc(e->e2->loc);
         DValue* v = toElemDtor(e->e2);
 
         LLValue* vbool = 0;
@@ -2843,14 +2866,22 @@ public:
             LLConstant* initval = arrayConst(keysInits, indexType);
             LLConstant* globalstore = new LLGlobalVariable(*gIR->module, initval->getType(),
                 false, LLGlobalValue::InternalLinkage, initval, ".aaKeysStorage");
+#if LDC_LLVM_VER >= 307
+            LLConstant* slice = llvm::ConstantExpr::getGetElementPtr(isaPointer(globalstore)->getElementType(), globalstore, idxs, true);
+#else
             LLConstant* slice = llvm::ConstantExpr::getGetElementPtr(globalstore, idxs, true);
+#endif
             slice = DtoConstSlice(DtoConstSize_t(e->keys->dim), slice);
             LLValue* keysArray = DtoAggrPaint(slice, funcTy->getParamType(1));
 
             initval = arrayConst(valuesInits, vtype);
             globalstore = new LLGlobalVariable(*gIR->module, initval->getType(),
                 false, LLGlobalValue::InternalLinkage, initval, ".aaValuesStorage");
+#if LDC_LLVM_VER >= 307
+            slice = llvm::ConstantExpr::getGetElementPtr(isaPointer(globalstore)->getElementType(), globalstore, idxs, true);
+#else
             slice = llvm::ConstantExpr::getGetElementPtr(globalstore, idxs, true);
+#endif
             slice = DtoConstSlice(DtoConstSize_t(e->keys->dim), slice);
             LLValue* valuesArray = DtoAggrPaint(slice, funcTy->getParamType(2));
 

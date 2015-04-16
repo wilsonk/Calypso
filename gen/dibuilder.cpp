@@ -189,7 +189,7 @@ llvm::DIType ldc::DIBuilder::CreateEnumType(Type *type)
         getABITypeAlign(T)*8, // align (bits)
         DBuilder.getOrCreateArray(subscripts) // subscripts
 #if LDC_LLVM_VER >= 302
-        , CreateTypeDescription(te->sym->memtype, NULL)
+        , CreateTypeDescription(te->sym->memtype, false)
 #endif
     );
 }
@@ -203,7 +203,7 @@ llvm::DIType ldc::DIBuilder::CreatePointerType(Type *type)
 
     // find base type
     Type *nt = t->nextOf();
-    llvm::DIType basetype = CreateTypeDescription(nt, NULL);
+    llvm::DIType basetype = CreateTypeDescription(nt, false);
 
     return DBuilder.createPointerType(
         basetype,
@@ -230,7 +230,7 @@ llvm::DIType ldc::DIBuilder::CreateVectorType(Type *type)
     {
         DBuilder.getOrCreateSubrange(0, Dim)
     };
-    llvm::DIType basetype = CreateTypeDescription(te, NULL);
+    llvm::DIType basetype = CreateTypeDescription(te, false);
 
     return DBuilder.createVectorType(
         getTypeBitSize(T), // size (bits)
@@ -353,7 +353,7 @@ llvm::DIType ldc::DIBuilder::CreateCompositeType(Type *type)
     llvm::StringRef name = sd->toChars();
     unsigned linnum = sd->loc.linnum;
     llvm::DICompileUnit CU(GetCU());
-    assert(CU && CU.Verify() && "Compilation unit missing or corrupted");
+    assert(CU && "Compilation unit missing or corrupted");
     llvm::DIFile file = CreateFile(sd->loc);
     llvm::DIType derivedFrom;
 
@@ -428,7 +428,11 @@ llvm::DIType ldc::DIBuilder::CreateCompositeType(Type *type)
         );
     }
 
+#if LDC_LLVM_VER >= 307
+    ir->diCompositeType = DBuilder.replaceTemporary(llvm::TempMDType(ir->diCompositeType), static_cast<llvm::MDCompositeType*>(ret.get()));
+#else
     ir->diCompositeType.replaceAllUsesWith(ret);
+#endif
     ir->diCompositeType = ret;
 
     return ret;
@@ -494,7 +498,7 @@ llvm::DIType ldc::DIBuilder::CreateSArrayType(Type *type)
         subscripts.push_back(subscript);
         t = t->nextOf();
     }
-    llvm::DIType basetype = CreateTypeDescription(t, NULL);
+    llvm::DIType basetype = CreateTypeDescription(t, false);
 
     return DBuilder.createArrayType(
         getTypeBitSize(T), // size (bits)
@@ -662,7 +666,7 @@ llvm::DISubprogram ldc::DIBuilder::EmitSubProgram(FuncDeclaration *fd)
     LOG_SCOPE;
 
     llvm::DICompileUnit CU(GetCU());
-    assert(CU && CU.Verify() && "Compilation unit missing or corrupted in DIBuilder::EmitSubProgram");
+    assert(CU && "Compilation unit missing or corrupted in DIBuilder::EmitSubProgram");
 
     llvm::DIFile file = CreateFile(fd->loc);
 
@@ -696,7 +700,7 @@ llvm::DISubprogram ldc::DIBuilder::EmitModuleCTor(llvm::Function* Fn,
     LOG_SCOPE;
 
     llvm::DICompileUnit CU(GetCU());
-    assert(CU && CU.Verify() && "Compilation unit missing or corrupted in DIBuilder::EmitSubProgram");
+    assert(CU && "Compilation unit missing or corrupted in DIBuilder::EmitSubProgram");
 
     Loc loc(IR->dmodule, 0, 0);
     llvm::DIFile file(CreateFile(loc));
@@ -901,7 +905,7 @@ llvm::DIGlobalVariable ldc::DIBuilder::EmitGlobalVariable(llvm::GlobalVariable *
 #endif
         CreateFile(vd->loc), // file
         vd->loc.linnum, // line num
-        CreateTypeDescription(vd->type, NULL), // type
+        CreateTypeDescription(vd->type, false), // type
         vd->protection == PROTprivate, // is local to unit
         ll // value
     );

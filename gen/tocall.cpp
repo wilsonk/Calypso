@@ -501,8 +501,8 @@ DValue* DtoCallFunction(Loc& loc, Type* resulttype, DValue* fnval, Expressions* 
     // repaint the type if necessary
     if (resulttype)
     {
-        Type* rbase = stripModifiers(resulttype->toBasetype());
-        Type* nextbase = stripModifiers(tf->nextOf()->toBasetype());
+        Type* rbase = stripModifiers(resulttype->toBasetype(), true);
+        Type* nextbase = stripModifiers(tf->nextOf()->toBasetype(), true);
         if (!rbase->equals(nextbase))
         {
             IF_LOG Logger::println("repainting return value from '%s' to '%s'", tf->nextOf()->toChars(), rbase->toChars());

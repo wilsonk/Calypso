@@ -14,8 +14,10 @@
 #include "gen/optimizer.h"
 #include "gen/programs.h"
 #if LDC_LLVM_VER >= 305
+#include "llvm/IR/AssemblyAnnotationWriter.h"
 #include "llvm/IR/Verifier.h"
 #else
+#include "llvm/Assembly/AssemblyAnnotationWriter.h"
 #include "llvm/Analysis/Verifier.h"
 #endif
 #include "llvm/Bitcode/ReaderWriter.h"
@@ -30,6 +32,9 @@
 #include "llvm/Support/Program.h"
 #if LDC_LLVM_VER < 304
 #include "llvm/Support/PathV1.h"
+#endif
+#if LDC_LLVM_VER >= 307
+#include "llvm/Support/Path.h"
 #endif
 #include "llvm/Target/TargetMachine.h"
 #if LDC_LLVM_VER >= 307
@@ -105,8 +110,16 @@ static void codegenModule(llvm::TargetMachine &Target, llvm::Module& m,
     Target.addAnalysisPasses(Passes);
 #endif
 
+#if LDC_LLVM_VER < 307
     llvm::formatted_raw_ostream fout(out);
-    if (Target.addPassesToEmitFile(Passes, fout, fileType, codeGenOptLevel()))
+#endif
+    if (Target.addPassesToEmitFile(Passes,
+#if LDC_LLVM_VER >= 307
+            out,
+#else
+            fout,
+#endif
+            fileType, codeGenOptLevel()))
         llvm_unreachable("no support for asm output");
 
     Passes.run(m);
@@ -138,6 +151,193 @@ static void assemble(const std::string &asmpath, const std::string &objpath)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
+
+namespace
+{
+    using namespace llvm;
+    static void printDebugLoc(const DebugLoc& debugLoc, formatted_raw_ostream& os)
+    {
+        os << debugLoc.getLine() << ":" << debugLoc.getCol();
+#if LDC_LLVM_VER >= 307
+        if (MDLocation *IDL = debugLoc.getInlinedAt())
+        {
+            os << "@";
+            printDebugLoc(IDL, os);
+        }
+#else
+        if (MDNode *N = debugLoc.getInlinedAt(getGlobalContext()))
+        {
+            DebugLoc IDL = DebugLoc::getFromDILocation(N);
+            if (!IDL.isUnknown())
+            {
+                os << "@";
+                printDebugLoc(IDL, os);
+            }
+        }
+#endif
+    }
+
+    class AssemblyAnnotator : public AssemblyAnnotationWriter
+    {
+        // Find the MDNode which corresponds to the DISubprogram data that described F.
+#if LDC_LLVM_VER >= 307
+        static MDSubprogram* FindSubprogram(const Function *F, DebugInfoFinder &Finder)
+#else
+        static MDNode* FindSubprogram(const Function *F, DebugInfoFinder &Finder)
+#endif
+        {
+#if LDC_LLVM_VER >= 307
+            for (DISubprogram Subprogram : Finder.subprograms())
+                if (Subprogram->describes(F)) return Subprogram;
+            return nullptr;
+#elif LDC_LLVM_VER >= 305
+            for (DISubprogram Subprogram : Finder.subprograms())
+                if (Subprogram.describes(F)) return Subprogram;
+            return nullptr;
+#else
+            for (DebugInfoFinder::iterator I = Finder.subprogram_begin(),
+                                           E = Finder.subprogram_end();
+                                           I != E; ++I) {
+                DISubprogram Subprogram(*I);
+                if (Subprogram.describes(F)) return Subprogram;
+            }
+            return 0;
+#endif
+        }
+
+        static llvm::StringRef GetDisplayName(const Function *F)
+        {
+            llvm::DebugInfoFinder Finder;
+#if LDC_LLVM_VER >= 303
+            Finder.processModule(*F->getParent());
+#else
+            Finder.processModule(const_cast<llvm::Module&>(*F->getParent()));
+#endif
+#if LDC_LLVM_VER >= 307
+            if (MDSubprogram* N = FindSubprogram(F, Finder))
+#else
+            if (MDNode* N = FindSubprogram(F, Finder))
+#endif
+            {
+#if LDC_LLVM_VER >= 307
+                return N->getDisplayName();
+#else
+                llvm::DISubprogram sub(N);
+                return sub.getDisplayName();
+#endif
+            }
+            return "";
+        }
+
+    public:
+        void emitFunctionAnnot(const Function* F, formatted_raw_ostream& os) LLVM_OVERRIDE
+        {
+            os << "; [#uses = " << F->getNumUses() << ']';
+
+            // show demangled name
+            llvm::StringRef funcName = GetDisplayName(F);
+            if (!funcName.empty())
+                os << " [display name = " << funcName << ']';
+
+            os << '\n';
+        }
+
+            void printInfoComment(const Value& val, formatted_raw_ostream& os) LLVM_OVERRIDE
+        {
+            bool padding = false;
+            if (!val.getType()->isVoidTy())
+            {
+                os.PadToColumn(50);
+                padding = true;
+                os << "; [#uses = " << val.getNumUses() << " type = " << *val.getType() << ']';
+            }
+
+            const Instruction* instr = dyn_cast<Instruction>(&val);
+            if (!instr)
+                return;
+
+#if LDC_LLVM_VER >= 307
+            if (const DebugLoc &debugLoc = instr->getDebugLoc())
+#else
+            const DebugLoc& debugLoc = instr->getDebugLoc();
+            if (!debugLoc.isUnknown())
+#endif
+            {
+                if (!padding)
+                {
+                    os.PadToColumn(50);
+                    padding = true;
+                    os << ';';
+                }
+                os << " [debug line = ";
+                printDebugLoc(debugLoc, os);
+                os << ']';
+            }
+            if (const DbgDeclareInst* DDI = dyn_cast<DbgDeclareInst>(instr))
+            {
+                DIVariable Var(DDI->getVariable());
+                if (!padding)
+                {
+                    os.PadToColumn(50);
+                    os << ";";
+                }
+#if LDC_LLVM_VER >= 307
+                os << " [debug variable = " << Var->getName() << ']';
+#else
+                os << " [debug variable = " << Var.getName() << ']';
+#endif
+            }
+            else if (const DbgValueInst* DVI = dyn_cast<DbgValueInst>(instr))
+            {
+                DIVariable Var(DVI->getVariable());
+                if (!padding)
+                {
+                    os.PadToColumn(50);
+                    os << ";";
+                }
+#if LDC_LLVM_VER >= 307
+                os << " [debug variable = " << Var->getName() << ']';
+#else
+                os << " [debug variable = " << Var.getName() << ']';
+#endif
+            }
+            else if (const CallInst* callinstr = dyn_cast<CallInst>(instr))
+            {
+                const Function* F = callinstr->getCalledFunction();
+                if (!F)
+                    return;
+
+                llvm::StringRef funcName = GetDisplayName(F);
+                if (!funcName.empty())
+                {
+                    if (!padding)
+                    {
+                        os.PadToColumn(50);
+                        os << ";";
+                    }
+                    os << " [display name = " << funcName << ']';
+                }
+            }
+            else if (const InvokeInst* invokeinstr = dyn_cast<InvokeInst>(instr))
+            {
+                const Function* F = invokeinstr->getCalledFunction();
+                if (!F)
+                    return;
+
+                llvm::StringRef funcName = GetDisplayName(F);
+                if (!funcName.empty())
+                {
+                    if (!padding)
+                    {
+                        os.PadToColumn(50);
+                        os << ";";
+                    }
+                    os << " [display name = " << funcName << ']';
+                }
+            }
+        }
+    };
+} // end of anonymous namespace
 
 void writeModule(llvm::Module* m, std::string filename)
 {
@@ -219,7 +419,8 @@ void writeModule(llvm::Module* m, std::string filename)
             );
             fatal();
         }
-        m->print(aos, NULL);
+        AssemblyAnnotator annotator;
+        m->print(aos, &annotator);
     }
 
     // write native assembly
