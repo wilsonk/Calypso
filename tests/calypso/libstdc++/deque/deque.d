@@ -16,12 +16,14 @@ void main()
     auto dq2 = new deque!(int)(dq);
     auto dq3 = new deque!(double)(10);
     auto dq4 = new deque!(int);
+    auto dq5 = new deque!(int);
 
     // Fill deque with 10 ints
     writeln("push_back 10 ints onto dq");
     for (int i = 0; i < 10; i++)
     {
         dq.push_back(i);
+        dq5.push_back(i);
     }
 
     // Print out
@@ -80,24 +82,27 @@ void main()
     writeln("dq3 is empty = " ~ (dq3.empty() ? "Yes" : "No"));
     writeln("dq3 size = ", dq3.size());
 
+    dq.assign(10,5);
+    auto it = new deque!(int).iterator;
+
     // FAILURES
+
+    // Assertion `int_regs + sse_regs <= 2' failed !?!?!?
+    //it = dq5.begin();
+    // Idiomatic C++ iterator usage doesn't work yet. See list.d also
+    //for (int i=0; i < dq.size(); it++, i++)
+      //writeln(*it);
 
     // 'no property popFront' here
     //foreach(deq; dq3) {}
 
     //auto second = new deque!(int)(4, 100);
 
-    //dq.assign(10,5);
-
     // Doesn't seem to be picking up all template decls
     //immutable int xx = 9;
     //immutable float yy = 8.1;
     //auto dq5 = new deque!(xx, yy);
 
-    // 'no property begin' - almost seems like multipe args messes 
-    // up the function lookups because .at(int), etc. work?
-    //auto it = dq.begin();
-
-    // 'no property insert'
-    //dq.insert(it, 2, 20);
+    // deque iterators need to work for this to work
+    // dq.insert(it, 2, 20);
 }
