@@ -604,10 +604,10 @@ public:
 
     const clang::Decl *getScope(const clang::Decl *D)
     {
+        auto Result = D;
         if (auto Temp = dyn_cast<clang::ClassTemplateDecl>(D))
-            return Temp->getTemplatedDecl();
-
-        return D;
+            Result = Temp->getTemplatedDecl();
+        return Result->getCanonicalDecl();
     }
 
     const clang::Decl *getPattern(const clang::Decl *D)
@@ -639,8 +639,8 @@ public:
     bool operator()(const clang::Decl *D, bool checkBases = true)
     {
         auto CanonScope = getScope(D);
-        auto CanonPattern = getPattern(D);
-        if (CanonScope == Scope || CanonPattern == Pattern)
+        if (CanonScope == Scope ||
+                (Pattern && CanonScope == Pattern))
             return true;
 
         auto Record = dyn_cast<clang::CXXRecordDecl>(Scope);
@@ -919,8 +919,6 @@ const clang::Decl *TypeMapper::GetRootForTypeQualified(clang::NamedDecl *D)
             // TODO: check that this doesn't happen when called from TypeMapper would be more solid
         return nullptr;
 
-    // This is currently the only place where a "C++ scope" is used, this is
-    // especially needed for identifier lookups during template instantiations
     while (!ScopeStack.empty())
     {
         auto ScopeDecl = ScopeStack.top();
