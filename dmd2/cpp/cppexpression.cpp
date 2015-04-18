@@ -21,6 +21,26 @@ using llvm::isa;
 
 static Type *getAPIntDType(const llvm::APInt &i);
 
+Expression *dotIdentOrInst(Loc loc, Expression *e1, RootObject *o)
+{
+    if (o->dyncast() == DYNCAST_IDENTIFIER)
+        return new DotIdExp(loc, e1,
+                        static_cast<Identifier*>(o));
+    else
+        return new DotTemplateInstanceExp(loc, e1,
+                        static_cast<TemplateInstance*>(o));
+}
+
+static RootObject *typeQualifierRoot(TypeQualified *tqual)
+{
+    if (tqual->ty == Tident)
+        return static_cast<TypeIdentifier*>(tqual)->ident;
+    else if (tqual->ty == Tinstance)
+        return static_cast<TypeInstance*>(tqual)->tempinst;
+
+    llvm_unreachable("FIXME TypeOf");
+}
+
 Objects *fromASTTemplateArgumentListInfo(
             const clang::ASTTemplateArgumentListInfo &Args,
             TypeMapper &tymap)
@@ -268,55 +288,37 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
         else
             return fromExpression(SNTTP->getReplacement());
     }
-    else if (auto CDSME = dyn_cast<clang::CXXDependentScopeMemberExpr>(E))
+    else if (auto CDSM = dyn_cast<clang::CXXDependentScopeMemberExpr>(E))
     {
-        Expression *e1 = nullptr;
-        Identifier *ident;
-        ::TemplateInstance *tempinst = nullptr;
-        TypeQualified *tqual = nullptr;
+        auto member = getIdentOrTempinst(loc, CDSM->getMember());
+        auto e1 = fromExpression(CDSM->getBase());
 
-        if (auto NNS = CDSME->getQualifier())
+        if (!e1 || !member)
+            return nullptr;
+
+        if (CDSM->hasExplicitTemplateArgs())
         {
-            tqual = TypeMapper::FromType(tymap).fromNestedNameSpecifier(NNS);
-            e1 = new TypeExp(loc, tqual);
+            assert(member->dyncast() == DYNCAST_IDENTIFIER);
+
+            auto tempinst = new TemplateInstance(loc,
+                            static_cast<Identifier*>(member));
+            tempinst->tiargs = fromASTTemplateArgumentListInfo(
+                        CDSM->getExplicitTemplateArgs(), tymap);
+
+            member = tempinst;
         }
 
-        if (CDSME->getMember().isIdentifier())
+        if (auto NNS = CDSM->getQualifier())
         {
-            ident = fromIdentifier(CDSME->getMember().getAsIdentifierInfo());
-            if (tqual)
-            {
-                tqual->addIdent(ident);
-                auto base = CDSME->getBase();
-                e1 = new DotTypeExp(loc, fromExpression(base, tymap.fromType(base->getType())), new Dsymbol(ident));
-            }
-        }
-        else
-            assert(false && "Unhandled Member Expr");
+            auto tqual = TypeMapper::FromType(tymap).fromNestedNameSpecifier(NNS);
+            e1 = dotIdentOrInst(loc, e1, typeQualifierRoot(tqual));
 
-        if (CDSME->hasExplicitTemplateArgs())
-        {
-            auto tiargs = fromASTTemplateArgumentListInfo(
-                        CDSME->getExplicitTemplateArgs(), tymap);
-
-            tempinst = new ::TemplateInstance(loc, ident);
-            tempinst->tiargs = tiargs;
+            for (auto id: tqual->idents)
+                e1 = dotIdentOrInst(loc, e1, id);
         }
 
-        if (e1)
-        {
-            if (tempinst)
-                return new DotTemplateInstanceExp(loc, e1, tempinst);
-            else
-                return new DotIdExp(loc, e1, ident);
-        }
-        else
-        {
-            if (tempinst)
-                return new TypeExp(loc, new TypeInstance(loc, tempinst));
-            else
-                return new IdentifierExp(loc, ident);
-        }
+        e1 = dotIdentOrInst(loc, e1, member);
+        return e1;
     }
     else if (auto DSDR = dyn_cast<clang::DependentScopeDeclRefExpr>(E))
     {

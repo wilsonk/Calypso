@@ -5,10 +5,12 @@
 #include "cpp/cppimport.h"
 #include "cpp/cppmodule.h"
 #include "cpp/cppaggregate.h"
+#include "cpp/cpptemplate.h"
 #include "cpp/cpptypes.h"
 
 #include "aggregate.h"
 #include "declaration.h"
+#include "expression.h"
 #include "id.h"
 #include "lexer.h"
 #include "expression.h"
@@ -74,15 +76,16 @@ static const char *getDOperatorSpelling(const clang::OverloadedOperatorKind OO)
 }
 
 static Identifier *getOperatorIdentifier(const clang::FunctionDecl *FD,
-                                                    const char *&op)
+                const char *&op, clang::OverloadedOperatorKind OO = clang::OO_None)
 {
     auto& Context = calypso.getASTContext();
-    auto OO = FD->getOverloadedOperator();
+    if (FD)
+        OO = FD->getOverloadedOperator();
 
     Identifier *opIdent;
     bool wrapInTemp = false;
 
-    auto MD = dyn_cast<clang::CXXMethodDecl>(FD);
+    auto MD = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(FD);
     bool isNonMember = !MD || MD->isStatic();
 
     auto NumParams = FD->getNumParams();
@@ -141,7 +144,9 @@ static Identifier *getOperatorIdentifier(const clang::FunctionDecl *FD,
                 {
                     bool isIdentityAssign = false;
 
-                    if (auto RHSLValue = dyn_cast<clang::LValueReferenceType>(
+                    if (!MD)
+                        ;
+                    else if (auto RHSLValue = dyn_cast<clang::LValueReferenceType>(
                                     MD->getParamDecl(0)->getType().getDesugaredType(Context).getTypePtr()))
                     {
                         auto LHSType = Context.getTypeDeclType(MD->getParent());
@@ -198,6 +203,31 @@ static Identifier *getOperatorIdentifier(const clang::FunctionDecl *FD,
     return opIdent;
 }
 
+Identifier *fromDeclarationName(const clang::DeclarationName N,
+                                    const char **op)
+{
+    switch (N.getNameKind())
+    {
+        case clang::DeclarationName::Identifier:
+            return fromIdentifier(N.getAsIdentifierInfo());
+        case clang::DeclarationName::CXXConstructorName:
+            return Id::ctor;
+        case clang::DeclarationName::CXXDestructorName:
+            return Id::dtor;
+        case clang::DeclarationName::CXXOperatorName:
+        {
+            assert(op && "Operator name and op isn't set");
+            return getOperatorIdentifier(nullptr, *op,
+                    N.getCXXOverloadedOperator());
+        }
+        default:
+//             break;
+            return nullptr;
+    }
+
+    llvm_unreachable("Unhandled DeclarationName");
+}
+
 Identifier *getIdentifierOrNull(const clang::NamedDecl *D, const char **op)
 {
     if (auto FTD = dyn_cast<clang::FunctionTemplateDecl>(D))
@@ -249,6 +279,24 @@ Identifier *getExtendedIdentifier(const clang::NamedDecl *D)
     }
 
     return ident;
+}
+
+RootObject *getIdentOrTempinst(Loc loc, const clang::DeclarationName N)
+{
+    const char *op = nullptr; // overloaded operator
+    auto ident = fromDeclarationName(N, &op);
+    if (!ident)
+        return nullptr;
+
+    if (op)
+    {
+        auto tempinst = new cpp::TemplateInstance(loc, ident);
+        tempinst->tiargs = new Objects;
+        tempinst->tiargs->push(new StringExp(loc, const_cast<char*>(op)));
+        return tempinst;
+    }
+    else
+        return ident;
 }
 
 Loc fromLoc(clang::SourceLocation L)
