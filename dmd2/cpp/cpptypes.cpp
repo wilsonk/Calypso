@@ -396,6 +396,12 @@ Type *TypeMapper::FromType::fromTypeUnqual(const clang::Type *T)
     else if (auto AT = dyn_cast<clang::AdjustedType>(T))
         return fromType(AT->desugar());
 
+	// MSVC-specific
+	if (auto AttrT = dyn_cast<clang::AttributedType>(T))
+		return fromType(AttrT->getEquivalentType());
+	else if (auto UTT = dyn_cast<clang::UnaryTransformType>(T)) // underlying integral type of an enum
+		return fromType(UTT->getUnderlyingType());
+
     if (auto MPT = dyn_cast<clang::MemberPointerType>(T)) // rarely used feature of C++, see [expr.mptr.oper]
         return Type::tptrdiff_t;
 
