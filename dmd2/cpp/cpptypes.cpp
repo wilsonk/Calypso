@@ -612,7 +612,7 @@ public:
 
     const clang::Decl *getPattern(const clang::Decl *D)
     {
-        const clang::Decl *Result;
+        const clang::Decl *Result = nullptr;
 
         auto Spec = dyn_cast<clang::ClassTemplateSpecializationDecl>(D);
         if (Spec && !Spec->isExplicitSpecialization())
