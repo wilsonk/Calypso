@@ -1919,7 +1919,7 @@ const clang::DeclContext *getDeclContextNamedOrTU(const clang::Decl *D)
         DC = DC->getParent();
 
     auto NamedDC = dyn_cast<clang::NamedDecl>(DC);
-    if (NamedDC && !getIdentifierOrNull(NamedDC))
+    if (NamedDC && NamedDC->getDeclName().isEmpty())
         return getDeclContextNamedOrTU(NamedDC);
 
     assert(NamedDC || isa<clang::TranslationUnitDecl>(DC));
