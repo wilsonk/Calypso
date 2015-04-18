@@ -449,10 +449,11 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
     }
 
 
-    if (isa<clang::InitListExpr>(E)) //TODO
+    if (isa<clang::InitListExpr>(E)) // TODO
         return new NullExp(loc);
 
-    if (isa<clang::CXXUnresolvedConstructExpr>(E))
+    if (isa<clang::CXXUnresolvedConstructExpr>(E)
+        || isa<clang::CXXPseudoDestructorExpr>(E))
         return new NullExp(loc) /* nullptr */;
 
     if (e)
