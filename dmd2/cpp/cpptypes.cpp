@@ -977,6 +977,8 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* D,
             return subst;
 
     auto Root = tm.GetRootForTypeQualified(D);
+    if (!Root)
+        return nullptr; // FIXME struct {} Val;
 
     tm.AddImplicitImportForDecl(D);
     return TypeQualifiedBuilder(*this, Root, D, TempArgBegin, TempArgEnd).get(D);
