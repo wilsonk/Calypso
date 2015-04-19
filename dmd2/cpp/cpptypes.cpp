@@ -8,8 +8,10 @@
 #include "cpp/cppimport.h"
 #include "cpp/cppmodule.h"
 #include "cpp/cpptemplate.h"
+#include "id.h"
 #include "module.h"
 #include "template.h"
+
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/StmtVisitor.h"
@@ -832,7 +834,7 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::Decl *D)
             // build a fake import
             auto im = tm.AddImplicitImportForDecl(TopDecl, true);
 
-            tqual = nullptr;
+            tqual = new TypeIdentifier(Loc(), Id::empty); // start with the module scope operator . to guarantee against collisions
             for (size_t i = 1; i < im->packages->dim; i++)
                 addIdent(tqual, (*im->packages)[i]);
             addIdent(tqual, im->id);
