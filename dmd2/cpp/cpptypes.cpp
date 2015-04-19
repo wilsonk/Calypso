@@ -1262,6 +1262,12 @@ TypeQualified *TypeMapper::FromType::fromTemplateName(const clang::TemplateName 
         return new TypeIdentifier(Loc(), tempIdent);
 }
 
+static Type *fromInjectedClassName(const clang::RecordDecl *RD)
+{
+    auto className = fromIdentifier(RD->getIdentifier());
+    return adjustAggregateType(new TypeIdentifier(Loc(), className), RD);
+}
+
 Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::TemplateSpecializationType* T)
 {
     auto tqual = fromTemplateName(T->getTemplateName(),
@@ -1278,8 +1284,14 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
         auto RT = T->getAs<clang::RecordType>();
 
         if (RT)
+        {
             if (auto subst = tm.trySubstitute(RT->getDecl())) // HACK for correctTiargs
                 return subst;
+
+            auto RD = RT->getDecl();
+            if (tm.isNonExplicitInjectedClassName(RD))
+                return fromInjectedClassName(RD);
+        }
 
         if (RT && !RT->isDependentType())
         {
@@ -1418,8 +1430,7 @@ Type* TypeMapper::FromType::fromTypeSubstTemplateTypeParm(const clang::SubstTemp
 
 Type* TypeMapper::FromType::fromTypeInjectedClassName(const clang::InjectedClassNameType* T) // e.g in template <...> class A { A &next; } next has an injected class name type
 {
-    auto className = fromIdentifier(T->getDecl()->getIdentifier());
-    return adjustAggregateType(new TypeIdentifier(Loc(), className), T->getDecl());
+    return fromInjectedClassName(T->getDecl());
 }
 
 TypeQualified *TypeMapper::FromType::fromNestedNameSpecifierImpl(const clang::NestedNameSpecifier *NNS)
