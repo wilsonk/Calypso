@@ -219,12 +219,21 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
     {
         utf8_t postfix = 0;
         if (SL->getCharByteWidth() == 2)
+        {
             postfix = 'w';
+            t = new TypeDArray(Type::tdchar->immutableOf());
+                // WARNING: string literals with postfixes need to be explicitly cast to pointer types (DMD BUG?)
+                // which is being done at the ImplicitCastExpr level.
+                // See https://issues.dlang.org/show_bug.cgi?id=6032
+        }
         else if (SL->getCharByteWidth() == 4)
+        {
             postfix = 'd';
+            t = new TypeDArray(Type::twchar->immutableOf());
+        }
         else assert(SL->getCharByteWidth() == 1);
 
-        return new StringExp(loc, const_cast<char*>(SL->getString().data()),
+        e = new StringExp(loc, const_cast<char*>(SL->getBytes().data()),
                              SL->getLength(), postfix);
     }
     else if (isa<clang::CXXNullPtrLiteralExpr>(E) || isa<clang::GNUNullExpr>(E))
