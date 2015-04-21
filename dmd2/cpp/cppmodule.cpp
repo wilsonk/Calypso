@@ -1124,7 +1124,7 @@ static void mapClangModule(DeclMapper &mapper,
 
     for (auto Header: M->Headers[clang::Module::HK_Normal])
         AST->findFileRegionDecls(SrcMgr.translateFile(Header.Entry),
-            0, 1 << 24, Decls);
+            0, 0, Decls);
 
     std::function<void(const clang::Decl *)> Map = [&] (const clang::Decl *D)
     {
