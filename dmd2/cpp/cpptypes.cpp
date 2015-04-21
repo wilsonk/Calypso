@@ -190,7 +190,7 @@ void BuiltinTypes::map(clang::CanQualType &CQT, Type* t)
     {
         assert(t->isTypeBasic() && !isCPP(t));
         auto c_t = new cpp::TypeBasic(t->ty, T);
-        toD[T] = c_t;
+        toD[T] = c_t->merge();
         toClang[c_t] = T;
     }
 }
