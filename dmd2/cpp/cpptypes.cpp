@@ -145,14 +145,10 @@ public:
 
     const clang::BuiltinType *T;
 
-    static TypeBasic *twchar_t;
-
     TypeBasic(TY ty, const clang::BuiltinType *T = nullptr);
     void toDecoBuffer(OutBuffer *buf, int flag = 0) override;
     unsigned short sizeType() override;
 };
-
-TypeBasic *TypeBasic::twchar_t;
 
 TypeBasic::TypeBasic(TY ty, const clang::BuiltinType *T)
     : ::TypeBasic(ty), T(T)
@@ -207,27 +203,6 @@ void BuiltinTypes::build(clang::ASTContext &Context)
     map(Context.CharTy, Type::tchar);
     map(Context.UnsignedCharTy, Type::tuns8);    // getCharWidth() always returns 8
 
-    {
-        clang::TargetInfo::IntType wcharTy = targetInfo.getWCharType();
-        bool isSigned = targetInfo.isTypeSigned(wcharTy);
-        TY ty_wchar_t;
-
-        if (targetInfo.getTypeWidth(wcharTy) == 16)
-            ty_wchar_t = isSigned ? Tint16 : Twchar;
-        else
-            ty_wchar_t = isSigned ? Tint32 : Tdchar;
-
-        auto BT = cast<clang::BuiltinType>(Context.WCharTy.getTypePtr());
-        if (!TypeBasic::twchar_t)
-            TypeBasic::twchar_t = new TypeBasic(ty_wchar_t, BT);
-        else
-        {
-            assert(ty_wchar_t == TypeBasic::twchar_t->ty);
-            TypeBasic::twchar_t->T = BT;
-        }
-    }
-    map(Context.WCharTy, TypeBasic::twchar_t);
-
     map(Context.Char16Ty, Type::twchar);
     map(Context.Char32Ty, Type::tdchar);
     map(Context.UnsignedShortTy, toInt(clang::TargetInfo::UnsignedShort));
@@ -253,6 +228,16 @@ void BuiltinTypes::build(clang::ASTContext &Context)
         //===- Language-specific types --------------------------------------------===//
     map(Context.NullPtrTy, Type::tvoidptr);
     map(Context.DependentTy, Type::tnull);  // should work?
+
+    clang::TargetInfo::IntType wcharTy = targetInfo.getWCharType();
+    bool isSigned = targetInfo.isTypeSigned(wcharTy);
+    Type *twchar_t;
+
+    if (targetInfo.getTypeWidth(wcharTy) == 16)
+        twchar_t = isSigned ? Type::tint16 : Type::twchar;
+    else
+        twchar_t = isSigned ? Type::tint32 : Type::tdchar;
+    map(Context.WCharTy, twchar_t);
 }
 
 // Most reliable way to determine target-dependent int type correspondances (except for char)
