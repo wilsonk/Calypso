@@ -224,7 +224,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
             postfix = 'd';
         else assert(SL->getCharByteWidth() == 1);
 
-        return new StringExp(loc, const_cast<char*>(SL->getString().data()),
+        return new StringExp(loc, const_cast<char*>(SL->getBytes().data()),
                              SL->getLength(), postfix);
     }
     else if (isa<clang::CXXNullPtrLiteralExpr>(E) || isa<clang::GNUNullExpr>(E))
