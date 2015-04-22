@@ -17,9 +17,9 @@ Import::Import(Loc loc, Identifiers *packages, Identifier *id, Identifier *alias
     : ::Import(loc, packages, id, aliasId, isstatic)
 {
     // add "cpp" as leftmost package to avoid name clashes
-    if (!packages)
-        packages = new Identifiers;
-    packages->shift(Lexer::idPool("cpp"));  // any better idea ?
+    if (!this->packages)
+        this->packages = new Identifiers;
+    this->packages->shift(Lexer::idPool("cpp"));  // any better idea ?
 
     this->fromCpp = fromCpp;
     if (!fromCpp) // do not change the ident to "cpp" if the import is inside a C++ module as this makes symbol mapping a lot more complicated
