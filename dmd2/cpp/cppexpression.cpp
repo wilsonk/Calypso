@@ -131,15 +131,17 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
     Expression *e = nullptr;
     Type *t = nullptr;
 
+    if (auto Cast = dyn_cast<clang::CastExpr>(E))
+    {
+        auto Kind = Cast->getCastKind();
+        if (Kind != clang::CK_NoOp && Kind != clang::CK_ConstructorConversion)
+            t = tymap.fromType(Cast->getType());
+
+        return fromExpression(Cast->getSubExpr(), t);
+    }
+
     if (auto PE = dyn_cast<clang::ParenExpr>(E))
         return fromExpression(PE->getSubExpr());
-    else if (auto ICE = dyn_cast<clang::CastExpr>(E))
-    {
-        if (ICE->getCastKind() != clang::CK_NoOp)
-            t = tymap.fromType(ICE->getType());
-
-        return fromExpression(ICE->getSubExpr(), t);
-    }
     else if (auto CDA = dyn_cast<clang::CXXDefaultArgExpr>(E))
         return fromExpression(CDA->getExpr());
 
