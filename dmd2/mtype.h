@@ -249,6 +249,8 @@ public:
     Type *copy();
     virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     bool equals(RootObject *o);
+    bool equivalent(RootObject *o); // CALYPSO
+    virtual bool equivTo(Type *t); // HACK? We're forced to differentiate equality by deco and being equivalent e.g for function overriding. C++ has logical const, more builtin types, and uniqueness of C++ types must be preserved for template instantiation to stay consistent. Or... perhaps we could get rid of the mtype intrusions by making DMD and Calypso communicate more abstractly but that's a lot more work.
     // kludge for template.isType()
     int dyncast() { return DYNCAST_TYPE; }
     int covariant(Type *t, StorageClass *pstc = NULL);
@@ -396,6 +398,7 @@ public:
 
     TypeNext(TY ty, Type *next);
     virtual void toDecoBuffer(OutBuffer *buf, int flag); // CALYPSO
+    virtual bool equivTo(Type *t) override; // CALYPSO
     void checkDeprecated(Loc loc, Scope *sc);
     int hasWild();
     Type *nextOf();
@@ -431,6 +434,7 @@ public:
     Expression *getProperty(Loc loc, Identifier *ident, int flag);
     Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);
     char *toChars();
+    virtual bool equivTo(Type *t) override; // CALYPSO
     bool isintegral();
     bool isfloating();
     bool isreal();
@@ -463,6 +467,7 @@ public:
     Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);
     char *toChars();
     void toDecoBuffer(OutBuffer *buf, int flag);
+    virtual bool equivTo(Type *t) override; // CALYPSO
     bool isintegral();
     bool isfloating();
     bool isscalar();
@@ -499,6 +504,7 @@ public:
     Type *semantic(Loc loc, Scope *sc);
     void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
     void toDecoBuffer(OutBuffer *buf, int flag);
+    virtual bool equivTo(Type *t) override; // CALYPSO
     Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);
     bool isString();
     bool isZeroInit(Loc loc);
@@ -683,6 +689,7 @@ public:
     Type *semantic(Loc loc, Scope *sc);
     void purityLevel();
     void toDecoBuffer(OutBuffer *buf, int flag);
+    virtual bool equivTo(Type *t) override; // CALYPSO
     TypeInfoDeclaration *getTypeInfoDeclaration();
     bool hasLazyParameters();
     bool parameterEscapes(Parameter *p);
