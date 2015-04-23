@@ -191,6 +191,17 @@ bool Type::equals(RootObject *o)
     return false;
 }
 
+bool Type::equivalent(RootObject *o)
+{
+    Type *t = (Type *)o;
+    return equivTo(t) || t->equivTo(this);
+}
+
+bool Type::equivTo(Type *t)
+{
+    return equals(t);
+}
+
 char Type::needThisPrefix()
 {
     return 'M';         // name mangling prefix for functions needing 'this'
@@ -2623,6 +2634,12 @@ void TypeNext::toDecoBuffer(OutBuffer *buf, int flag)
     next->toDecoBuffer(buf, (flag & 0x100) ? 0 : mod);
 }
 
+bool TypeNext::equivTo(Type *t)
+{
+    return ty == t->ty && mod == t->mod &&
+                next->equivalent(t->nextOf());
+}
+
 void TypeNext::checkDeprecated(Loc loc, Scope *sc)
 {
     Type::checkDeprecated(loc, sc);
@@ -3049,6 +3066,11 @@ Type *TypeBasic::syntaxCopy(Type *)
 char *TypeBasic::toChars()
 {
     return Type::toChars();
+}
+
+bool TypeBasic::equivTo(Type *t)
+{
+    return ty == t->ty && mod == t->mod;
 }
 
 d_uns64 TypeBasic::size(Loc loc)
@@ -3709,6 +3731,15 @@ void TypeVector::toDecoBuffer(OutBuffer *buf, int flag)
     basetype->toDecoBuffer(buf, (flag & 0x100) ? 0 : mod);
 }
 
+bool TypeVector::equivTo(Type *t)
+{
+    if (t->ty != Tvector)
+        return false;
+
+    TypeVector *tv = (TypeVector *) t;
+    return basetype->equivalent(tv->basetype);
+}
+
 d_uns64 TypeVector::size(Loc loc)
 {
     return basetype->size();
@@ -4261,6 +4292,16 @@ void TypeSArray::toDecoBuffer(OutBuffer *buf, int flag)
          * not the [4].
          */
         next->toDecoBuffer(buf,  (flag & 0x100) ? flag : mod);
+}
+
+bool TypeSArray::equivTo(Type *t)
+{
+    if (!TypeNext::equivTo(t))
+        return false;
+
+    TypeSArray *tsa = (TypeSArray *)t;
+    return (!dim && !tsa->dim) ||
+        dim->toInteger() == tsa->dim->toInteger();
 }
 
 Expression *TypeSArray::dotExp(Scope *sc, Expression *e, Identifier *ident, int flag)
@@ -5661,6 +5702,42 @@ void TypeFunction::toDecoBuffer(OutBuffer *buf, int flag)
     if (next != NULL)
         next->toDecoBuffer(buf);
     inuse--;
+}
+
+bool TypeFunction::equivTo(Type *t)
+{
+    if (!TypeNext::equivTo(t))
+        return false;
+
+    // what about linkage? isnothrow
+    // FIXME varargs
+
+    TypeFunction *tf = (TypeFunction *) t;
+    if (isref != tf->isref)
+        return false;
+
+    if (!parameters && !tf->parameters)
+        return true;
+
+    if (!parameters || !tf->parameters)
+        return false;
+
+    if (parameters->dim != tf->parameters->dim)
+        return false;
+
+    for (unsigned i = 0; i < parameters->dim; i++)
+    {
+        Parameter *p = (*parameters)[i];
+        Parameter *p2 = (*tf->parameters)[i];
+
+        if (!p->type->equivalent(p2->type))
+            return false;
+
+        if (p->storageClass != p2->storageClass)
+            return false;
+    }
+
+    return true;
 }
 
 Type *TypeFunction::semantic(Loc loc, Scope *sc)

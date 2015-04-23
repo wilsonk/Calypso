@@ -134,7 +134,7 @@ public:
 
 namespace
 {
-inline Type *pointerTo(Type *t) { return (new TypePointer(t))->merge(); }
+    inline Type *pointerTo(Type *t) { return (new TypePointer(t))->merge(); }
 }
 
 //  There are a few D builtin types that are mapped to several C++ ones, such as wchar_t/dchar <=> wchar_t. Even though they're the same, we have to differentiate them (e.g char_traits<wchar_t>char_traits<char32>) or else two template instances might have different tempdecl while their aggregate member get the same deco
