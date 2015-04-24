@@ -1095,7 +1095,7 @@ static void mapNamespace(DeclMapper &mapper,
             continue;  // only map declarations that are semantically within the DeclContext
 
         auto DLoc = SrcMgr.getFileLoc((*D)->getLocation());
-        if (MMap && DLoc.isFileID()
+        if (MMap && DLoc.isValid() && DLoc.isFileID()
                 && MMap->findModuleForHeader(
                     SrcMgr.getFileEntryForID(SrcMgr.getFileID(DLoc))))
             continue;  // skip decls which are parts of a Clang module
