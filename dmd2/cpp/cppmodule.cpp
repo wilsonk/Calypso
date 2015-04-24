@@ -1261,7 +1261,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
             D = R[0];
         }
 
-        if (auto TD = dyn_cast<clang::TypedefNameDecl>(D))
+        if (auto TD = dyn_cast<clang::TypedefNameDecl>(D)) // FIXME check if typedef for anonymous tag
         {
             auto UT = TD->getUnderlyingType().getDesugaredType(Context);
             if (auto RT = dyn_cast<clang::TagType>(UT))
@@ -1276,14 +1276,22 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
             fatal();
         }
 
+        if (auto Spec = dyn_cast<clang::ClassTemplateSpecializationDecl>(D))
+            D = Spec->getSpecializedTemplate();
+
         D = cast<clang::NamedDecl>(D->getCanonicalDecl());
-        m->rootDecl = D;
+        auto CTD = dyn_cast<clang::ClassTemplateDecl>(D);
+
+        if (CTD)
+            m->rootDecl = CTD->getTemplatedDecl();
+        else
+            m->rootDecl = D;
 
         if (auto s = mapper.VisitDecl(D, DeclMapper::MapImplicit))
             m->members->append(s);
 
         // Special case for class template, we need to add explicit specializations to the module as well
-        if (auto CTD = dyn_cast<clang::ClassTemplateDecl>(D))
+        if (CTD)
         {
             llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl *, 2> PS;
             CTD->getPartialSpecializations(PS);
