@@ -453,16 +453,18 @@ void ClassDeclaration::semantic(Scope *sc)
 
             if (tc)
             {
-                if (tc->sym->scope && tc->sym->doAncestorsSemantic != SemanticDone)
-                    tc->sym->semantic(NULL);    // Try to resolve forward reference
+                if (sym->scope && tc->sym->doAncestorsSemantic != SemanticDone)
+                    sym->semantic(NULL);    // Try to resolve forward reference
                 if (tc->sym->doAncestorsSemantic != SemanticDone)
                 {
                     //printf("\ttry later, forward reference of base class %s\n", tc->sym->toChars());
-                    if (tc->sym->scope)
-                        tc->sym->scope->module->addDeferredSemantic(tc->sym);
+                    if (sym->scope)
+                        sym->scope->module->addDeferredSemantic(sym);
                     doAncestorsSemantic = SemanticStart;
                 }
             }
+            else
+                sym->semantic(NULL);
          L7: ;
         }
 
@@ -518,16 +520,18 @@ void ClassDeclaration::semantic(Scope *sc)
 
             if (tc)
             {
-                if (tc->sym->scope && tc->sym->doAncestorsSemantic != SemanticDone)
-                    tc->sym->semantic(NULL);    // Try to resolve forward reference
+                if (sym->scope && tc->sym->doAncestorsSemantic != SemanticDone)
+                    sym->semantic(NULL);    // Try to resolve forward reference
                 if (tc->sym->doAncestorsSemantic != SemanticDone)
                 {
                     //printf("\ttry later, forward reference of base %s\n", tc->sym->toChars());
-                    if (tc->sym->scope)
-                        tc->sym->scope->module->addDeferredSemantic(tc->sym);
+                    if (sym->scope)
+                        sym->scope->module->addDeferredSemantic(sym);
                     doAncestorsSemantic = SemanticStart;
                 }
             }
+            else
+                sym->semantic(NULL);
             i++;
         }
         if (doAncestorsSemantic == SemanticStart)
