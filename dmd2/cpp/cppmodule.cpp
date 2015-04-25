@@ -1,6 +1,7 @@
 // Contributed by Elie Morisse, same license DMD uses
 
 #include "cpp/astunit.h"
+#include "cpp/modulemap.h"
 #include "aggregate.h"
 #include "attrib.h"
 #include "declaration.h"

@@ -26,7 +26,6 @@ namespace clang
 class IdentifierInfo;
 class CodeGenFunction;
 class Sema;
-class ModuleMap;
 }
 
 namespace cpp
@@ -36,8 +35,9 @@ class ClassDeclaration;
 class BuiltinTypes;
 class TemplateInstance;
 
-namespace reclang { class ASTUnit; }
+namespace reclang { class ASTUnit; class ModuleMap; }
 using reclang::ASTUnit;
+using reclang::ModuleMap;
 
 namespace clangCG = clang::CodeGen;
 
@@ -69,7 +69,7 @@ struct PCH
     InstantiationCollector instCollector;
     clang::IntrusiveRefCntPtr<clang::DiagnosticsEngine> Diags;
     
-    clang::ModuleMap *MMap = nullptr;
+    ModuleMap *MMap = nullptr;
 
     void init(); // load the list of headers already cached in the PCH
     void add(StringRef header);

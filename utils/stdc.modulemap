@@ -1,6 +1,0 @@
-module stdc {
-  module ctype {
-    header "ctype.h"
-    export *
-  }
-}
