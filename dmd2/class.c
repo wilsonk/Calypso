@@ -604,7 +604,52 @@ Lancestorsdone:
         return;
     }
     if (!symtab)
+    {
         symtab = new DsymbolTable();
+
+        // CALYPSO NOTE: backported from 2.068, depending on a superclass alias member
+        // occurs very often in Qt and MSVC.
+
+        /* Bugzilla 12152: The semantic analysis of base classes should be finished
+         * before the members semantic analysis of this class, in order to determine
+         * vtbl in this class. However if a base class refers the member of this class,
+         * it can be resolved as a normal forward reference.
+         * Call addMember() and setScope() to make this class members visible from the base classes.
+         */
+        for (size_t i = 0; i < members->dim; i++)
+        {
+            Dsymbol *s = (*members)[i];
+            s->addMember(sc, this, 1);
+        }
+
+        Scope *sc2 = sc->push(this);
+        sc2->stc &= STCsafe | STCtrusted | STCsystem;
+        sc2->parent = this;
+        sc2->inunion = 0;
+        if (isCOMclass())
+        {
+            if (global.params.isWindows)
+                sc2->linkage = LINKwindows;
+            else
+                sc2->linkage = LINKc;
+        }
+        sc2->protection = PROTpublic;
+        sc2->explicitProtection = 0;
+        sc2->structalign = STRUCTALIGN_DEFAULT;
+        sc2->userAttribDecl = NULL;
+
+        /* Set scope so if there are forward references, we still might be able to
+         * resolve individual members like enums.
+         */
+        for (size_t i = 0; i < members->dim; i++)
+        {
+            Dsymbol *s = (*members)[i];
+            //printf("[%d] setScope %s %s, sc2 = %p\n", i, s->kind(), s->toChars(), sc2);
+            s->setScope(sc2);
+        }
+
+        sc2->pop();
+    }
 
     for (size_t i = 0; i < baseclasses->dim; i++)
     {
@@ -626,12 +671,6 @@ Lancestorsdone:
 
     if (sizeok == SIZEOKnone)
     {
-        for (size_t i = 0; i < members->dim; i++)
-        {
-            Dsymbol *s = (*members)[i];
-            s->addMember(sc, this, 1);
-        }
-
         // CALYPSO cpp::initVtbl needs symtab to be filled
         initVtbl();
         interfaceSemantic(sc);
@@ -695,16 +734,6 @@ Lancestorsdone:
     sizeok = SIZEOKnone;
     
     // CALYPSO moved to buildLayout
-
-    /* Set scope so if there are forward references, we still might be able to
-     * resolve individual members like enums.
-     */
-    for (size_t i = 0; i < members->dim; i++)
-    {
-        Dsymbol *s = (*members)[i];
-        //printf("[%d] setScope %s %s, sc2 = %p\n", i, s->kind(), s->toChars(), sc2);
-        s->setScope(sc2);
-    }
 
     for (size_t i = 0; i < members->dim; i++)
     {
