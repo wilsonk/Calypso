@@ -1,6 +1,7 @@
 // Contributed by Elie Morisse, same license DMD uses
 
 #include "cpp/astunit.h"
+#include "cpp/modulemap.h"
 #include "cpp/calypso.h"
 #include "cpp/cppimport.h"
 #include "cpp/cppmodule.h"
@@ -479,20 +480,50 @@ void PCH::update()
     AST = ASTUnit::LoadFromASTFile(pchFilename,
                                 Diags, FileSystemOpts, &instCollector);
 
-    /* If a Clang module map file was passed, parse it */
-    if (!opts::cppModuleMap.empty())
+    /* Collect Clang module map files */
+    auto& SrcMgr = AST->getSourceManager();
+
+    MMap = new ModuleMap(AST->getSourceManager(), *Diags, AST->getASTFileLangOpts(),
+                            &AST->getTargetInfo(), AST->getHeaderSearch());
+
+    llvm::DenseSet<const clang::DirectoryEntry*> CheckedDirs;
+    for (size_t i = 0; i < SrcMgr.loaded_sloc_entry_size(); i++)
     {
-        MMap = new clang::ModuleMap(AST->getSourceManager(), *Diags, AST->getASTFileLangOpts(),
-                                &AST->getTargetInfo(), AST->getHeaderSearch());
+        auto SLoc = SrcMgr.getLoadedSLocEntry(i);
 
-        auto MMapFile = AST->getFileManager().getFile(opts::cppModuleMap);
-        auto MMapHomeDir = AST->getFileManager().getDirectory(opts::cppModuleHomeDir);
-        assert(MMapFile && MMapHomeDir);
+        if (SLoc.isExpansion())
+            continue;
 
-        if (MMap->parseModuleMapFile(MMapFile, false, MMapHomeDir))
+        auto OrigEntry = SLoc.getFile().getContentCache()->OrigEntry;
+        if (!OrigEntry)
+            continue;
+
+        auto Dir = OrigEntry->getDir();
+
+        if (CheckedDirs.count(Dir))
+            continue;
+        CheckedDirs.insert(Dir);
+
+        std::error_code err;
+        llvm::sys::fs::directory_iterator DirIt(llvm::Twine(Dir->getName()), err), DirEnd;
+
+        for (; DirIt != DirEnd && !err; DirIt.increment(err))
         {
-            ::error(Loc(), "Clang module map file parsing failed");
-            fatal();
+            auto path = DirIt->path();
+            auto extension = llvm::sys::path::extension(path);
+
+            if (extension.equals(".modulemap"))
+            {
+                auto MMapFile = AST->getFileManager().getFile(path);
+                assert(MMapFile);
+
+                if (MMap->parseModuleMapFile(MMapFile, false, Dir))
+                {
+                    ::error(Loc(), "Clang module map '%s/%s' file parsing failed",
+                                    MMapFile->getDir(), MMapFile->getName());
+                    fatal();
+                }
+            }
         }
     }
 

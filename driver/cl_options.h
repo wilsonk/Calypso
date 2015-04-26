@@ -83,9 +83,6 @@ namespace opts {
     extern cl::list<std::string> cppArgs;
     extern cl::opt<bool> cppDebug;
 
-    extern cl::opt<std::string> cppModuleMap; // HACK we should be able to pass multiple maps and home dirs
-    extern cl::opt<std::string> cppModuleHomeDir; // HACK
-
     // Arguments to -d-debug
     extern std::vector<std::string> debugArgs;
     // Arguments to -run

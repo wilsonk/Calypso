@@ -9,9 +9,11 @@
 //
 // ASTUnit utility class.
 //
+// CALYPSO NOTE: Flavouring ASTUnit is necessary because Clang doesn't provide any way to assign a custom ASTConsumer. Fortunately the functionality we use is only a few members + LoadFromASTFile()
+//
 //===----------------------------------------------------------------------===//
 
-// CALYPSO NOTE: Flavouring ASTUnit is necessary because Clang doesn't provide any way to assign a custom ASTConsumer. Fortunately the functionality we use is only a few members + LoadFromASTFile()
+#pragma once
 
 #include "clang/AST/ASTContext.h"
 #include "clang/Basic/FileManager.h"
