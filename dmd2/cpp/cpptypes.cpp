@@ -898,8 +898,7 @@ const clang::Decl *TypeMapper::GetRootForTypeQualified(clang::NamedDecl *D)
     clang::DeclarationName Name;
     decltype(CXXScope) ScopeStack(CXXScope);
 
-    if (mod && mod->rootDecl
-            && D->getCanonicalDecl() == mod->rootDecl->getCanonicalDecl())
+    if (mod && D->getCanonicalDecl() == mod->rootKey.first)
         return D;
 
     if (D->getIdentifier() ||
@@ -1650,19 +1649,16 @@ static clang::Module *GetClangModuleForDecl(const clang::Decl* D)
         assert(mod);
     }
 
-    auto KeyDecl = GetImplicitImportKeyForDecl(D);
+    Module::RootKey Key;
+    Key.first = GetImplicitImportKeyForDecl(D);
 
-    const clang::Module *Mod = nullptr;
-    if (isa<clang::TranslationUnitDecl>(KeyDecl)
-                || isa<clang::NamespaceDecl>(KeyDecl))
-        Mod = GetClangModuleForDecl(D); // see if there's a Clang module which contains the decl
-
-    const void *Key;
-    if (Mod) Key = Mod; else Key = KeyDecl;
+    if (isa<clang::TranslationUnitDecl>(Key.first)
+                || isa<clang::NamespaceDecl>(Key.first))
+        Key.second = GetClangModuleForDecl(D); // see if there's a Clang module which contains the decl
 
     if (!fake)
     {
-        if (Key == mod->rootKey())
+        if (Key == mod->rootKey)
             return nullptr; // do not import self
 
         if (implicitImports[Key])
@@ -1670,10 +1666,10 @@ static clang::Module *GetClangModuleForDecl(const clang::Decl* D)
     }
 
     ::Import *im;
-    if (Mod)
-        im = BuildImplicitImport(Mod);
+    if (Key.second)
+        im = BuildImplicitImport(Key.first, Key.second);
     else
-        im = BuildImplicitImport(KeyDecl);
+        im = BuildImplicitImport(Key.first);
 
     if (!fake)
     {
@@ -1795,16 +1791,26 @@ static Identifier *BuildImplicitImportInternal(const clang::DeclContext *DC,
     return new cpp::Import(loc, sPackages, sModule, nullptr, 1);
 }
 
-::Import *TypeMapper::BuildImplicitImport(const clang::Module *Mod)
+::Import *TypeMapper::BuildImplicitImport(const clang::Decl *D, const clang::Module *Mod)
 {
     auto loc = Loc();
     auto sPackages = new Identifiers;
+
+    if (!isa<clang::TranslationUnitDecl>(D))
+    {
+        auto loc = fromLoc(D->getLocation());
+        auto DC = cast<clang::DeclContext>(D);
+
+        BuildImplicitImportInternal(DC, loc, sPackages);
+    }
+
+    auto insertIndex = sPackages->dim;
     auto sModule = Lexer::idPool(Mod->Name.c_str());
 
     auto M = Mod->Parent;
     while (M)
     {
-        sPackages->shift(Lexer::idPool(M->Name.c_str()));
+        sPackages->insert(insertIndex, Lexer::idPool(M->Name.c_str()));
         M = M->Parent;
     }
 

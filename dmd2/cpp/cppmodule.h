@@ -24,12 +24,8 @@ class Module : public ::Module
 public:
     CALYPSO_LANGPLUGIN
 
-    const clang::Decl *rootDecl = nullptr; // the decl we're generating the module for
-    const clang::Module *rootMod = nullptr;
-    const void *rootKey() {
-        if (rootDecl) return rootDecl;
-        else return rootMod;
-    }
+    typedef std::pair<const clang::Decl *, const clang::Module *> RootKey;
+    RootKey rootKey;
 
     static Package *rootPackage;    // package to store all C++ packages/modules, avoids name clashes (e.g std)
     static Modules amodules;            // array of all modules

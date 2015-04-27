@@ -512,7 +512,7 @@ void PCH::update()
             auto path = DirIt->path();
             auto extension = llvm::sys::path::extension(path);
 
-            if (extension.equals(".modulemap"))
+            if (extension.equals(".modulemap_d"))
             {
                 auto MMapFile = AST->getFileManager().getFile(path);
                 assert(MMapFile);
