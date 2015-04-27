@@ -10,6 +10,7 @@
 #include <map>
 #include <stack>
 #include "cpp/calypso.h"
+#include "cpp/cppmodule.h"
 #include "mars.h"
 #include "mtype.h"
 #include "arraytypes.h"
@@ -34,7 +35,6 @@ class TemplateParameterList;
 
 namespace cpp
 {
-class Module;
 class TypeQualifiedBuilder;
 
 class BuiltinTypes
@@ -125,7 +125,7 @@ public:
 protected:
     cpp::Module *mod;
 
-    llvm::SmallDenseMap<const void*, Import*, 8> implicitImports;
+    llvm::SmallDenseMap<Module::RootKey, Import*, 8> implicitImports;
     llvm::DenseMap<const clang::NamedDecl*, Dsymbol*> declMap;  // fast lookup of mirror decls
 
     llvm::SmallVector<const clang::TemplateParameterList*, 4> templateParameters;
@@ -141,7 +141,7 @@ protected:
 
     ::Import *AddImplicitImportForDecl(const clang::NamedDecl *D, bool fake = false);
     ::Import *BuildImplicitImport(const clang::Decl *D);
-    ::Import *BuildImplicitImport(const clang::Module *Mod);
+    ::Import *BuildImplicitImport(const clang::Decl *D, const clang::Module *Mod);
     const clang::Decl *GetImplicitImportKeyForDecl(const clang::NamedDecl *D);
     const clang::Decl *GetNonNestedContext(const clang::Decl *D);  // returns the "root" for qualified types
 

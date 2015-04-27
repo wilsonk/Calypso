@@ -1027,17 +1027,18 @@ bool isOverloadedOperatorWithTagOperand(const clang::Decl *D,
     return OpTyDecl->getCanonicalDecl() == SpecificTag->getCanonicalDecl();
 }
 
-static clang::Module *tryFindClangModule(Loc loc, Identifiers *packages, Identifier *id, Package *&p)
+static clang::Module *tryFindClangModule(Loc loc, Identifiers *packages, Identifier *id,
+                                         Package *&p, size_t i)
 {
     auto MMap = calypso.pch.MMap;
 
     if (!MMap)
         return nullptr;
 
-    Package *pkg = Module::rootPackage;
+    Package *pkg = p;
     clang::Module *M = nullptr;
 
-    for (size_t i = 1; i < packages->dim; i++)
+    for (; i < packages->dim; i++)
     {
         Identifier *pid = (*packages)[i];
 
@@ -1080,7 +1081,8 @@ static inline bool isTopLevelInNamespaceModule (const clang::Decl *D)
 
 static void mapNamespace(DeclMapper &mapper,
                              const clang::DeclContext *DC,
-                             Dsymbols *members)
+                             Dsymbols *members,
+                             bool forClangModule = false)
 {
     auto CanonDC = cast<clang::Decl>(DC)->getCanonicalDecl();
     auto MMap = calypso.pch.MMap;
@@ -1096,14 +1098,14 @@ static void mapNamespace(DeclMapper &mapper,
             continue;  // only map declarations that are semantically within the DeclContext
 
         auto DLoc = SrcMgr.getFileLoc((*D)->getLocation());
-        if (MMap && DLoc.isValid() && DLoc.isFileID()
+        if (!forClangModule && DLoc.isValid() && DLoc.isFileID()
                 && MMap->findModuleForHeader(
                     SrcMgr.getFileEntryForID(SrcMgr.getFileID(DLoc))))
             continue;  // skip decls which are parts of a Clang module
 
         if (auto LinkSpec = dyn_cast<clang::LinkageSpecDecl>(*D))
         {
-            mapNamespace(mapper, LinkSpec, members);
+            mapNamespace(mapper, LinkSpec, members, forClangModule);
             continue;
         }
         else if (!isTopLevelInNamespaceModule(*D))
@@ -1115,17 +1117,55 @@ static void mapNamespace(DeclMapper &mapper,
 }
 
 static void mapClangModule(DeclMapper &mapper,
+                             const clang::Decl *Root,
                              clang::Module *M,
                              Dsymbols *members)
 {
     auto AST = calypso.getASTUnit();
     auto& SrcMgr = AST->getSourceManager();
 
-    llvm::SmallVector<clang::Decl*, 32> Decls;
+    llvm::SmallVector<clang::Decl*, 32> RegionDecls;
 
     for (auto Header: M->Headers[clang::Module::HK_Normal])
         AST->findFileRegionDecls(SrcMgr.translateFile(Header.Entry),
-            0, 0, Decls);
+            0, 0, RegionDecls);
+
+    // Not forgetting namespace redecls
+    llvm::SmallVector<clang::Decl*, 8> RootDecls, ParentDecls;
+
+    std::function<bool(const clang::Decl *)>
+        Corresponding = [&] (const clang::Decl *D)
+    {
+        if (isa<clang::TranslationUnitDecl>(D))
+            return true;
+
+        if (!Corresponding(cast<clang::Decl>(D->getDeclContext())->getCanonicalDecl()))
+            return false;
+
+        ParentDecls.swap(RootDecls);
+        RootDecls.clear();
+
+        if (!ParentDecls.empty())
+            for (auto Parent: ParentDecls)
+            {
+                auto DC = cast<clang::DeclContext>(Parent);
+                for (auto ModDecl: DC->decls())
+                    if (D->getCanonicalDecl() == ModDecl->getCanonicalDecl())
+                        RootDecls.push_back(ModDecl);
+            }
+        else
+            for (auto ModDecl: RegionDecls)
+                if (D->getCanonicalDecl() == ModDecl->getCanonicalDecl())
+                    RootDecls.push_back(ModDecl);
+
+        return !RootDecls.empty();
+    };
+
+    if (!Corresponding(Root))
+    {
+        ::error(Loc(), "Incorrect import, Clang module doesn't contain requested namespaces");
+        fatal();
+    }
 
     std::function<void(const clang::Decl *)> Map = [&] (const clang::Decl *D)
     {
@@ -1137,10 +1177,9 @@ static void mapClangModule(DeclMapper &mapper,
         }
 
         auto DC = D->getDeclContext();
-        if (!isa<clang::TranslationUnitDecl>(DC)
-                && !isa<clang::NamespaceDecl>(DC)
-                && !isa<clang::LinkageSpecDecl>(DC))
-            return;
+        assert(isa<clang::TranslationUnitDecl>(DC)
+                || isa<clang::NamespaceDecl>(DC)
+                || isa<clang::LinkageSpecDecl>(DC));
 
         if (!isTopLevelInNamespaceModule(D))
             return;
@@ -1149,8 +1188,12 @@ static void mapClangModule(DeclMapper &mapper,
             members->append(s);
     };
 
-    for (auto D: Decls)
-        Map(D);
+    if (!isa<clang::TranslationUnitDecl>(Root))
+        for (auto R: RootDecls)
+            mapNamespace(mapper, cast<clang::DeclContext>(R), members, true);
+    else
+        for (auto D: RegionDecls)
+            Map(D);
 }
 
 Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
@@ -1169,36 +1212,40 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
 
     assert(packages && packages->dim);
 
-    // First check if it's a Clang module
-    auto M = tryFindClangModule(loc, packages, id, pkg);
-
-    // If not, follow the decls
-    if (!M)
+    clang::Module *M = nullptr;
+    for (size_t i = 1; i < packages->dim; i++)
     {
-        for (size_t i = 1; i < packages->dim; i++)
+        Identifier *pid = (*packages)[i];
+
+        auto R = lookup(DC, pid);
+        if (R.empty())
         {
-            Identifier *pid = (*packages)[i];
+            // Check if there's a Clang module matching the remaining packages.module.
+            // Note that if there is a Clang module named QtCore, import Qt.QtCore is correct and
+            // will import the declarations inside Qt:: and inside the headers listed in QtCore.
+            M = tryFindClangModule(loc, packages, id, pkg, i);
+            if (M)
+                break;
 
-            auto R = lookup(DC, pid);
-            if (R.empty())
-            {
-                ::error(loc, "no C++ package named %s", pid->toChars());
-                fatal();
-            }
-
-            auto NSN = dyn_cast<clang::NamespaceDecl>(R[0]);
-            if (!NSN)
-            {
-                ::error(loc, "only namespaces can be C++ packages");
-                fatal();
-            }
-
-            pkg = static_cast<Package*>(pkg->symtab->lookup(pid));
-            assert(pkg);
-
-            DC = NSN;
+            ::error(loc, "no C++ package named %s", pid->toChars());
+            fatal();
         }
+
+        auto NSN = dyn_cast<clang::NamespaceDecl>(R[0]);
+        if (!NSN)
+        {
+            ::error(loc, "only namespaces can be C++ packages");
+            fatal();
+        }
+
+        pkg = static_cast<Package*>(pkg->symtab->lookup(pid));
+        assert(pkg);
+
+        DC = NSN;
     }
+
+    if (!M)
+        M = tryFindClangModule(loc, packages, id, pkg, packages->dim);
 
     auto m = new Module(moduleName(packages, id).c_str(),
                         id, packages);
@@ -1210,16 +1257,16 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
 
     if (M)
     {
-        m->rootMod = M;
-        mapClangModule(mapper, M, m->members);
+        auto D = cast<clang::Decl>(DC)->getCanonicalDecl();
+        m->rootKey.first = D;
+        m->rootKey.second = M;
+        mapClangModule(mapper, D, M, m->members);
     }
     else if (strcmp(id->string, "_") == 0)  // Hardcoded module with all the top-level non-tag decls + the anonymous tags of a namespace which aren't in a Clang module
     {
-        m->rootDecl = cast<clang::Decl>(DC)->getCanonicalDecl();
+        m->rootKey.first = cast<clang::Decl>(DC)->getCanonicalDecl();
 
-        // All non-tag declarations inside the namespace go in _ (this is horrible for C functions of course, this will be fixed by the switch to Clang module system)
         auto NS = dyn_cast<clang::NamespaceDecl>(DC);
-
         if (!NS)
         {
             assert(isa<clang::TranslationUnitDecl>(DC));
@@ -1284,9 +1331,9 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
         auto CTD = dyn_cast<clang::ClassTemplateDecl>(D);
 
         if (CTD)
-            m->rootDecl = CTD->getTemplatedDecl();
+            m->rootKey.first = CTD->getTemplatedDecl();
         else
-            m->rootDecl = D;
+            m->rootKey.first = D;
 
         if (auto s = mapper.VisitDecl(D, DeclMapper::MapImplicit))
             m->members->append(s);
