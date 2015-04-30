@@ -1817,6 +1817,27 @@ static Identifier *BuildImplicitImportInternal(const clang::DeclContext *DC,
     return new cpp::Import(loc, sPackages, sModule, nullptr, 1);
 }
 
+void TypeMapper::rebuildCXXScope(const clang::Decl *RightMost)
+{
+    assert(CXXScope.empty());
+
+    // Recreate the scope stack, esp. important for nested template instances
+    std::function<void(const clang::Decl *)> build =
+                    [&] (const clang::Decl *D)
+    {
+        if (isa<clang::TranslationUnitDecl>(D))
+            return;
+
+        auto Parent = cast<clang::Decl>(D->getDeclContext());
+        build(Parent);
+
+        if (isa<clang::CXXRecordDecl>(D))
+            CXXScope.push(D);
+    };
+
+    build(RightMost);
+}
+
 /***** DMD -> Clang types *****/
 
 clang::QualType TypeMapper::toType(Loc loc, Type* t, Scope *sc, StorageClass stc)
