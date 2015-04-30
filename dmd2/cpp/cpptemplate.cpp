@@ -96,6 +96,7 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
 
     TypeMapper tymap;
     ExprMapper expmap(tymap);
+    tymap.addImplicitDecls = false;
 
     auto Temp = getPrimaryTemplate();
 
@@ -112,6 +113,32 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
     // Track function instantiations during the mapping of template instantiation (e.g by default arg exprs)
     instCollector.tempinsts.push(ti);
 
+    if (ti->Inst)
+    {
+        // We query the evaluated arguments by Sema and possibly fix the tiargs semantic'd by DMD since there might be slight differences.
+        // See for example Qt's is_unsigned<Qt::KeyboardModifiers>, the value will be different because of T(0) < T(-1) which doesn't lead to the expected result in DMD.
+        // The issue wasn't apparent before because DMD and C++'s expression evaluation match in more than 99% of cases.
+        // And this could become redundant if clang::Expr gets preserved and sent back to Clang for evaluation in the future.
+
+        auto ClassSpec = dyn_cast<clang::ClassTemplateSpecializationDecl>(ti->Inst);
+        auto FuncSpec = dyn_cast<clang::FunctionDecl>(ti->Inst);
+
+        auto& tiargs = *ti->tiargs;
+        auto Args = ClassSpec ? ClassSpec->getTemplateArgs().asArray()
+                : FuncSpec->getTemplateSpecializationArgs()->asArray();
+
+        auto Arg = Args.begin();
+        auto Param = Temp->getTemplateParameters()->begin();
+        for (int i = 0; i < ti->explicitargs; i++, Arg++, Param++)
+        {
+            if (!isExpression(tiargs[i]))
+                continue;
+
+            tiargs[i] = TypeMapper::FromType(tymap).fromTemplateArgument(Arg, *Param);
+        }
+    }
+
+    ti->semantictiargsdone = false;
     if (!ti->semanticTiargs(sc))
         assert(false && "foreignInstance semanticTiargs failed");
 
@@ -231,7 +258,6 @@ LcorrectTempDecl:
     ti->correctTiargs();
 
     ti->semanticRun = PASSinit; // WARNING: may disrupt something?
-    ti->semantictiargsdone = false;
     ti->semantic(sc);
     instCollector.tempinsts.pop();
     return ti;
@@ -243,7 +269,7 @@ void TemplateDeclaration::correctTempDecl(TemplateInstance *ti)
     auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(Inst);
 
     if (isa<clang::TypeAliasTemplateDecl>(TempOrSpec) || // FIXME, any way to retrieve the template decl for alias templates?
-        !CTSD) // FIXME for func templates
+        !CTSD)
     {
         ti->tempdecl = this;
         return;
@@ -443,6 +469,7 @@ void TemplateInstance::correctTiargs()
 
         tiargs = TypeMapper::FromType(tymap).fromTemplateArguments(Args.begin(), Args.end(),
                         Partial->getTemplateParameters());
+        semantictiargsdone = false;
     }
 }
 
