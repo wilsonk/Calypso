@@ -1111,8 +1111,13 @@ static void mapClangModule(DeclMapper &mapper,
     llvm::SmallVector<clang::Decl*, 32> RegionDecls;
 
     for (auto Header: M->Headers[clang::Module::HK_Normal])
-        AST->findFileRegionDecls(SrcMgr.translateFile(Header.Entry),
-            0, 0, RegionDecls);
+    {
+        // HACK-ish but Clang doesn't offer a straightforward way
+        auto FID =  SrcMgr.translateFile(Header.Entry);
+        auto SID = SrcMgr.getLocForStartOfFile(FID).getRawEncoding();
+
+        AST->findFileRegionDecls(FID, 0, (1U << 31) - 1 - SID, RegionDecls);
+    }
 
     // Not forgetting namespace redecls
     llvm::SmallVector<clang::Decl*, 8> RootDecls, ParentDecls;
