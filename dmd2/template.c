@@ -6113,6 +6113,7 @@ TemplateInstance::TemplateInstance(Loc loc, Identifier *ident)
     this->speculative = false;
     this->hash = 0;
     this->fargs = NULL;
+    this->explicitargs = -1; // CALYPSO
 }
 
 /*****************
@@ -6144,6 +6145,7 @@ TemplateInstance::TemplateInstance(Loc loc, TemplateDeclaration *td, Objects *ti
     this->speculative = false;
     this->hash = 0;
     this->fargs = NULL;
+    this->explicitargs = -1; // CALYPSO
 
     assert(tempdecl->scope);
 }
@@ -6174,6 +6176,7 @@ Dsymbol *TemplateInstance::syntaxCopy(Dsymbol *s)
         ti = new TemplateInstance(loc, name);
 
     ti->tiargs = arraySyntaxCopy(tiargs);
+    ti->explicitargs = explicitargs;
 
     TemplateDeclaration *td;
     if (inst && tempdecl && (td = tempdecl->isTemplateDeclaration()) != NULL)
@@ -6325,6 +6328,9 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
 #if LOG
     printf("\tdo semantic\n");
 #endif
+    // CALYPSO : Record the number of explicit arguments.
+    if (explicitargs == -1)
+        explicitargs = tiargs->dim;
     /* Find template declaration first,
      * then run semantic on each argument (place results in tiargs[]),
      * last find most specialized template from overload list/set.

@@ -336,6 +336,7 @@ public:
     bool gagged;                        // if the instantiation is done with error gagging
     hash_t hash;                        // cached result of hashCode()
     Expressions *fargs;                 // for function template, these are the function arguments
+    int explicitargs;    // CALYPSO: remember the number of explicit arguments (that was lost after findBestMatch())
 
     TemplateInstances* deferred;
 

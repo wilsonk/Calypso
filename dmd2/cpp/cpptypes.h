@@ -59,6 +59,7 @@ public:
     Dsymbols *substsyms = nullptr; // only for TempateInstance::correctTiargs (partial spec arg deduction)
 
     std::stack<const clang::Decl *> CXXScope;
+    void rebuildCXXScope(const clang::Decl *RightMost);
 
     // Clang -> DMD
     Type *fromType(const clang::QualType T);
