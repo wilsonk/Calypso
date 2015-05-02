@@ -1050,8 +1050,11 @@ static inline bool isTopLevelInNamespaceModule (const clang::Decl *D)
     if (Tag && Tag->getIdentifier())
         return false; // anonymous tags are added as well
 
-    if (!Tag && !isa<clang::FunctionDecl>(D) &&
-            !isa<clang::VarDecl>(D) &&
+    auto Func = dyn_cast<clang::FunctionDecl>(D);
+    if (Func && Func->getDescribedFunctionTemplate())
+        return false; // the function template will get mapped instead
+
+    if (!Tag && !Func && !isa<clang::VarDecl>(D) &&
             !isa<clang::TypedefNameDecl>(D) &&
             !isa<clang::FunctionTemplateDecl>(D) &&
             !isa<clang::TypeAliasTemplateDecl>(D))
