@@ -1050,8 +1050,11 @@ static inline bool isTopLevelInNamespaceModule (const clang::Decl *D)
     if (Tag && Tag->getIdentifier())
         return false; // anonymous tags are added as well
 
-    if (!Tag && !isa<clang::FunctionDecl>(D) &&
-            !isa<clang::VarDecl>(D) &&
+    auto Func = dyn_cast<clang::FunctionDecl>(D);
+    if (Func && Func->getDescribedFunctionTemplate())
+        return false; // the function template will get mapped instead
+
+    if (!Tag && !Func && !isa<clang::VarDecl>(D) &&
             !isa<clang::TypedefNameDecl>(D) &&
             !isa<clang::FunctionTemplateDecl>(D) &&
             !isa<clang::TypeAliasTemplateDecl>(D))
@@ -1110,13 +1113,25 @@ static void mapClangModule(DeclMapper &mapper,
 
     llvm::SmallVector<clang::Decl*, 32> RegionDecls;
 
-    for (auto Header: M->Headers[clang::Module::HK_Normal])
+    // HACK-ish but Clang doesn't offer a straightforward way
+    // SourceManager::translateFile() only offers the first FID of a FileEntry which doesn't contain all the decls,
+    // so we need to loop over all the FID corresponding to Header.Entry.
+    for (unsigned I = 0, N = SrcMgr.loaded_sloc_entry_size(); I != N; ++I)
     {
-        // HACK-ish but Clang doesn't offer a straightforward way
-        auto FID =  SrcMgr.translateFile(Header.Entry);
-        auto SID = SrcMgr.getLocForStartOfFile(FID).getRawEncoding();
+        auto& SLoc = SrcMgr.getLoadedSLocEntry(I);
+        if (SLoc.isFile() && SLoc.getFile().getContentCache())
+        {
+            for (auto Header: M->Headers[clang::Module::HK_Normal])
+            {
+                if (SLoc.getFile().getContentCache()->OrigEntry != Header.Entry)
+                    continue;
 
-        AST->findFileRegionDecls(FID, 0, (1U << 31) - 1 - SID, RegionDecls);
+                auto Loc = clang::SourceLocation::getFromRawEncoding(SLoc.getOffset());
+                auto FID = SrcMgr.getFileID(Loc); // NOTE: getting a FileID without a SourceLocation is impossible, it's locked tight
+                auto SID = SrcMgr.getLocForStartOfFile(FID).getRawEncoding();
+                AST->findFileRegionDecls(FID, 0, (1U << 31) - 1 - SID, RegionDecls); // passed Length is the maximum value before offset overflow kicks in
+            }
+        }
     }
 
     // Not forgetting namespace redecls
@@ -1144,8 +1159,9 @@ static void mapClangModule(DeclMapper &mapper,
             }
         else
             for (auto ModDecl: RegionDecls)
-                if (D->getCanonicalDecl() == ModDecl->getCanonicalDecl())
-                    RootDecls.push_back(ModDecl);
+                if (isa<clang::TranslationUnitDecl>(D->getDeclContext()))
+                    if (D->getCanonicalDecl() == ModDecl->getCanonicalDecl())
+                        RootDecls.push_back(ModDecl);
 
         return !RootDecls.empty();
     };
@@ -1182,7 +1198,8 @@ static void mapClangModule(DeclMapper &mapper,
             mapNamespace(mapper, cast<clang::DeclContext>(R), members, true);
     else
         for (auto D: RegionDecls)
-            Map(D);
+            if (isa<clang::TranslationUnitDecl>(D->getDeclContext()))
+                Map(D);
 }
 
 Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
