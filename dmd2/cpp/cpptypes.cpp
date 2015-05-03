@@ -352,6 +352,9 @@ Type *TypeMapper::FromType::operator()(const clang::QualType T)
 {
     Type *t = fromTypeUnqual(T.getTypePtr());
 
+    if (!t)
+        return nullptr;
+
     if (T.isConstQualified())
         t = t->makeConst();
 
@@ -426,6 +429,8 @@ Type *TypeMapper::FromType::fromTypeUnqual(const clang::Type *T)
         auto pointeeT = Reference ?
                 Reference->getPointeeTypeAsWritten() : Pointer->getPointeeType();
         auto pt = fromType(pointeeT);
+        if (!pt)
+            return nullptr;
 
         auto t2 = pt;
         while (t2->ty == Tvalueof)
@@ -471,6 +476,8 @@ Type *TypeMapper::FromType::fromTypeComplex(const clang::ComplexType *T)
 Type* TypeMapper::FromType::fromTypeVector(const clang::VectorType* T)
 {
     auto t = fromType(T->getElementType());
+    if (!t)
+        return nullptr;
     auto dim = new IntegerExp(T->getNumElements());
 
     return new TypeVector(Loc(), new TypeSArray(t, dim));
@@ -479,6 +486,8 @@ Type* TypeMapper::FromType::fromTypeVector(const clang::VectorType* T)
 Type* TypeMapper::FromType::fromTypeArray(const clang::ArrayType* T)
 {
     auto t = fromType(T->getElementType());
+    if (!t)
+        return nullptr;
 
     if (auto CAT = dyn_cast<clang::ConstantArrayType>(T))
     {
@@ -554,7 +563,7 @@ RootObject* TypeMapper::FromType::fromTemplateArgument(const clang::TemplateArgu
             assert(false && "Unsupported template arg kind");
     }
 
-    assert(tiarg && "Template argument not supported");
+    assert((tiarg || Arg->getKind() == clang::TemplateArgument::Type) && "Template argument not supported");
     return tiarg;
 }
 
@@ -570,7 +579,10 @@ Objects* TypeMapper::FromType::fromTemplateArguments(const clang::TemplateArgume
     for (auto Arg = First; Arg != End; Arg++)
     {
         auto P = Param ? *Param : nullptr;
-        tiargs->push(fromTemplateArgument(Arg, P));
+        auto arg = fromTemplateArgument(Arg, P);
+        if (!arg)
+            return nullptr;
+        tiargs->push(arg);
 
         if (ParamList)
             Param++;
@@ -1288,7 +1300,8 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
             auto ti = (cpp::TemplateInstance*)o;
 
             ti->Inst = RT->getDecl();
-            ti->completeInst();
+            if (!ti->completeInst(true))
+                return nullptr;
         }
 
         if (!T->isTypeAlias())
@@ -1435,6 +1448,8 @@ TypeQualified *TypeMapper::FromType::fromNestedNameSpecifierImpl(const clang::Ne
         case clang::NestedNameSpecifier::TypeSpecWithTemplate:
         {
             auto t = fromTypeUnqual(NNS->getAsType());
+            if (!t)
+                return nullptr;
             if (t->ty == Tvalueof)
                 t = t->nextOf();
             assert(t->ty == Tinstance || t->ty == Tident || t->ty == Ttypeof);
@@ -1580,6 +1595,9 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
         Identifier *ident = nullptr;
         Expression *defaultArg = nullptr;
 
+        if (!at)
+            return nullptr;
+
         if (FD)
         {
             ident = getIdentifierOrNull(*PI);
@@ -1609,8 +1627,11 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
     if (T->isConst())
         stc |= STCconst;
 
-    auto tf = new TypeFunction(params, FromType(tm)(T->getReturnType()),
-                               0, LINKd, stc);
+    auto rt = FromType(tm)(T->getReturnType());
+    if (!rt)
+        return nullptr;
+
+    auto tf = new TypeFunction(params, rt, 0, LINKd, stc);
     tf = static_cast<TypeFunction*>(tf->addSTC(stc));
     return tf;
 }

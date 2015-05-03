@@ -340,7 +340,7 @@ Identifier *TemplateInstance::getIdent()
     return result;
 }
 
-void TemplateInstance::completeInst()
+bool TemplateInstance::completeInst(bool mayFail)
 {
     auto& Context = calypso.pch.AST->getASTContext();
     auto& S = calypso.pch.AST->getSema();
@@ -361,7 +361,11 @@ void TemplateInstance::completeInst()
         // there's a chance the code wasn't emitted in the C++ libraries, so we do it ourselves.
 
         if (S.RequireCompleteType(CTSD->getLocation(), Ty, 0))
+        {
+            if (mayFail)
+                return false; // there may be template specializations that aren't meant to be evaluated (eg. QVector<void> for QFuture<void>)
             assert(false && "Sema::RequireCompleteType() failed on template specialization");
+        }
     }
 
     // Force instantiation of method definitions
@@ -376,6 +380,7 @@ void TemplateInstance::completeInst()
 
     instCollector.tempinsts.pop();
     Diags.setSuppressAllDiagnostics(false);
+    return true;
 }
 
 // HACK-ish unfortunately.. but partial spec arg deduction isn't trivial. Can't think of a simpler way.

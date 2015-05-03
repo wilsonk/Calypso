@@ -282,9 +282,12 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
 
     if (auto DR = dyn_cast<clang::DeclRefExpr>(E))
     {
-        return fromExpressionDeclRef(loc,
-                        const_cast<clang::ValueDecl*>(DR->getDecl()),
+        t = tymap.fromType(DR->getType());
+        e = fromExpressionDeclRef(loc, const_cast<clang::ValueDecl*>(DR->getDecl()),
                         DR->getQualifier());
+
+        if (!e)
+            return nullptr; // FIXME overloaded operators
     }
 
     if (auto PE = dyn_cast<clang::PackExpansionExpr>(E))
@@ -376,7 +379,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
     {
         auto e = fromExpression(C->getCallee());
         if (!e)
-            return nullptr;
+            return nullptr; // FIXME temporary hack skipping overloaded operators
 
         auto args = new Expressions;
         for (auto Arg: C->arguments())

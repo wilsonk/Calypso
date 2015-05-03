@@ -1037,7 +1037,7 @@ void FuncDeclaration::semantic(Scope *sc)
                     if (f2)
                     {
                         f2 = f2->overloadExactMatch(type);
-                        if (f2 && f2->isFinalFunc() && f2->prot() != PROTprivate)
+                        if (!allowFinalOverride() && f2 && f2->isFinalFunc() && f2->prot() != PROTprivate) // CALYPSO
                             error("cannot override final function %s.%s", b->base->toChars(), f2->toPrettyChars());
                     }
                 }

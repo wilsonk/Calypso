@@ -218,6 +218,9 @@ void ClassDeclaration::finalizeVtbl()
 
 void ClassDeclaration::buildLayout()
 {
+    if (RD->isInvalidDecl())
+        return; // if it's a forward reference, consider the record empty
+
     auto& Context = calypso.getASTContext();
     auto& RL = Context.getASTRecordLayout(RD);
     
