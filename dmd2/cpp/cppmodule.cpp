@@ -456,6 +456,9 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 {
     auto& S = calypso.pch.AST->getSema();
 
+    if (D->isInvalidDecl())
+        return nullptr;
+
     if (isa<clang::CXXConversionDecl>(D))
         return nullptr; // TODO
 
