@@ -34,6 +34,7 @@ public:
     Module(const char *filename, Identifier *ident, Identifiers *packages);
 
     static Module *load(Loc loc, Identifiers *packages, Identifier *ident);
+    Dsymbol *search(Loc loc, Identifier *ident, int flags = IgnoreNone) override;
     void addPreambule() override;
     const char *manglePrefix() override { return "_Cpp"; }
 };
