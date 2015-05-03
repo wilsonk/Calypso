@@ -76,6 +76,18 @@ static const char *getDOperatorSpelling(const clang::OverloadedOperatorKind OO)
     }
 }
 
+static Identifier *fullOperatorMapIdent(Identifier *baseIdent,
+                                       const clang::FunctionDecl *FD)
+{
+    auto OO = FD->getOverloadedOperator();
+
+    std::string fullName(baseIdent->string, baseIdent->len);
+    fullName += "_";
+    fullName += getOperatorName(OO);
+
+    return Lexer::idPool(fullName.c_str());
+}
+
 static Identifier *getOperatorIdentifier(const clang::FunctionDecl *FD,
                 const char *&op, clang::OverloadedOperatorKind OO = clang::OO_None)
 {
@@ -102,7 +114,7 @@ static Identifier *getOperatorIdentifier(const clang::FunctionDecl *FD,
         bool isUnary = NumParams == 1;
         bool isBinary = NumParams == 2;
 
-        wrapInTemp = true; // except for opAssign
+        wrapInTemp = true; // except for opAssign and opCmp
 
         if (isUnary)
         {
@@ -137,6 +149,18 @@ static Identifier *getOperatorIdentifier(const clang::FunctionDecl *FD,
                 case clang::OO_LessLess:
                 case clang::OO_GreaterGreater:
                     opIdent = Id::opBinary;
+                    break;
+                case clang::OO_EqualEqual:
+                case clang::OO_ExclaimEqual:
+                    opIdent = fullOperatorMapIdent(Id::eq, FD);
+                    wrapInTemp = false;
+                    break;
+                case clang::OO_Less:
+                case clang::OO_LessEqual:
+                case clang::OO_Greater:
+                case clang::OO_GreaterEqual:
+                    opIdent = fullOperatorMapIdent(Id::cmp, FD);
+                    wrapInTemp = false;
                     break;
                 case clang::OO_Equal:
                     // D doesn't allow overloading of identity assignment, and since it might still be fundamental
@@ -271,13 +295,7 @@ Identifier *getExtendedIdentifier(const clang::NamedDecl *D)
 
     auto FD = dyn_cast<clang::FunctionDecl>(D);
     if (op && FD)
-    {
-        auto OO = FD->getOverloadedOperator();
-        std::string fullName(ident->string, ident->len);
-        fullName += "_";
-        fullName += getOperatorName(OO);
-        ident = Lexer::idPool(fullName.c_str());
-    }
+        ident = fullOperatorMapIdent(ident, FD);
 
     return ident;
 }
