@@ -162,7 +162,7 @@ public:
     void gensymfile();
 #endif
     int needModuleInfo();
-    Dsymbol *search(Loc loc, Identifier *ident, int flags = IgnoreNone);
+    virtual Dsymbol *search(Loc loc, Identifier *ident, int flags = IgnoreNone); // CALYPSO
     Dsymbol *symtabInsert(Dsymbol *s);
     void deleteObjFile();
     static void addDeferredSemantic(Dsymbol *s);

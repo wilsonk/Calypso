@@ -90,6 +90,17 @@ Module::Module(const char* filename, Identifier* ident, Identifiers *packages)
     arg = objfn;
 }
 
+Dsymbol *Module::search(Loc loc, Identifier *ident, int flags)
+{
+    auto result = ::Module::search(loc, ident, flags);
+
+    if ((flags & IgnorePrivateMembers) && result && result->isImport())
+        return nullptr; // semi-HACK? this makes the imports inside an imported module invisible to D code,
+                                // but also prevents conflicts caused by the choice to name C++ modules after record names.
+
+    return result;
+}
+
 void Module::addPreambule()
 {
     // Statically import object.d for object and size_t (used by buildXtoHash)
@@ -455,6 +466,9 @@ TemplateParameters *initTempParamsForOO(Loc loc, const char *op)
 Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 {
     auto& S = calypso.pch.AST->getSema();
+
+    if (D->isInvalidDecl())
+        return nullptr;
 
     if (isa<clang::CXXConversionDecl>(D))
         return nullptr; // TODO
