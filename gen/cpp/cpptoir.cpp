@@ -376,10 +376,11 @@ void LangPlugin::toResolveFunction(::FuncDeclaration* fdecl)
 
 void LangPlugin::toDefineFunction(::FuncDeclaration* fdecl)
 {
-    auto FD = static_cast<cpp::FuncDeclaration*>(fdecl)->FD;
+    auto FD = getFD(fdecl);
+    const clang::FunctionDecl *Def;
 
-    if (FD->isDefined())
-        CGM->EmitTopLevelDecl(const_cast<clang::FunctionDecl *>(FD)); // TODO remove const_cast
+    if (FD->hasBody(Def) && getIrFunc(fdecl)->func->isDeclaration())
+        CGM->EmitTopLevelDecl(const_cast<clang::FunctionDecl*>(Def)); // TODO remove const_cast
 }
 
 void LangPlugin::addBaseClassData(AggrTypeBuilder &b, ::AggregateDeclaration *base)
