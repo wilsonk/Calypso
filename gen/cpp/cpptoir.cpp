@@ -289,11 +289,21 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
     for (size_t i=0; i<n; ++i) {
         Parameter* fnarg = Parameter::getNth(tf->parameters, i);
         assert(fnarg);
-        DValue* argval = DtoArgument(fnarg,
-                        static_cast<::Expression*>(arguments->data[i]));
-        Args.add(clangCG::RValue::get(argval->getRVal()),
-                 TypeMapper().toType(loc, fnarg->type,
-                                     fd->scope, fnarg->storageClass));
+        DValue* argval = DtoArgument(fnarg, arguments->data[i]);
+
+        auto ArgTy = TypeMapper().toType(loc, fnarg->type,
+                                        fd->scope, fnarg->storageClass);
+        if (fnarg->type->ty == Tvalueof)
+        {
+//             llvm::Value *tmp = CGF()->CreateMemTemp(type);
+//             CGF()->EmitAggregateCopy(tmp, L.getAddress(), type, /*IsVolatile*/false,
+//                                 L.getAlignment());
+//             Args.add(clangCG::RValue::getAggregate(tmp), type);
+            Args.add(clangCG::RValue::getAggregate(argval->getRVal()),
+                     ArgTy, /*NeedsCopy*/true);
+        }
+        else
+            Args.add(clangCG::RValue::get(argval->getRVal()), ArgTy);
     }
 
 //     clangCG::ReturnValueSlot ReturnValue(retvar, false);

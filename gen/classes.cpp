@@ -251,6 +251,14 @@ DValue* DtoCastClass(Loc& loc, DValue* val, Type* _to)
         DImValue im(Type::tsize_t, v);
         return DtoCastInt(loc, &im, _to);
     }
+    // class reference -> class value (CALYPSO)
+    else if (to->ty == Tvalueof) {
+        IF_LOG Logger::println("to class value");
+
+        DValue* dv = DtoCastClass(loc, val, to->nextOf());
+        dv->type = to; // HACK-ish, handled in cpptoir.cpp
+        return dv;
+    }
 
     // must be class/interface
     assert(to->ty == Tclass);
