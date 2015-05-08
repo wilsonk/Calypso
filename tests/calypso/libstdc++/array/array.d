@@ -5,7 +5,7 @@
  *   $ ldc2 -L-lstdc++ -cpp-args -std=c++11 array.d
  */
 
-modmap (C++) "array";
+modmap (C++) "<array>";
 
 import std.stdio, std.conv, std.string;
 import (C++) std.array;

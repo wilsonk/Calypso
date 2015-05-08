@@ -5,7 +5,7 @@
  *   $ ldc2 -L-lstdc++ deque.d
  */
 
-modmap (C++) "deque";
+modmap (C++) "<deque>";
 
 import std.stdio;
 import (C++) std.deque;

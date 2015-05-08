@@ -5,7 +5,7 @@
  *   $ ldc2 -L-lstdc++ algorithm.d
  */
 
-modmap (C++) "complex";
+modmap (C++) "<complex>";
 
 import std.stdio, std.conv, std.string;
 import (C++) std._ : cppcomplex = complex;
