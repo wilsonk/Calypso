@@ -26,6 +26,7 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
+#include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Basic/ABI.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/TargetInfo.h"
@@ -332,55 +333,112 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
 // This is why we must keep access to the CodeGenModule so that we can emit them and then copy the LLVM infos.
 // (as a side not similarly LLVM lazily puts aggregate types into its context type map as well, but that doesn't matter here afaik).
 
+struct ResolvedFunc
+{
+    llvm::Function *Func;
+    llvm::FunctionType *Ty;
+
+    static ResolvedFunc get(clangCG::CodeGenModule &CGM, const clang::FunctionDecl *FD)
+    {
+        ResolvedFunc result;
+        const clangCG::CGFunctionInfo *FInfo;
+
+        auto MD = llvm::dyn_cast<const clang::CXXMethodDecl>(FD);
+
+        if (MD)
+        {
+            if (llvm::isa<const clang::CXXConstructorDecl>(MD) ||
+                        llvm::isa<const clang::CXXDestructorDecl>(MD))
+                FInfo = &CGM.getTypes().arrangeCXXStructorDeclaration(MD,
+                                                                        clangCG::StructorType::Complete);
+            else
+                FInfo = &CGM.getTypes().arrangeCXXMethodDeclaration(MD);
+
+            result.Ty = CGM.getTypes().GetFunctionType(*FInfo);
+        }
+        else
+            result.Ty = CGM.getTypes().GetFunctionType(FD);
+
+
+        llvm::Constant *GV;
+        if (MD && (llvm::isa<const clang::CXXConstructorDecl>(MD) ||
+                                llvm::isa<const clang::CXXDestructorDecl>(MD)))
+            GV = CGM.getAddrOfCXXStructor(MD, clangCG::StructorType::Complete,
+                                          FInfo, result.Ty);
+        else
+            GV = CGM.GetAddrOfFunction(FD, result.Ty);
+        result.Func = cast<llvm::Function>(GV);
+
+        return result;
+    }
+};
+
 void LangPlugin::toResolveFunction(::FuncDeclaration* fdecl)
 {
     auto FD = getFD(fdecl);
 
-//     DtoFunctionType(fdecl);
     auto irFunc = getIrFunc(fdecl, true);
     auto &irFty = irFunc->irFty;
 
     fdecl->ir.setDeclared();
 
-    llvm::Constant *Callee = nullptr;
-    const clangCG::CGFunctionInfo *FInfo;
-    llvm::FunctionType *Ty;
+    auto resolved = ResolvedFunc::get(*CGM, FD);
+    irFunc->func = resolved.Func;
+    irFty.funcType = resolved.Ty;
+}
 
-    auto MD = llvm::dyn_cast<const clang::CXXMethodDecl>(FD);
+class DiscardableODREmitter : public clang::RecursiveASTVisitor<DiscardableODREmitter>
+{
+    clang::ASTContext &Context;
+    clangCG::CodeGenModule &CGM;
 
-    if (MD)
-    {
-        if (llvm::isa<const clang::CXXConstructorDecl>(MD) ||
-                    llvm::isa<const clang::CXXDestructorDecl>(MD))
-            FInfo = &CGM->getTypes().arrangeCXXStructorDeclaration(MD,
-                                                                    clangCG::StructorType::Complete);
-        else
-            FInfo = &CGM->getTypes().arrangeCXXMethodDeclaration(MD);
+    llvm::DenseSet<const clang::FunctionDecl *> Emitted;
+public:
+    DiscardableODREmitter(clang::ASTContext &Context,
+                        clangCG::CodeGenModule &CGM) : Context(Context), CGM(CGM) {}
+    bool VisitCallExpr(const clang::CallExpr *E);
+};
 
-        Ty = CGM->getTypes().GetFunctionType(*FInfo);
-    }
-    else
-        Ty = CGM->getTypes().GetFunctionType(FD);
+bool DiscardableODREmitter::VisitCallExpr(const clang::CallExpr *E)
+{
+    auto Callee = E->getDirectCallee();
+    const clang::FunctionDecl *Def;
 
+    if (!Callee || !Callee->hasBody(Def))
+        return true;
 
-    if (MD && (llvm::isa<const clang::CXXConstructorDecl>(MD) ||
-                            llvm::isa<const clang::CXXDestructorDecl>(MD)))
-        Callee = CGM->getAddrOfCXXStructor(MD,
-                                    clangCG::StructorType::Complete, FInfo, Ty);
-    else
-        Callee = CGM->GetAddrOfFunction(FD, Ty);
+    auto FPT = Callee->getType()->getAs<clang::FunctionProtoType>();
+    if (FPT->getExceptionSpecType() == clang::EST_Unevaluated)
+        return true;
 
-    irFunc->func = llvm::cast<llvm::Function>(Callee);
-    irFty.funcType = Ty;
+    auto resolved = ResolvedFunc::get(CGM, Callee);
+
+    if (Context.GetGVALinkageForFunction(Callee) != clang::GVA_DiscardableODR || Emitted.count(Def))
+        return true;
+
+    Emitted.insert(Def);
+
+    if (resolved.Func->isDeclaration())
+        CGM.EmitTopLevelDecl(const_cast<clang::FunctionDecl*>(Def));
+
+    TraverseStmt(Def->getBody());
+    return true;
 }
 
 void LangPlugin::toDefineFunction(::FuncDeclaration* fdecl)
 {
+    auto& Context = getASTContext();
+
     auto FD = getFD(fdecl);
     const clang::FunctionDecl *Def;
 
     if (FD->hasBody(Def) && getIrFunc(fdecl)->func->isDeclaration())
+    {
         CGM->EmitTopLevelDecl(const_cast<clang::FunctionDecl*>(Def)); // TODO remove const_cast
+
+        // Emit inline functions this function depends upon
+        DiscardableODREmitter(Context, *CGM).TraverseStmt(Def->getBody());
+    }
 }
 
 void LangPlugin::addBaseClassData(AggrTypeBuilder &b, ::AggregateDeclaration *base)
