@@ -463,6 +463,23 @@ TemplateParameters *initTempParamsForOO(Loc loc, const char *op)
     return tpl;
 }
 
+struct IdleTypeDiagnoser : public clang::Sema::TypeDiagnoser
+{
+    IdleTypeDiagnoser(bool Suppressed = false) : clang::Sema::TypeDiagnoser(Suppressed) {}
+    void diagnose(clang::Sema &S, clang::SourceLocation Loc, clang::QualType T) override {}
+};
+
+static bool RequireCompleteType(clang::SourceLocation Loc, clang::QualType T)
+{
+    auto& S = calypso.pch.AST->getSema();
+    IdleTypeDiagnoser Diagnoser;
+
+    if (!T->getAs<clang::TagType>())
+        return false;
+
+    return S.RequireCompleteType(Loc, T, Diagnoser);
+}
+
 Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 {
     auto& S = calypso.pch.AST->getSema();
@@ -480,6 +497,19 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 
     auto FPT = D->getType()->castAs<clang::FunctionProtoType>();
     auto MD = dyn_cast<clang::CXXMethodDecl>(D);
+
+    // Since Sema never got the chance, do a final check that every type is complete
+    // on functions that will be emitted.
+    if (!D->getDescribedFunctionTemplate()
+            && !D->getDeclContext()->isDependentContext())
+    {
+        if (RequireCompleteType(D->getLocation(), D->getReturnType()))
+            return nullptr;
+
+        for (auto Param: FPT->getParamTypes())
+            if (RequireCompleteType(D->getLocation(), Param))
+                return nullptr;
+    }
     
     auto tf = FromType(*this).fromTypeFunction(FPT, D);
     if (!tf)
