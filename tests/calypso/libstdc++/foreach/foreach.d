@@ -5,8 +5,8 @@
  *   $ ldc2 -L-lstdc++ foreach.d
  */
 
-modmap (C++) "algorithm";
-modmap (C++) "vector";
+modmap (C++) "<algorithm>";
+modmap (C++) "<vector>";
 
 import std.stdio;
 import (C++) std.vector;

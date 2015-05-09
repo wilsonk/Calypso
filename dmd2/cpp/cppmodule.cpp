@@ -30,6 +30,7 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
+#include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/Sema.h"
@@ -463,6 +464,56 @@ TemplateParameters *initTempParamsForOO(Loc loc, const char *op)
     return tpl;
 }
 
+struct IdleTypeDiagnoser : public clang::Sema::TypeDiagnoser
+{
+    IdleTypeDiagnoser(bool Suppressed = false) : clang::Sema::TypeDiagnoser(Suppressed) {}
+    void diagnose(clang::Sema &S, clang::SourceLocation Loc, clang::QualType T) override {}
+};
+
+static bool RequireCompleteType(clang::SourceLocation Loc, clang::QualType T)
+{
+    auto& S = calypso.pch.AST->getSema();
+    IdleTypeDiagnoser Diagnoser;
+
+    if (!T->getAs<clang::TagType>())
+        return false;
+
+    return S.RequireCompleteType(Loc, T, Diagnoser);
+}
+
+class FunctionReferencer : public clang::RecursiveASTVisitor<FunctionReferencer>
+{
+    clang::Sema &S;
+    clang::SourceLocation Loc;
+
+    llvm::DenseSet<const clang::FunctionDecl *> Referenced;
+public:
+    FunctionReferencer(clang::Sema &S,
+                        clang::SourceLocation Loc) : S(S), Loc(Loc) {}
+    bool VisitCallExpr(const clang::CallExpr *E);
+};
+
+bool FunctionReferencer::VisitCallExpr(const clang::CallExpr *E)
+{
+    auto Callee = const_cast<clang::FunctionDecl*>(E->getDirectCallee());
+
+    if (!Callee || Referenced.count(Callee->getCanonicalDecl()))
+        return true;
+    Referenced.insert(Callee->getCanonicalDecl());
+
+    S.MarkFunctionReferenced(Loc, Callee);
+
+    if (Callee->isImplicitlyInstantiable())
+        S.InstantiateFunctionDefinition(Loc, Callee);
+
+    const clang::FunctionDecl *Def;
+    if (!Callee->hasBody(Def))
+        return true;
+
+    TraverseStmt(Def->getBody());
+    return true;
+}
+
 Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 {
     auto& S = calypso.pch.AST->getSema();
@@ -480,6 +531,19 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 
     auto FPT = D->getType()->castAs<clang::FunctionProtoType>();
     auto MD = dyn_cast<clang::CXXMethodDecl>(D);
+
+    // Since Sema never got the chance, do a final check that every type is complete
+    // on functions that will be emitted.
+    if (!D->getDescribedFunctionTemplate()
+            && !D->getDeclContext()->isDependentContext())
+    {
+        if (RequireCompleteType(D->getLocation(), D->getReturnType()))
+            return nullptr;
+
+        for (auto Param: FPT->getParamTypes())
+            if (RequireCompleteType(D->getLocation(), Param))
+                return nullptr;
+    }
     
     auto tf = FromType(*this).fromTypeFunction(FPT, D);
     if (!tf)
@@ -495,6 +559,12 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
         auto D_ = const_cast<clang::FunctionDecl*>(D);
         D_->setTrivial(false);  // force its definition and Sema to resolve its exception spec
         S.MarkFunctionReferenced(clang::SourceLocation(), D_);
+
+        const clang::FunctionDecl *Def;
+        if (D->hasBody(Def))
+            FunctionReferencer(S, clang::SourceLocation()).TraverseStmt(Def->getBody());
+
+        S.PerformPendingInstantiations();
     }
 
     StorageClass stc = STCundefined;
