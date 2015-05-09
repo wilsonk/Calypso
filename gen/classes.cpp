@@ -255,9 +255,16 @@ DValue* DtoCastClass(Loc& loc, DValue* val, Type* _to)
     else if (to->ty == Tvalueof) {
         IF_LOG Logger::println("to class value");
 
-        DValue* dv = DtoCastClass(loc, val, to->nextOf());
-        dv->type = to; // HACK-ish, handled in cpptoir.cpp
-        return dv;
+        assert(to->nextOf()->ty == Tclass);
+        TypeClass *tc = static_cast<TypeClass*>(to->nextOf());
+
+        if (tc->equals(val->getType()->toBasetype())) {
+            return val; // NOTE: casting to the same class will result in a dynamic cast not supported yet by Calypso
+        } else {
+            DValue* dv =  DtoCastClass(loc, val, to->nextOf());
+            dv->type = to; // HACK-ish, handled in cpptoir.cpp
+            return dv;
+        }
     }
 
     // must be class/interface
