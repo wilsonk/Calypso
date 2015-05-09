@@ -501,6 +501,7 @@ bool FunctionReferencer::VisitCallExpr(const clang::CallExpr *E)
         return true;
     Referenced.insert(Callee->getCanonicalDecl());
 
+    Callee->setTrivial(false);  // force its definition and Sema to resolve its exception spec
     S.MarkFunctionReferenced(Loc, Callee);
 
     if (Callee->isImplicitlyInstantiable())
