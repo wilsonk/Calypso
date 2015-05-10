@@ -360,6 +360,9 @@ static llvm::FunctionType* DtoVaFunctionType(FuncDeclaration* fdecl)
 
 llvm::FunctionType* DtoFunctionType(FuncDeclaration* fdecl)
 {
+    if (auto lp = fdecl->langPlugin())
+        return lp->codegen()->toFunctionType(fdecl);
+
     // handle for C vararg intrinsics
     if (DtoIsVaIntrinsic(fdecl))
         return DtoVaFunctionType(fdecl);

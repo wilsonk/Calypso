@@ -96,6 +96,41 @@ void LangPlugin::updateCGFInsertPoint()
     CGF()->Builder.SetInsertPoint(BB);
 }
 
+struct ResolvedFunc
+{
+    llvm::Function *Func;
+    llvm::FunctionType *Ty;
+
+    static ResolvedFunc get(clangCG::CodeGenModule &CGM, const clang::FunctionDecl *FD)
+    {
+        ResolvedFunc result;
+        const clangCG::CGFunctionInfo *FInfo;
+
+        auto MD = dyn_cast<const clang::CXXMethodDecl>(FD);
+
+        if (MD)
+        {
+            if (isa<const clang::CXXConstructorDecl>(FD) || isa<const clang::CXXDestructorDecl>(FD))
+                FInfo = &CGM.getTypes().arrangeCXXStructorDeclaration(MD, clangCG::StructorType::Complete);
+            else
+                FInfo = &CGM.getTypes().arrangeCXXMethodDeclaration(MD);
+
+            result.Ty = CGM.getTypes().GetFunctionType(*FInfo);
+        }
+        else
+            result.Ty = CGM.getTypes().GetFunctionType(FD);
+
+        llvm::Constant *GV;
+        if (isa<const clang::CXXConstructorDecl>(FD) || isa<const clang::CXXDestructorDecl>(FD))
+            GV = CGM.getAddrOfCXXStructor(MD, clangCG::StructorType::Complete, FInfo, result.Ty);
+        else
+            GV = CGM.GetAddrOfFunction(FD, result.Ty);
+        result.Func = cast<llvm::Function>(GV);
+
+        return result;
+    }
+};
+
 llvm::Type *LangPlugin::toType(::Type *t)
 {
     auto& Context = getASTContext();
@@ -109,13 +144,24 @@ llvm::Type *LangPlugin::toType(::Type *t)
                     Context.getRecordType(RD));
 }
 
-llvm::Constant *LangPlugin::createInitializerConstant(IrAggr *irAggr,
-        const IrAggr::VarInitMap& explicitInitializers,
-        llvm::StructType* initializerType)
+llvm::FunctionType *LangPlugin::toFunctionType(::FuncDeclaration *fdecl)
 {
-    auto& Context = getASTContext();
+    auto irFunc = getIrFunc(fdecl, true);
 
-    auto RD = getRecordDecl(irAggr->aggrdecl);
+    auto FD = getFD(fdecl);
+    auto Resolved = ResolvedFunc::get(*CGM, FD);
+
+    irFunc->irFty.funcType = Resolved.Ty;
+    return Resolved.Ty;
+}
+
+static llvm::Constant *buildAggrNullConstant(::AggregateDeclaration *decl,
+        const IrAggr::VarInitMap& explicitInitializers)
+{
+    auto& Context = calypso.getASTContext();
+    auto& CGM = calypso.CGM;
+
+    auto RD = getRecordDecl(decl);
 
     if (!RD->getDefinition())
         return nullptr;
@@ -133,11 +179,21 @@ llvm::Constant *LangPlugin::createInitializerConstant(IrAggr *irAggr,
 //     clang::Expr::EvalResult Result;
 //     ILE->EvaluateAsLValue(Result, Context);
 
-    auto C = CGM->EmitNullConstant(DestType);  // NOTE: neither EmitConstantExpr nor EmitConstantValue will work with CXXConstructExpr
-    auto irSt = llvm::cast<llvm::StructType>(C->getType());
+    return CGM->EmitNullConstant(DestType);  // NOTE: neither EmitConstantExpr nor EmitConstantValue will work with CXXConstructExpr
+}
+
+llvm::Constant *LangPlugin::createInitializerConstant(IrAggr *irAggr,
+        const IrAggr::VarInitMap& explicitInitializers,
+        llvm::StructType* initializerType)
+{
+    auto C = buildAggrNullConstant(irAggr->aggrdecl, explicitInitializers);  // NOTE: neither EmitConstantExpr nor EmitConstantValue will work with CXXConstructExpr
+
+    if (!C)
+        return nullptr;
 
     if (initializerType)
     {
+        auto irSt = cast<llvm::StructType>(C->getType());
         assert(initializerType->isOpaque());
         initializerType->setBody(llvm::ArrayRef<llvm::Type*>(irSt->element_begin(),
                                 irSt->element_end()),  irSt->isPacked());
@@ -147,7 +203,7 @@ llvm::Constant *LangPlugin::createInitializerConstant(IrAggr *irAggr,
     // NOTE: Constant::mutateType is too dangerous because EmitNullConstant might return
     // the same constant e.g for empty records.
 
-    if (auto CAZ = dyn_cast<llvm::ConstantAggregateZero>(C))
+    if (isa<llvm::ConstantAggregateZero>(C))
         return llvm::ConstantAggregateZero::get(initializerType);
     else if (auto CS = dyn_cast<llvm::ConstantStruct>(C))
     {
@@ -158,6 +214,20 @@ llvm::Constant *LangPlugin::createInitializerConstant(IrAggr *irAggr,
     }
 
     llvm_unreachable("Unhandled null constant");
+}
+
+// Required by DCXX classes, which may contain exotic fields such as class values.
+void LangPlugin::addFieldInitializers(llvm::SmallVectorImpl<llvm::Constant*>& constants,
+            const IrAggr::VarInitMap& explicitInitializers, ::AggregateDeclaration* decl,
+            unsigned& offset, bool populateInterfacesWithVtbls)
+{
+    auto C = buildAggrNullConstant(decl, explicitInitializers);
+
+    if (!C)
+        return; // forward decl
+
+    constants.push_back(C);
+    offset += gDataLayout->getTypeStoreSize(C->getType());
 }
 
 void LangPlugin::buildGEPIndices(IrTypeAggr *irTyAgrr,
@@ -327,51 +397,6 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
 
     llvm_unreachable("Complex RValue FIXME");
 }
-
-// IMPORTANT NOTE: Clang emits forward decls lazily, which means that no function prototype is actually emitted to LLVM after making a CodeGenerator consume the ASTContext.
-// One reason for that is that types need to be complete for a prototype to be emitted (this used to cause obscure segfaults on my language Tales a while back).
-// This is why we must keep access to the CodeGenModule so that we can emit them and then copy the LLVM infos.
-// (as a side not similarly LLVM lazily puts aggregate types into its context type map as well, but that doesn't matter here afaik).
-
-struct ResolvedFunc
-{
-    llvm::Function *Func;
-    llvm::FunctionType *Ty;
-
-    static ResolvedFunc get(clangCG::CodeGenModule &CGM, const clang::FunctionDecl *FD)
-    {
-        ResolvedFunc result;
-        const clangCG::CGFunctionInfo *FInfo;
-
-        auto MD = llvm::dyn_cast<const clang::CXXMethodDecl>(FD);
-
-        if (MD)
-        {
-            if (llvm::isa<const clang::CXXConstructorDecl>(MD) ||
-                        llvm::isa<const clang::CXXDestructorDecl>(MD))
-                FInfo = &CGM.getTypes().arrangeCXXStructorDeclaration(MD,
-                                                                        clangCG::StructorType::Complete);
-            else
-                FInfo = &CGM.getTypes().arrangeCXXMethodDeclaration(MD);
-
-            result.Ty = CGM.getTypes().GetFunctionType(*FInfo);
-        }
-        else
-            result.Ty = CGM.getTypes().GetFunctionType(FD);
-
-
-        llvm::Constant *GV;
-        if (MD && (llvm::isa<const clang::CXXConstructorDecl>(MD) ||
-                                llvm::isa<const clang::CXXDestructorDecl>(MD)))
-            GV = CGM.getAddrOfCXXStructor(MD, clangCG::StructorType::Complete,
-                                          FInfo, result.Ty);
-        else
-            GV = CGM.GetAddrOfFunction(FD, result.Ty);
-        result.Func = cast<llvm::Function>(GV);
-
-        return result;
-    }
-};
 
 void LangPlugin::toResolveFunction(::FuncDeclaration* fdecl)
 {
