@@ -24,6 +24,9 @@ public:
     virtual llvm::Constant *createInitializerConstant(IrAggr *irAggr,
         const IrAggr::VarInitMap& explicitInitializers,
         llvm::StructType* initializerType = 0) = 0;
+    virtual void addFieldInitializers(llvm::SmallVectorImpl<llvm::Constant*>& constants,
+            const IrAggr::VarInitMap& explicitInitializers, AggregateDeclaration* decl,
+            unsigned& offset, bool populateInterfacesWithVtbls) = 0; // used for "hybrid" classes i.e D classes inheriting from foreign ones
         
     virtual void toResolveFunction(FuncDeclaration* fdecl) = 0;
     virtual void toDefineFunction(FuncDeclaration* fdecl) = 0;

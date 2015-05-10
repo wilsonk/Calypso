@@ -155,13 +155,13 @@ llvm::FunctionType *LangPlugin::toFunctionType(::FuncDeclaration *fdecl)
     return Resolved.Ty;
 }
 
-llvm::Constant *LangPlugin::createInitializerConstant(IrAggr *irAggr,
-        const IrAggr::VarInitMap& explicitInitializers,
-        llvm::StructType* initializerType)
+static llvm::Constant *buildAggrNullConstant(::AggregateDeclaration *decl,
+        const IrAggr::VarInitMap& explicitInitializers)
 {
-    auto& Context = getASTContext();
+    auto& Context = calypso.getASTContext();
+    auto& CGM = calypso.CGM;
 
-    auto RD = getRecordDecl(irAggr->aggrdecl);
+    auto RD = getRecordDecl(decl);
 
     if (!RD->getDefinition())
         return nullptr;
@@ -179,11 +179,21 @@ llvm::Constant *LangPlugin::createInitializerConstant(IrAggr *irAggr,
 //     clang::Expr::EvalResult Result;
 //     ILE->EvaluateAsLValue(Result, Context);
 
-    auto C = CGM->EmitNullConstant(DestType);  // NOTE: neither EmitConstantExpr nor EmitConstantValue will work with CXXConstructExpr
-    auto irSt = llvm::cast<llvm::StructType>(C->getType());
+    return CGM->EmitNullConstant(DestType);  // NOTE: neither EmitConstantExpr nor EmitConstantValue will work with CXXConstructExpr
+}
+
+llvm::Constant *LangPlugin::createInitializerConstant(IrAggr *irAggr,
+        const IrAggr::VarInitMap& explicitInitializers,
+        llvm::StructType* initializerType)
+{
+    auto C = buildAggrNullConstant(irAggr->aggrdecl, explicitInitializers);  // NOTE: neither EmitConstantExpr nor EmitConstantValue will work with CXXConstructExpr
+
+    if (!C)
+        return nullptr;
 
     if (initializerType)
     {
+        auto irSt = cast<llvm::StructType>(C->getType());
         assert(initializerType->isOpaque());
         initializerType->setBody(llvm::ArrayRef<llvm::Type*>(irSt->element_begin(),
                                 irSt->element_end()),  irSt->isPacked());
@@ -204,6 +214,20 @@ llvm::Constant *LangPlugin::createInitializerConstant(IrAggr *irAggr,
     }
 
     llvm_unreachable("Unhandled null constant");
+}
+
+// Required by DCXX classes, which may contain exotic fields such as class values.
+void LangPlugin::addFieldInitializers(llvm::SmallVectorImpl<llvm::Constant*>& constants,
+            const IrAggr::VarInitMap& explicitInitializers, ::AggregateDeclaration* decl,
+            unsigned& offset, bool populateInterfacesWithVtbls)
+{
+    auto C = buildAggrNullConstant(decl, explicitInitializers);
+
+    if (!C)
+        return; // forward decl
+
+    constants.push_back(C);
+    offset += gDataLayout->getTypeStoreSize(C->getType());
 }
 
 void LangPlugin::buildGEPIndices(IrTypeAggr *irTyAgrr,

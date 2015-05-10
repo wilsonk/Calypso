@@ -120,6 +120,9 @@ public:
     llvm::Constant *createInitializerConstant(IrAggr *irAggr,
         const IrAggr::VarInitMap& explicitInitializers,
         llvm::StructType* initializerType = 0) override;
+    void addFieldInitializers(llvm::SmallVectorImpl<llvm::Constant*>& constants,
+        const IrAggr::VarInitMap& explicitInitializers, ::AggregateDeclaration* decl,
+        unsigned& offset, bool populateInterfacesWithVtbls) override;
 
     void toResolveFunction(::FuncDeclaration* fdecl) override;
     void toDefineFunction(::FuncDeclaration* fdecl) override;
