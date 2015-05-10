@@ -254,7 +254,7 @@ Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
         {
             // we avoid initializer expressions except for const/constexpr variables
             auto e = expmap.fromExpression(Var->getAnyInitializer(),
-                                           nullptr, true);
+                                           clang::QualType(), true);
             if (e && e->op != TOKnull)
                 a->init = new ExpInitializer(loc, e);
         }

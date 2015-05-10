@@ -1614,7 +1614,7 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
                                 (*PI)->getUninstantiatedDefaultArg() : (*PI)->getDefaultArg();
 
                 if (DefaultArgExpr) // might be null if BuildCXXDefaultArgExpr returned ExprError
-                    defaultArg = ExprMapper(tm).fromExpression(DefaultArgExpr, at);
+                    defaultArg = ExprMapper(tm).fromExpression(DefaultArgExpr, *I);
             }
 
             PI++;
