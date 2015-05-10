@@ -115,6 +115,7 @@ public:
     void leaveFunc() override;
 
     LLType *toType(Type *t) override;
+    llvm::FunctionType *toFunctionType(::FuncDeclaration *fdecl) override;
 
     llvm::Constant *createInitializerConstant(IrAggr *irAggr,
         const IrAggr::VarInitMap& explicitInitializers,

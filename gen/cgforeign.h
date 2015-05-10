@@ -19,6 +19,7 @@ public:
     virtual void leaveFunc() = 0;
 
     virtual LLType *toType(Type *t) = 0;
+    virtual llvm::FunctionType *toFunctionType(FuncDeclaration *fdecl) = 0;
 
     virtual llvm::Constant *createInitializerConstant(IrAggr *irAggr,
         const IrAggr::VarInitMap& explicitInitializers,
