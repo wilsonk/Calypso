@@ -35,7 +35,7 @@ public:
         : tymap(tymap) {}
 
     // Clang -> DMD
-    Expression *fromExpression(const clang::Expr *E, Type *destType = nullptr,
+    Expression *fromExpression(const clang::Expr *E, clang::QualType DestTy = clang::QualType(),
                                bool interpret = false);
 
     Expression *fromExpressionDeclRef(Loc loc, clang::NamedDecl* D,

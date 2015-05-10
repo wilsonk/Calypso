@@ -124,21 +124,27 @@ Expression* ExprMapper::fromBinExp(const clang::BinaryOperator* E)
     llvm::llvm_unreachable_internal("Unhandled C++ binary operation exp");
 }
 
-Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
+Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType DestTy,
                                             bool interpret)  // TODO implement interpret properly
 {
     auto loc = fromLoc(E->getLocStart());
-    Expression *e = nullptr;
-    Type *t = nullptr;
 
     if (auto Cast = dyn_cast<clang::CastExpr>(E))
     {
         auto Kind = Cast->getCastKind();
         if (Kind != clang::CK_NoOp && Kind != clang::CK_ConstructorConversion)
-            t = tymap.fromType(Cast->getType());
+            DestTy = Cast->getType();
 
-        return fromExpression(Cast->getSubExpr(), t);
+        return fromExpression(Cast->getSubExpr(), DestTy);
     }
+
+    Expression *e = nullptr;
+    Type *t = nullptr;
+    clang::QualType Ty;
+
+    Type *destType = nullptr;
+    if (!DestTy.isNull())
+        destType = tymap.fromType(DestTy);
 
     if (auto PE = dyn_cast<clang::ParenExpr>(E))
         return fromExpression(PE->getSubExpr());
@@ -282,7 +288,9 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
 
     if (auto DR = dyn_cast<clang::DeclRefExpr>(E))
     {
-        t = tymap.fromType(DR->getType());
+        Ty = DR->getType();
+        t = tymap.fromType(Ty);
+
         e = fromExpressionDeclRef(loc, const_cast<clang::ValueDecl*>(DR->getDecl()),
                         DR->getQualifier());
 
@@ -472,10 +480,22 @@ Expression* ExprMapper::fromExpression(const clang::Expr* E, Type *destType,
 
     if (e)
     {
+        // When t is an unresolved TypeQualified we may want to emulate
+        // implicitConvTo with the Clang types instead of the D ones
+        if (!Ty.isNull() && !DestTy.isNull()
+                && Ty->getAs<clang::RecordType>())
+        {
+            if (DestTy->getAs<clang::ReferenceType>())
+                goto Lcast;
+            else
+                return e;
+        }
+
         if (!t || !destType ||
                 t->implicitConvTo(destType) > MATCHconst)
             return e;
 
+    Lcast:
         return new CastExp(loc, e, destType);
     }
 
