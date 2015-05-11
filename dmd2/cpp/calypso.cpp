@@ -481,6 +481,11 @@ void PCH::update()
             fprintf(fheaderlist, "%s\n", headers[i]);
 
         fclose(fheaderlist);
+
+        /* Mark every C++ module object file dirty */
+
+        llvm::Twine genListFilename(llvm::StringRef(cachePrefix), ".gen");
+        llvm::sys::fs::remove(genListFilename, true);
     }
 
     needEmit = false;
@@ -549,6 +554,70 @@ void PCH::update()
     calypso.builtinTypes.build(AST->getASTContext());
 }
 
+void LangPlugin::GenModSet::parse()
+{
+    if (parsed)
+        return;
+
+    parsed = true;
+    clear();
+
+    llvm::Twine genFilename(llvm::StringRef(calypso.cachePrefix), ".gen");
+
+    if (!llvm::sys::fs::exists(genFilename))
+        return;
+
+    auto fgenList = fopen(genFilename.str().c_str(), "r"); // ordered list of headers
+    if (!fgenList)
+    {
+        ::error(Loc(), "Reading .gen file failed");
+        fatal();
+    }
+
+    char linebuf[MAX_FILENAME_SIZE];
+    while (fgets(linebuf, sizeof(linebuf), fgenList) != NULL)
+    {
+        linebuf[strcspn(linebuf, "\n")] = '\0';
+        if (linebuf[0] == '\0')
+            continue;
+
+        if (llvm::sys::fs::exists(linebuf))
+            insert(strdup(linebuf));
+    }
+
+    fclose(fgenList);
+}
+
+void LangPlugin::GenModSet::add(::Module *m)
+{
+    auto& objName = m->objfile->name->str;
+    assert(parsed && !count(objName));
+
+    llvm::Twine genFilename(llvm::StringRef(calypso.cachePrefix), ".gen");
+
+    auto fgenList = fopen(genFilename.str().c_str(), "a");
+    if (!fgenList)
+    {
+        ::error(Loc(), "Writing .gen file failed");
+        fatal();
+    }
+
+    fprintf(fgenList, "%s\n", objName);
+    fclose(fgenList);
+
+    insert(objName);
+}
+
+bool LangPlugin::needsCodegen(::Module *m)
+{
+    assert(isCPP(m));
+
+    genModSet.parse();
+
+    auto& objName = m->objfile->name->str;
+    return !genModSet.count(objName);
+}
+
 #undef CACHE_SUFFIXED_FILENAME
 #undef MAX_FILENAME_SIZE
 
@@ -586,7 +655,6 @@ int LangPlugin::doesHandleModmap(const utf8_t* lang)
 LangPlugin::LangPlugin()
     : builtinTypes(cpp::builtinTypes)
 {
-
 }
 
 void LangPlugin::init()

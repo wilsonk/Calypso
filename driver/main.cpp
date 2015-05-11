@@ -972,6 +972,13 @@ static void genModules(Modules &modules,
             fprintf(global.stdmsg, "code      %s\n", m->toChars());
         if (global.params.obj)
         {
+            auto lp = m->langPlugin();
+            if (lp && !singleObj && !lp->needsCodegen(m)) // CALYPSO UGLY?
+            {
+                global.params.objfiles->push(const_cast<char*>(m->objfile->name->str));
+                continue;
+            }
+
             llvm::Module* lm = m->genLLVMModule(context);
 
             if (global.errors)
@@ -1278,7 +1285,7 @@ int main(int argc, char **argv)
 
         m->parse(global.params.doDocComments);
         m->buildTargetFiles(singleObj);
-        m->deleteObjFile();
+        /* m->deleteObjFile(); */ // CALYPSO: deleteObjFile moved to just before .o generation
         if (m->isDocFile)
         {
             gendocfile(m);
@@ -1325,7 +1332,6 @@ int main(int argc, char **argv)
 
         m->importedFrom = m;
         m->buildTargetFiles(singleObj);
-        m->deleteObjFile();
         m->importAll(0);
 
         modules.push(m);

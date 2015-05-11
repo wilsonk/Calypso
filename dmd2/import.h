@@ -114,6 +114,7 @@ public:
     // ===== - - - - - ===== //
 
      virtual ForeignCodeGen *codegen() = 0;
+     virtual bool needsCodegen(Module *m) = 0;
 };
 
 #endif /* DMD_IMPORT_H */

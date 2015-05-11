@@ -12,6 +12,7 @@
 #include "../gen/cgforeign.h"
 
 #include <memory>
+#include "llvm/ADT/StringSet.h"
 #include "llvm/IR/DataLayout.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Sema/DeclSpec.h"
@@ -103,7 +104,8 @@ public:
     ::FuncDeclaration *buildCpCtor(::StructDeclaration *sd, Scope *sc) override;
 
     // ==== CodeGen ====
-    ForeignCodeGen *codegen() { return this; }
+    ForeignCodeGen *codegen() override { return this; }
+    bool needsCodegen(::Module *m) override;
 
     std::stack<clangCG::CodeGenFunction *> CGFStack;
     inline clangCG::CodeGenFunction *CGF() { return CGFStack.top(); }
@@ -144,6 +146,14 @@ public:
     PCH pch;
 
     BuiltinTypes &builtinTypes;
+
+    struct GenModSet : public llvm::StringSet<> // already compiled modules
+    {
+        bool parsed = false;
+
+        void parse();
+        void add(::Module *m);
+    } genModSet;
 
     // settings
     const char *cachePrefix = "calypso_cache"; // prefix of cached files (list of headers, PCH)

@@ -115,6 +115,16 @@ void Module::addPreambule()
     }
 }
 
+llvm::Module *Module::genLLVMModule(llvm::LLVMContext &context)
+{
+    auto M = ::Module::genLLVMModule(context);
+
+    if (!global.errors)
+        calypso.genModSet.add(this);
+
+    return M;
+}
+
 /************************************/
 
 // DeclMapper::DeclMapper(Module* mod)

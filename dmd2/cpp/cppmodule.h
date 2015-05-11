@@ -37,6 +37,8 @@ public:
     Dsymbol *search(Loc loc, Identifier *ident, int flags = IgnoreNone) override;
     void addPreambule() override;
     const char *manglePrefix() override { return "_Cpp"; }
+
+    llvm::Module* genLLVMModule(llvm::LLVMContext& context) override;
 };
 
 }

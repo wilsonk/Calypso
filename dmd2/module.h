@@ -210,7 +210,7 @@ public:
 
 #if IN_LLVM
     // LDC
-    llvm::Module* genLLVMModule(llvm::LLVMContext& context);
+    virtual llvm::Module* genLLVMModule(llvm::LLVMContext& context); // CALYPSO
     void buildTargetFiles(bool singleObj);
     File* buildFilePath(const char* forcename, const char* path, const char* ext);
     llvm::GlobalVariable* moduleInfoSymbol();
