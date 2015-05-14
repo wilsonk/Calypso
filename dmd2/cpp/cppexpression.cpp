@@ -204,24 +204,31 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
         switch (CL->getKind())
         {
             case clang::CharacterLiteral::Ascii:
-                return new IntegerExp(loc, (d_uns8)Char, Type::tchar);
+                t = Type::tchar;
+                e = new IntegerExp(loc, (d_uns8)Char, t);
+                break;
             case clang::CharacterLiteral::Wide:
             case clang::CharacterLiteral::UTF16:
-                return new IntegerExp(loc, (d_uns16)Char, Type::twchar);
+                t = Type::twchar;
+                e = new IntegerExp(loc, (d_uns16)Char, t);
+                break;
             case clang::CharacterLiteral::UTF32:
-                return new IntegerExp(loc, (d_uns32)Char, Type::tdchar);
+                t = Type::tdchar;
+                e = new IntegerExp(loc, (d_uns32)Char, t);
+                break;
         }
     }
     else if (auto BL = dyn_cast<clang::CXXBoolLiteralExpr>(E))
     {
-        return new IntegerExp(loc, BL->getValue() ? 1 : 0, Type::tbool);
+        t = Type::tbool;
+        e = new IntegerExp(loc, BL->getValue() ? 1 : 0, t);
     }
     else if (auto FL = dyn_cast<clang::FloatingLiteral>(E))
     {
         auto APFVal = FL->getValue();
 
         real_t val;
-        Type *ft = Type::tfloat32;
+        t = Type::tfloat32;
 
         if (APFVal.isZero())
             val = 0.0;
@@ -230,7 +237,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
         else if (&APFVal.getSemantics() == &llvm::APFloat::IEEEdouble)
         {
             val = APFVal.convertToDouble();
-            ft = Type::tfloat64;
+            t = Type::tfloat64;
         }
         else
         {
@@ -239,10 +246,10 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
             llvm::SmallString<16> Str;
             APFVal.toString(Str, 0, llvm::APFloat::semanticsPrecision(APFVal.getSemantics()));
             val = strtold(Str.c_str(), nullptr);
-            ft = Type::tfloat80;
+            t = Type::tfloat80;
         }
 
-        return new RealExp(loc, val, ft);
+        e = new RealExp(loc, val, t);
     }
     else if (auto SL = dyn_cast<clang::StringLiteral>(E))
     {
