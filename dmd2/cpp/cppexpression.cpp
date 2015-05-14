@@ -420,17 +420,25 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
     else if (auto SVI = dyn_cast<clang::CXXScalarValueInitExpr>(E))
     {
         t = tymap.fromType(E->getType());
-
-        e = new DotIdExp(loc, new TypeExp(loc, t), Id::init);
-        auto args = new Expressions;
-        args->push(e);
-
-        e = new NewExp(loc, nullptr, nullptr, t, args);
-        e = new PtrExp(loc, e);
+        e = new CallExp(loc, new TypeExp(loc, t));
     }
     else if (auto MT = dyn_cast<clang::MaterializeTemporaryExpr>(E))
     {
-        return fromExpression(MT->GetTemporaryExpr());
+        e = fromExpression(MT->GetTemporaryExpr());
+
+        if (e && !e->isLvalue() && !isNonPODRecord(E->getType()))
+        {
+            t = tymap.fromType(E->getType());
+
+            auto args = new Expressions;
+            args->push(e);
+
+            e = new NewExp(loc, nullptr, nullptr, t, args);
+            e = new PtrExp(loc, e);
+        }
+
+        if (!e)
+            return nullptr;
     }
     else if (auto CBT = dyn_cast<clang::CXXBindTemporaryExpr>(E))
     {
@@ -447,9 +455,10 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
         for (auto Arg: CCE->arguments())
             args->push(fromExpression(Arg));
 
-        e = new NewExp(loc, nullptr, nullptr, t, args);
-        if (!isNonPODRecord(E->getType()))
-            e = new PtrExp(loc, e);
+        if (isNonPODRecord(E->getType()))
+            e = new NewExp(loc, nullptr, nullptr, t, args);
+        else // structs
+            e = new CallExp(loc, new TypeExp(loc, t), args);
     }
     else if (auto CNE = dyn_cast<clang::CXXNewExpr>(E))
     {
