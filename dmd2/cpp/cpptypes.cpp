@@ -910,9 +910,6 @@ const clang::Decl *TypeMapper::GetRootForTypeQualified(clang::NamedDecl *D)
     clang::DeclarationName Name;
     decltype(CXXScope) ScopeStack(CXXScope);
 
-    if (mod && D->getCanonicalDecl() == mod->rootKey.first)
-        return D;
-
     if (D->getIdentifier() ||
             D->getDeclName().getNameKind() == clang::DeclarationName::CXXOperatorName)
         Name =  D->getDeclName();
@@ -968,6 +965,26 @@ const clang::Decl *TypeMapper::GetRootForTypeQualified(clang::NamedDecl *D)
 //             Root = D->getTranslationUnitDecl(); // to avoid name collisions, we fully qualify the type
 //             goto LrootDone;
 //         }
+    }
+
+    auto ModDC = GetNonNestedContext(D);
+    if (mod && ModDC->getCanonicalDecl() == mod->rootKey.first)
+    {
+        if (isa<clang::TagDecl>(ModDC))
+            return ModDC;
+
+        // else ModDC is a namespace/TU and we need to return the first decl to its right
+        auto Root = D;
+        while (D->getCanonicalDecl() != ModDC->getCanonicalDecl())
+        {
+            auto DC = getDeclContextNamedOrTU(D);
+            if (DC->isTranslationUnit())
+                return D->getTranslationUnitDecl();
+
+            Root = D;
+            D = cast<clang::NamedDecl>(const_cast<clang::DeclContext*>(DC));
+        }
+        return Root;
     }
 
     return D->getTranslationUnitDecl();
