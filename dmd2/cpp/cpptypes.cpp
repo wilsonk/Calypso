@@ -522,28 +522,9 @@ RootObject* TypeMapper::FromType::fromTemplateArgument(const clang::TemplateArgu
         {
             auto e = expmap.fromAPInt(Arg->getAsIntegral());
 
-            // In Clang AST enum values in template arguments are resolved to integer literals
-            // If the parameter has an enum type, we need to revert integer literals to DeclRefs pointing to enum constants
-            // or else DMD won't find the template decl since from its point of view uint != Enum
             if (auto NTTP = llvm::dyn_cast_or_null<clang::NonTypeTemplateParmDecl>(Param))
-            {
-                if (auto ET = dyn_cast<clang::EnumType>(NTTP->getType()))
-                {
-                    bool found = false;
-                    for (auto ECD: ET->getDecl()->enumerators())
-                    {
-                        auto Val = ECD->getInitVal().getZExtValue();
+                e = expmap.fixIntegerExp(static_cast<IntegerExp*>(e), NTTP->getType());
 
-                        if (Val == ((IntegerExp *)e)->getInteger())
-                        {
-                            found = true;
-                            e = expmap.fromExpressionDeclRef(Loc(), ECD);
-                        }
-                    }
-
-                    assert(found && "Couldn't find the corresponding enum constant for template argument");
-                }
-            }
             tiarg = e;
             break;
         }

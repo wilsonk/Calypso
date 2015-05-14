@@ -45,6 +45,8 @@ public:
 
     static Expression *fromAPInt(const llvm::APInt &Val);
 
+    Expression *fixIntegerExp(IntegerExp *e, clang::QualType T); // revert integer literals to DeclRefs pointing to enum constants if T is an EnumType
+
     // DMD -> Clang
     clang::Expr *toExpression(Expression *e);
 

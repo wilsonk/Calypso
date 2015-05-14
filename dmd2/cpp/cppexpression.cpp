@@ -56,6 +56,27 @@ Objects *fromASTTemplateArgumentListInfo(
     return tiargs;
 }
 
+// In Clang AST enum values in template arguments are resolved to integer literals
+// If the parameter has an enum type, we need to revert integer literals to DeclRefs pointing to enum constants
+// or else DMD won't find the template decl since from its point of view uint != Enum
+// Also useful for function default zero arguments.
+Expression *ExprMapper::fixIntegerExp(IntegerExp *e, clang::QualType T)
+{
+    auto ET = dyn_cast<clang::EnumType>(T);
+    if (!ET)
+        return e;
+
+    for (auto ECD: ET->getDecl()->enumerators())
+    {
+        auto Val = ECD->getInitVal().getZExtValue();
+
+        if (Val == ((IntegerExp *)e)->getInteger())
+            return fromExpressionDeclRef(Loc(), ECD);
+    }
+
+    llvm_unreachable("Couldn't find the corresponding enum constant");
+}
+
 Expression* ExprMapper::fromUnaExp(const clang::UnaryOperator *E)
 {
     auto loc = fromLoc(E->getLocStart());
