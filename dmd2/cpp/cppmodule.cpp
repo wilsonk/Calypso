@@ -1048,7 +1048,10 @@ static clang::DeclContext::lookup_const_result lookup(const clang::DeclContext *
 {
     auto& AST = calypso.pch.AST;
     auto& Table = AST->getPreprocessor().getIdentifierTable();
-    auto& II = Table.get(id->string);
+
+    const char prefix[] = u8"§";
+    bool prefixed = strncmp(id->string, prefix, sizeof(prefix)-1) == 0;
+    auto& II = Table.get(!prefixed ? id->string : id->string + sizeof(prefix)-1);
 
     return DC->lookup(clang::DeclarationName(&II));
 }

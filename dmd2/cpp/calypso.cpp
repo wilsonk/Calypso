@@ -277,7 +277,29 @@ Identifier *getIdentifierOrNull(const clang::NamedDecl *D, const char **op)
         if (auto Typedef = Tag->getTypedefNameForAnonDecl())
             II = Typedef->getIdentifier();
 
-    return II ? fromIdentifier(II) : nullptr;
+    if (!II)
+        return nullptr;
+
+    auto ident = fromIdentifier(II);
+
+    if (isa<clang::RecordDecl>(D))
+    {
+        // Prefix reserved class names with '§'
+        if (ident == Id::Object || ident == Id::Throwable || ident == Id::Exception || ident == Id::Error ||
+            ident == Id::TypeInfo || ident == Id::TypeInfo_Class || ident == Id::TypeInfo_Interface ||
+            ident == Id::TypeInfo_Struct || ident == Id::TypeInfo_Typedef || ident == Id::TypeInfo_Pointer ||
+            ident == Id::TypeInfo_Array || ident == Id::TypeInfo_StaticArray || ident == Id::TypeInfo_AssociativeArray ||
+            ident == Id::TypeInfo_Enum || ident == Id::TypeInfo_Function || ident == Id::TypeInfo_Delegate ||
+            ident == Id::TypeInfo_Tuple || ident == Id::TypeInfo_Const || ident == Id::TypeInfo_Invariant ||
+            ident == Id::TypeInfo_Shared || ident == Id::TypeInfo_Wild || ident == Id::TypeInfo_Vector) // thanks C++...
+        {
+            llvm::SmallString<48> s(u8"§"); // non-ASCII but pretty and available on most keyboards
+            s += llvm::StringRef(ident->string, ident->len);
+            ident = Lexer::idPool(s.c_str());
+        }
+    }
+
+    return ident;
 }
 
 Identifier *getIdentifier(const clang::NamedDecl *D, const char **op)
