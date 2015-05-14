@@ -8544,6 +8544,7 @@ Lagain:
         else if (e1->op == TOKtype && t1->isscalar())
         {
             Expression *e;
+            t1 = e1->type; // CALYPSO workaround for DMD BUG, in enumA fail = enumA() rhs has an int type
             if (!arguments || arguments->dim == 0)
             {
                 e = t1->defaultInitLiteral(loc);
