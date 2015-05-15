@@ -445,23 +445,37 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
         else
             return new IdentifierExp(loc, id);
     }
-    else if (auto SVI = dyn_cast<clang::CXXScalarValueInitExpr>(E))
+    else if (isa<clang::CXXScalarValueInitExpr>(E))
     {
-        t = tymap.fromType(E->getType());
+        t = tymap.fromType(E->getType().withoutLocalFastQualifiers());
         e = new CallExp(loc, new TypeExp(loc, t));
     }
     else if (auto MT = dyn_cast<clang::MaterializeTemporaryExpr>(E))
     {
+        auto Ty = E->getType();
         e = fromExpression(MT->GetTemporaryExpr());
 
-        if (e && !e->isLvalue() && !isNonPODRecord(E->getType()))
+        if (e && !e->isLvalue() && !isNonPODRecord(Ty))
         {
-            t = tymap.fromType(E->getType());
+            if (Ty->getAs<clang::RecordType>())
+            {
+                assert(e->op == TOKcall);
+                auto call = static_cast<CallExp*>(e);
+                assert(call->e1->op == TOKtype);
 
-            auto args = new Expressions;
-            args->push(e);
+                e = new NewExp(loc, nullptr, nullptr,
+                               call->e1->type, call->arguments);
+            }
+            else
+            {
+                t = tymap.fromType(Ty.withoutLocalFastQualifiers());
 
-            e = new NewExp(loc, nullptr, nullptr, t, args);
+                auto args = new Expressions;
+                args->push(e);
+
+                e = new NewExp(loc, nullptr, nullptr, t, args);
+            }
+
             e = new PtrExp(loc, e);
         }
 
@@ -477,7 +491,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
         if (CCE->isElidable())
             return fromExpression(CCE->getArg(0));
 
-        t = tymap.fromType(E->getType());
+        t = tymap.fromType(E->getType().withoutLocalFastQualifiers());
 
         auto args = new Expressions;
         for (auto Arg: CCE->arguments())
@@ -491,7 +505,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
     else if (auto CNE = dyn_cast<clang::CXXNewExpr>(E))
     {
         auto Ty = CNE->getAllocatedType();
-        t = tymap.fromType(Ty);
+        t = tymap.fromType(Ty.withoutLocalFastQualifiers());
 
         Expressions *args = nullptr;
         auto Construct = CNE->getConstructExpr();
