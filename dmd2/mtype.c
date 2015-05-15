@@ -5709,11 +5709,13 @@ bool TypeFunction::equivTo(Type *t)
     if (!TypeNext::equivTo(t))
         return false;
 
-    // what about linkage? isnothrow
+    // what about linkage?
     // FIXME varargs
 
     TypeFunction *tf = (TypeFunction *) t;
-    if (isref != tf->isref)
+    if (isnothrow != tf->isnothrow || isnogc != tf->isnogc
+            || isproperty != tf->isproperty || isref != tf->isref
+            || purity != tf->purity || trust != tf->trust)
         return false;
 
     if (!parameters && !tf->parameters)
