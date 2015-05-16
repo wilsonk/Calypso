@@ -542,8 +542,11 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
                 return e;
         }
 
+        if (destType && destType->ty == Treference)
+            destType = destType->nextOf();
+
         if (!t || !destType ||
-                t->implicitConvTo(destType) > MATCHconst)
+                t->implicitConvTo(destType) >= MATCHconst)
             return e;
 
     Lcast:
