@@ -524,6 +524,14 @@ bool isNonSupportedType(clang::QualType T)
     return false;
 }
 
+bool isClassReferenceType(const clang::QualType T)
+{
+    auto Pointee = T->getPointeeType();
+    if (Pointee.isNull())
+        return false;
+    return isNonPODRecord(Pointee);
+}
+
 // As soon as the type is or might be a non-POD record, wrap it in TypeValueof
 inline static Type *adjustAggregateType(Type *t, const clang::RecordDecl *RD = nullptr)
 {

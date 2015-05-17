@@ -150,18 +150,22 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
 {
     auto loc = fromLoc(E->getLocStart());
 
-    if (auto Cast = dyn_cast<clang::CastExpr>(E))
-    {
-        auto Kind = Cast->getCastKind();
-        if (Kind != clang::CK_NoOp && Kind != clang::CK_ConstructorConversion)
-            DestTy = Cast->getType();
-
-        return fromExpression(Cast->getSubExpr(), DestTy);
-    }
-
     Expression *e = nullptr;
     Type *t = nullptr;
     clang::QualType Ty;
+
+    if (auto Cast = dyn_cast<clang::CastExpr>(E))
+    {
+        auto Kind = Cast->getCastKind();
+
+        if (Kind != clang::CK_NoOp && Kind != clang::CK_ConstructorConversion)
+            DestTy = Cast->getType();
+
+        if (Kind == clang::CK_NullToPointer)
+            e = new NullExp(loc);
+        else
+            return fromExpression(Cast->getSubExpr(), DestTy);
+    }
 
     Type *destType = nullptr;
     if (!DestTy.isNull())
@@ -447,6 +451,9 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
     }
     else if (isa<clang::CXXScalarValueInitExpr>(E))
     {
+        if (isClassReferenceType(E->getType()))
+            return new NullExp(loc);
+
         t = tymap.fromType(E->getType().withoutLocalFastQualifiers());
         e = new CallExp(loc, new TypeExp(loc, t));
     }
@@ -455,7 +462,15 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
         auto Ty = E->getType();
         e = fromExpression(MT->GetTemporaryExpr());
 
-        if (e && !e->isLvalue() && !isNonPODRecord(Ty))
+        if (!e)
+            return nullptr;
+
+        if (isClassReferenceType(Ty) && e->op == TOKnull)
+            return nullptr; // FIXME once we may finally pass rvalues to ref arguments
+                    // for other types there are workarounds but for null class references
+                    // I couldn't find any way to turn them into lvalues.
+
+        if (!e->isLvalue() && !isNonPODRecord(Ty))
         {
             if (Ty->getAs<clang::RecordType>())
             {
@@ -478,9 +493,6 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
 
             e = new PtrExp(loc, e);
         }
-
-        if (!e)
-            return nullptr;
     }
     else if (auto CBT = dyn_cast<clang::CXXBindTemporaryExpr>(E))
     {
