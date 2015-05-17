@@ -2883,7 +2883,7 @@ int FuncDeclaration::findVtblIndex(Dsymbols *vtbl, int dim)
         FuncDeclaration *fdv = (*vtbl)[vi]->isFuncDeclaration();
         if (fdv && fdv->ident == ident)
         {
-            if (type->equivalent(fdv->type))        // if exact match
+            if (type->equivs(fdv->type))        // if exact match
             {
                 if (fdv->parent->isClassDeclaration())
                     return vi;                  // no need to look further
@@ -3143,7 +3143,7 @@ FuncDeclaration *FuncDeclaration::overloadExactMatch(Type *t)
         ParamExact *p = (ParamExact *)param;
         Type *t = p->t;
 
-        if (t->equivalent(f->type))
+        if (t->equivs(f->type))
         {
             p->f = f;
             return 1;

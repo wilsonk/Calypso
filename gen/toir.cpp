@@ -2088,7 +2088,7 @@ public:
             global.params.useInvariants &&
             condty->ty == Tclass &&
             !(static_cast<TypeClass*>(condty)->sym->isInterfaceDeclaration())
-            && !(static_cast<TypeClass*>(condty)->langPlugin()) /* CALYPSO HACK */)
+            && !(static_cast<TypeClass*>(condty)->sym->langPlugin()) /* CALYPSO HACK */)
         {
             Logger::println("calling class invariant");
             llvm::Function* fn = LLVM_D_GetRuntimeFunction(e->loc, gIR->module,

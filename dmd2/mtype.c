@@ -135,6 +135,7 @@ Type::Type(TY ty)
     this->ty = ty;
     this->mod = 0;
     this->deco = NULL;
+    this->equivDeco = NULL;
     this->cto = NULL;
     this->ito = NULL;
     this->sto = NULL;
@@ -191,15 +192,12 @@ bool Type::equals(RootObject *o)
     return false;
 }
 
-bool Type::equivalent(RootObject *o)
+bool Type::equivs(RootObject *o) // CALYPSO
 {
     Type *t = (Type *)o;
-    return equivTo(t) || t->equivTo(this);
-}
-
-bool Type::equivTo(Type *t)
-{
-    return equals(t);
+    if (this == o || ((t && equivDeco == t->equivDeco) && equivDeco != NULL))
+        return true;
+    return false;
 }
 
 char Type::needThisPrefix()
@@ -422,6 +420,7 @@ Type *Type::nullAttributes()
     memcpy((void*)t, (void*)this, sz);
     // t->mod = NULL;  // leave mod unchanged
     t->deco = NULL;
+    t->equivDeco = NULL;
     t->arrayof = NULL;
     t->pto = NULL;
     t->rto = NULL;
@@ -1603,7 +1602,7 @@ char *MODtoChars(MOD mod)
  *      flag    0x100   do not do modifiers
  */
 
-void Type::toDecoBuffer(OutBuffer *buf, int flag)
+void Type::toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv)
 {
 //     if (flag != mod && flag & 0x100) // CALYPSO HACK: mod must always be written since nextOf might have a "lesser" mod
     {
@@ -1802,6 +1801,12 @@ Type *Type::merge()
             sv->ptrvalue = (char *)(t = stripDefaultArgs(t));
             deco = t->deco = (char *)sv->toDchars();
             //printf("new value, deco = '%s' %p\n", t->deco, t->deco);
+
+            // CALYPSO
+            buf.reset();
+            toDecoBuffer(&buf, 0, true);
+            sv = stringtable.update((char *)buf.data, buf.offset);
+            equivDeco = t->equivDeco = (char *)sv->toDchars();
         }
     }
     return t;
@@ -2626,18 +2631,12 @@ TypeNext::TypeNext(TY ty, Type *next)
     this->next = next;
 }
 
-void TypeNext::toDecoBuffer(OutBuffer *buf, int flag)
+void TypeNext::toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv)
 {
-    Type::toDecoBuffer(buf, flag);
+    Type::toDecoBuffer(buf, flag, forEquiv);
     assert(next != this);
     //printf("this = %p, ty = %d, next = %p, ty = %d\n", this, this->ty, next, next->ty);
-    next->toDecoBuffer(buf, (flag & 0x100) ? 0 : mod);
-}
-
-bool TypeNext::equivTo(Type *t)
-{
-    return ty == t->ty && mod == t->mod &&
-                next->equivalent(t->nextOf());
+    next->toDecoBuffer(buf, (flag & 0x100) ? 0 : mod, forEquiv);
 }
 
 void TypeNext::checkDeprecated(Loc loc, Scope *sc)
@@ -3066,11 +3065,6 @@ Type *TypeBasic::syntaxCopy(Type *)
 char *TypeBasic::toChars()
 {
     return Type::toChars();
-}
-
-bool TypeBasic::equivTo(Type *t)
-{
-    return ty == t->ty && mod == t->mod;
 }
 
 d_uns64 TypeBasic::size(Loc loc)
@@ -3721,23 +3715,14 @@ char *TypeVector::toChars()
     return Type::toChars();
 }
 
-void TypeVector::toDecoBuffer(OutBuffer *buf, int flag)
+void TypeVector::toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv)
 {
     if (flag != mod && flag != 0x100)
     {
         MODtoDecoBuffer(buf, mod);
     }
     buf->writestring("Nh");
-    basetype->toDecoBuffer(buf, (flag & 0x100) ? 0 : mod);
-}
-
-bool TypeVector::equivTo(Type *t)
-{
-    if (t->ty != Tvector)
-        return false;
-
-    TypeVector *tv = (TypeVector *) t;
-    return basetype->equivalent(tv->basetype);
+    basetype->toDecoBuffer(buf, (flag & 0x100) ? 0 : mod, forEquiv);
 }
 
 d_uns64 TypeVector::size(Loc loc)
@@ -4280,9 +4265,9 @@ Lerror:
     return Type::terror;
 }
 
-void TypeSArray::toDecoBuffer(OutBuffer *buf, int flag)
+void TypeSArray::toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv)
 {
-    Type::toDecoBuffer(buf, flag);
+    Type::toDecoBuffer(buf, flag, forEquiv);
     if (dim)
         buf->printf("%llu", dim->toInteger());
     if (next)
@@ -4291,17 +4276,7 @@ void TypeSArray::toDecoBuffer(OutBuffer *buf, int flag)
          * level, since for T[4][3], any const should apply to the T,
          * not the [4].
          */
-        next->toDecoBuffer(buf,  (flag & 0x100) ? flag : mod);
-}
-
-bool TypeSArray::equivTo(Type *t)
-{
-    if (!TypeNext::equivTo(t))
-        return false;
-
-    TypeSArray *tsa = (TypeSArray *)t;
-    return (!dim && !tsa->dim) ||
-        dim->toInteger() == tsa->dim->toInteger();
+        next->toDecoBuffer(buf,  (flag & 0x100) ? flag : mod, forEquiv);
 }
 
 Expression *TypeSArray::dotExp(Scope *sc, Expression *e, Identifier *ident, int flag)
@@ -4591,11 +4566,11 @@ void TypeDArray::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol
     }
 }
 
-void TypeDArray::toDecoBuffer(OutBuffer *buf, int flag)
+void TypeDArray::toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv)
 {
     Type::toDecoBuffer(buf, flag);
     if (next)
-        next->toDecoBuffer(buf, (flag & 0x100) ? 0 : mod);
+        next->toDecoBuffer(buf, (flag & 0x100) ? 0 : mod, forEquiv);
 }
 
 Expression *TypeDArray::dotExp(Scope *sc, Expression *e, Identifier *ident, int flag)
@@ -4999,11 +4974,11 @@ Expression *TypeAArray::dotExp(Scope *sc, Expression *e, Identifier *ident, int 
     return e;
 }
 
-void TypeAArray::toDecoBuffer(OutBuffer *buf, int flag)
+void TypeAArray::toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv)
 {
-    Type::toDecoBuffer(buf, flag);
-    index->toDecoBuffer(buf);
-    next->toDecoBuffer(buf, (flag & 0x100) ? 0 : mod);
+    Type::toDecoBuffer(buf, flag, forEquiv);
+    index->toDecoBuffer(buf, forEquiv);
+    next->toDecoBuffer(buf, (flag & 0x100) ? 0 : mod, forEquiv);
 }
 
 Expression *TypeAArray::defaultInit(Loc loc)
@@ -5124,8 +5099,7 @@ Type *TypePointer::semantic(Loc loc, Scope *sc)
         case Terror:
             return Type::terror;
         case Tvalueof: // CALYPSO
-            n = n->nextOf();
-            break;
+            return n->nextOf()->addMod(mod)->merge();
         default:
             break;
     }
@@ -5297,8 +5271,7 @@ Type *TypeReference::semantic(Loc loc, Scope *sc)
         deco = NULL;
     next = n;
     transitive();
-    if (next->ty == Tvalueof)  // CALYPSO
-        return next->nextOf()->merge();
+    assert(next->ty != Tvalueof);  // CALYPSO
     return merge();
 }
 
@@ -5363,7 +5336,7 @@ Type *TypeValueof::syntaxCopy(Type *o)
 Type *TypeValueof::semantic(Loc loc, Scope *sc)
 {
     Type *n = next->semantic(loc, sc);
-    if (n->isTypeBasic() || n->ty == Tstruct || n->ty == Tvalueof)
+    if (n->ty != Tclass)
         return n->addMod(mod)->semantic(loc, sc);
     if (n != next)
         deco = NULL;
@@ -5645,7 +5618,7 @@ Lnotcovariant:
     return 2;
 }
 
-void TypeFunction::toDecoBuffer(OutBuffer *buf, int flag)
+void TypeFunction::toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv)
 {
     //printf("TypeFunction::toDecoBuffer() this = %p %s\n", this, toChars());
     //static int nest; if (++nest == 50) *(char*)0=0;
@@ -5696,50 +5669,12 @@ void TypeFunction::toDecoBuffer(OutBuffer *buf, int flag)
     }
 
     // Write argument types
-    Parameter::argsToDecoBuffer(buf, parameters);
+    Parameter::argsToDecoBuffer(buf, parameters, forEquiv);
     //if (buf->data[buf->offset - 1] == '@') halt();
     buf->writeByte('Z' - varargs);      // mark end of arg list
     if (next != NULL)
-        next->toDecoBuffer(buf);
+        next->toDecoBuffer(buf, 0, forEquiv);
     inuse--;
-}
-
-bool TypeFunction::equivTo(Type *t)
-{
-    if (!TypeNext::equivTo(t))
-        return false;
-
-    // what about linkage?
-    // FIXME varargs
-
-    TypeFunction *tf = (TypeFunction *) t;
-    if (isnothrow != tf->isnothrow || isnogc != tf->isnogc
-            || isproperty != tf->isproperty || isref != tf->isref
-            || purity != tf->purity || trust != tf->trust)
-        return false;
-
-    if (!parameters && !tf->parameters)
-        return true;
-
-    if (!parameters || !tf->parameters)
-        return false;
-
-    if (parameters->dim != tf->parameters->dim)
-        return false;
-
-    for (unsigned i = 0; i < parameters->dim; i++)
-    {
-        Parameter *p = (*parameters)[i];
-        Parameter *p2 = (*tf->parameters)[i];
-
-        if (!p->type->equivalent(p2->type))
-            return false;
-
-        if (p->storageClass != p2->storageClass)
-            return false;
-    }
-
-    return true;
 }
 
 Type *TypeFunction::semantic(Loc loc, Scope *sc)
@@ -6994,7 +6929,7 @@ Type *TypeIdentifier::syntaxCopy(Type *)
     return t;
 }
 
-void TypeIdentifier::toDecoBuffer(OutBuffer *buf, int flag)
+void TypeIdentifier::toDecoBuffer(OutBuffer *buf, int flag, bool)
 {
     Type::toDecoBuffer(buf, flag);
     const char *name = ident->toChars();
@@ -7597,7 +7532,7 @@ Type *TypeEnum::toBasetype()
     return sym->getMemtype(Loc())->toBasetype();
 }
 
-void TypeEnum::toDecoBuffer(OutBuffer *buf, int flag)
+void TypeEnum::toDecoBuffer(OutBuffer *buf, int flag, bool)
 {
     const char *name = mangle(sym);
     Type::toDecoBuffer(buf, flag);
@@ -7817,7 +7752,7 @@ Dsymbol *TypeTypedef::toDsymbol(Scope *sc)
     return sym;
 }
 
-void TypeTypedef::toDecoBuffer(OutBuffer *buf, int flag)
+void TypeTypedef::toDecoBuffer(OutBuffer *buf, int flag, bool)
 {
     Type::toDecoBuffer(buf, flag);
     const char *name = mangle(sym);
@@ -8115,7 +8050,7 @@ Dsymbol *TypeStruct::toDsymbol(Scope *sc)
     return sym;
 }
 
-void TypeStruct::toDecoBuffer(OutBuffer *buf, int flag)
+void TypeStruct::toDecoBuffer(OutBuffer *buf, int flag, bool)
 {
     const char *name = mangle(sym);
     //printf("TypeStruct::toDecoBuffer('%s') = '%s'\n", toChars(), name);
@@ -8613,12 +8548,6 @@ Type *TypeStruct::toHeadMutable()
 
 /***************************** TypeClass *****************************/
 
-//CALYPSO
-LangPlugin* TypeClass::langPlugin()
-{
-    return sym->langPlugin();
-}
-
 TypeClass::TypeClass(ClassDeclaration *sym)
         : Type(Tclass)
 {
@@ -8666,7 +8595,7 @@ Dsymbol *TypeClass::toDsymbol(Scope *sc)
     return sym;
 }
 
-void TypeClass::toDecoBuffer(OutBuffer *buf, int flag)
+void TypeClass::toDecoBuffer(OutBuffer *buf, int flag, bool)
 {
     const char *name = mangle(sym);
     //printf("TypeClass::toDecoBuffer('%s' flag=%d mod=%x) = '%s'\n", toChars(), flag, mod, name);
@@ -9334,13 +9263,13 @@ Type *TypeTuple::makeConst()
 }
 #endif
 
-void TypeTuple::toDecoBuffer(OutBuffer *buf, int flag)
+void TypeTuple::toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv)
 {
     //printf("TypeTuple::toDecoBuffer() this = %p, %s\n", this, toChars());
-    Type::toDecoBuffer(buf, flag);
+    Type::toDecoBuffer(buf, flag, forEquiv);
     OutBuffer buf2;
     buf2.reserve(32);
-    Parameter::argsToDecoBuffer(&buf2, arguments);
+    Parameter::argsToDecoBuffer(&buf2, arguments, forEquiv);
     int len = (int)buf2.offset;
     buf->printf("%d%.*s", len, len, (char *)buf2.extractData());
 }
@@ -9566,7 +9495,7 @@ bool TypeNull::checkBoolean()
     return true;
 }
 
-void TypeNull::toDecoBuffer(OutBuffer *buf, int flag)
+void TypeNull::toDecoBuffer(OutBuffer *buf, int flag, bool)
 {
     //tvoidptr->toDecoBuffer(buf, flag);
     Type::toDecoBuffer(buf, flag);
@@ -9695,17 +9624,27 @@ void Parameter::argsToCBuffer(OutBuffer *buf, HdrGenState *hgs, Parameters *argu
     buf->writeByte(')');
 }
 
-static int argsToDecoBufferDg(void *ctx, size_t n, Parameter *arg)
+struct argsToDecoBufferDgCtx // CALYPSO
 {
-    arg->toDecoBuffer((OutBuffer *)ctx);
+    OutBuffer *buf;
+    bool forEquiv;
+};
+
+static int argsToDecoBufferDg(void *_ctx, size_t n, Parameter *arg)
+{
+    argsToDecoBufferDgCtx *ctx = (argsToDecoBufferDgCtx *)_ctx;
+    arg->toDecoBuffer(ctx->buf, ctx->forEquiv);
     return 0;
 }
 
-void Parameter::argsToDecoBuffer(OutBuffer *buf, Parameters *arguments)
+void Parameter::argsToDecoBuffer(OutBuffer *buf, Parameters *arguments, bool forEquiv)
 {
     //printf("Parameter::argsToDecoBuffer()\n");
     // Write argument types
-    foreach(arguments, &argsToDecoBufferDg, buf);
+    argsToDecoBufferDgCtx ctx;
+    ctx.buf = buf;
+    ctx.forEquiv = forEquiv;
+    foreach(arguments, &argsToDecoBufferDg, &ctx);
 }
 
 /****************************************
@@ -9755,7 +9694,7 @@ Type *Parameter::isLazyArray()
     return NULL;
 }
 
-void Parameter::toDecoBuffer(OutBuffer *buf)
+void Parameter::toDecoBuffer(OutBuffer *buf, bool forEquiv)
 {
     if (storageClass & STCscope)
         buf->writeByte('M');
@@ -9786,7 +9725,7 @@ void Parameter::toDecoBuffer(OutBuffer *buf)
     type->toDecoBuffer(buf, mod);
 #else
     //type->toHeadMutable()->toDecoBuffer(buf, 0);
-    type->toDecoBuffer(buf, 0);
+    type->toDecoBuffer(buf, 0, forEquiv);
 #endif
 }
 
@@ -9882,9 +9821,3 @@ LangPlugin* Type::langPlugin()
 {
     return NULL;
 }
-
-LangPlugin* TypeStruct::langPlugin()
-{
-    return sym->langPlugin();
-}
-

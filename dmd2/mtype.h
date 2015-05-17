@@ -143,6 +143,7 @@ public:
     TY ty;
     MOD mod;  // modifiers MODxxxx
     char *deco;
+    char *equivDeco; // CALYPSO HACK? We're forced to differentiate equality by deco for mangling and equivalence e.g for function overriding or implicit conversions. C++ has logical const, more builtin types, and uniqueness of C++ types must be preserved for template instantiation to stay consistent. Or... perhaps we could get rid of the mtype intrusions by making DMD and Calypso communicate more abstractly but that's a lot more work.
 
     /* These are cached values that are lazily evaluated by constOf(), immutableOf(), etc.
      * They should not be referenced by anybody but mtype.c.
@@ -249,8 +250,7 @@ public:
     Type *copy();
     virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     bool equals(RootObject *o);
-    bool equivalent(RootObject *o); // CALYPSO
-    virtual bool equivTo(Type *t); // HACK? We're forced to differentiate equality by deco and being equivalent e.g for function overriding. C++ has logical const, more builtin types, and uniqueness of C++ types must be preserved for template instantiation to stay consistent. Or... perhaps we could get rid of the mtype intrusions by making DMD and Calypso communicate more abstractly but that's a lot more work.
+    bool equivs(RootObject *o); // CALYPSO
     // kludge for template.isType()
     int dyncast() { return DYNCAST_TYPE; }
     int covariant(Type *t, StorageClass *pstc = NULL);
@@ -270,7 +270,7 @@ public:
     virtual unsigned alignsize();
     virtual Type *semantic(Loc loc, Scope *sc);
     Type *trySemantic(Loc loc, Scope *sc);
-    virtual void toDecoBuffer(OutBuffer *buf, int flag = 0);
+    virtual void toDecoBuffer(OutBuffer *buf, int flag = 0, bool forEquiv = false); // CALYPSO
     Type *merge();
     Type *merge2();
     void toCBuffer(OutBuffer *buf, Identifier *ident, HdrGenState *hgs);
@@ -397,8 +397,7 @@ public:
     Type *next;
 
     TypeNext(TY ty, Type *next);
-    virtual void toDecoBuffer(OutBuffer *buf, int flag); // CALYPSO
-    virtual bool equivTo(Type *t) override; // CALYPSO
+    virtual void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv); // CALYPSO
     void checkDeprecated(Loc loc, Scope *sc);
     int hasWild();
     Type *nextOf();
@@ -434,7 +433,6 @@ public:
     Expression *getProperty(Loc loc, Identifier *ident, int flag);
     Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);
     char *toChars();
-    virtual bool equivTo(Type *t) override; // CALYPSO
     bool isintegral();
     bool isfloating();
     bool isreal();
@@ -466,8 +464,7 @@ public:
     Expression *getProperty(Loc loc, Identifier *ident, int flag);
     Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);
     char *toChars();
-    void toDecoBuffer(OutBuffer *buf, int flag);
-    virtual bool equivTo(Type *t) override; // CALYPSO
+    void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv); // CALYPSO
     bool isintegral();
     bool isfloating();
     bool isscalar();
@@ -503,8 +500,7 @@ public:
     unsigned alignsize();
     Type *semantic(Loc loc, Scope *sc);
     void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
-    void toDecoBuffer(OutBuffer *buf, int flag);
-    virtual bool equivTo(Type *t) override; // CALYPSO
+    void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv); // CALYPSO
     Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);
     bool isString();
     bool isZeroInit(Loc loc);
@@ -533,7 +529,7 @@ public:
     unsigned alignsize();
     Type *semantic(Loc loc, Scope *sc);
     void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
-    void toDecoBuffer(OutBuffer *buf, int flag);
+    void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv);
     Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);
     bool isString();
     bool isZeroInit(Loc loc);
@@ -561,7 +557,7 @@ public:
     d_uns64 size(Loc loc);
     Type *semantic(Loc loc, Scope *sc);
     void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
-    void toDecoBuffer(OutBuffer *buf, int flag);
+    void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv);
     Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);
     Expression *defaultInit(Loc loc);
     bool isZeroInit(Loc loc);
@@ -604,7 +600,7 @@ public:
     TypeReference(Type *t);
     const char *kind();
     virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
-    Type *semantic(Loc loc, Scope *sc);
+    virtual Type *semantic(Loc loc, Scope *sc); // CALYPSO
     d_uns64 size(Loc loc);
     Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);
     Expression *defaultInit(Loc loc);
@@ -688,8 +684,7 @@ public:
     virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     Type *semantic(Loc loc, Scope *sc);
     void purityLevel();
-    void toDecoBuffer(OutBuffer *buf, int flag);
-    virtual bool equivTo(Type *t) override; // CALYPSO
+    void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv = false); // CALYPSO
     TypeInfoDeclaration *getTypeInfoDeclaration();
     bool hasLazyParameters();
     bool parameterEscapes(Parameter *p);
@@ -756,10 +751,10 @@ public:
     const char *kind();
     virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     //char *toChars();
-    void toDecoBuffer(OutBuffer *buf, int flag);
+    void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv);
     void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
     Dsymbol *toDsymbol(Scope *sc);
-    Type *semantic(Loc loc, Scope *sc);
+    virtual Type *semantic(Loc loc, Scope *sc); // CALYPSO
     Expression *toExpression();
     void accept(Visitor *v) { v->visit(this); }
 };
@@ -775,7 +770,7 @@ public:
     const char *kind();
     virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     //char *toChars();
-    //void toDecoBuffer(OutBuffer *buf, int flag);
+    //void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv);
     void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
     Type *semantic(Loc loc, Scope *sc);
     Dsymbol *toDsymbol(Scope *sc);
@@ -829,9 +824,6 @@ public:
     StructDeclaration *sym;
     AliasThisRec att;
 
-    // CALYPSO
-    LangPlugin *langPlugin() override;
-
     TypeStruct(StructDeclaration *sym);
     const char *kind();
     d_uns64 size(Loc loc);
@@ -840,7 +832,7 @@ public:
     virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     Type *semantic(Loc loc, Scope *sc);
     Dsymbol *toDsymbol(Scope *sc);
-    void toDecoBuffer(OutBuffer *buf, int flag);
+    void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv);
     Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);
     structalign_t alignment();
     Expression *defaultInit(Loc loc);
@@ -880,7 +872,7 @@ public:
     char *toChars();
     Type *semantic(Loc loc, Scope *sc);
     Dsymbol *toDsymbol(Scope *sc);
-    void toDecoBuffer(OutBuffer *buf, int flag);
+    void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv);
     Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);
     Expression *getProperty(Loc loc, Identifier *ident, int flag);
     bool isintegral();
@@ -920,7 +912,7 @@ public:
     char *toChars();
     Type *semantic(Loc loc, Scope *sc);
     Dsymbol *toDsymbol(Scope *sc);
-    void toDecoBuffer(OutBuffer *buf, int flag);
+    void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv);
     Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);
     structalign_t alignment();
     Expression *getProperty(Loc loc, Identifier *ident, int flag);
@@ -955,9 +947,6 @@ public:
     ClassDeclaration *sym;
     AliasThisRec att;
 
-    // CALYPSO
-    LangPlugin *langPlugin() override;
-
     TypeClass(ClassDeclaration *sym);
     const char *kind();
     d_uns64 size(Loc loc);
@@ -965,7 +954,7 @@ public:
     virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     Type *semantic(Loc loc, Scope *sc);
     Dsymbol *toDsymbol(Scope *sc);
-    void toDecoBuffer(OutBuffer *buf, int flag);
+    void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv);
     Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);
     ClassDeclaration *isClassHandle();
     int isBaseOf(Type *t, int *poffset);
@@ -999,7 +988,7 @@ public:
     virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     Type *semantic(Loc loc, Scope *sc);
     bool equals(RootObject *o);
-    void toDecoBuffer(OutBuffer *buf, int flag);
+    void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv);
     Expression *getProperty(Loc loc, Identifier *ident, int flag);
     Expression *defaultInit(Loc loc);
     TypeInfoDeclaration *getTypeInfoDeclaration();
@@ -1027,7 +1016,7 @@ public:
     const char *kind();
 
     virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
-    void toDecoBuffer(OutBuffer *buf, int flag);
+    void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv);
     MATCH implicitConvTo(Type *to);
     bool checkBoolean();
 
@@ -1053,13 +1042,13 @@ public:
     static Parameter *create(StorageClass storageClass, Type *type, Identifier *ident, Expression *defaultArg);
     Parameter *syntaxCopy();
     Type *isLazyArray();
-    void toDecoBuffer(OutBuffer *buf);
+    void toDecoBuffer(OutBuffer *buf, bool forEquiv);
     // kludge for template.isType()
     int dyncast() { return DYNCAST_PARAMETER; }
     static Parameters *arraySyntaxCopy(Parameters *args);
     static char *argsTypesToChars(Parameters *args, int varargs);
     static void argsToCBuffer(OutBuffer *buf, HdrGenState *hgs, Parameters *arguments, int varargs);
-    static void argsToDecoBuffer(OutBuffer *buf, Parameters *arguments);
+    static void argsToDecoBuffer(OutBuffer *buf, Parameters *arguments, bool forEquiv);
     static int isTPL(Parameters *arguments);
     static size_t dim(Parameters *arguments);
     static Parameter *getNth(Parameters *arguments, size_t nth, size_t *pn = NULL);
