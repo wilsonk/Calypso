@@ -1813,12 +1813,17 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
             if ((*PI)->hasDefaultArg())
             {
                 clang::Expr *DefaultArgExpr;
-                if ((*PI)->hasUninstantiatedDefaultArg() &&
+                bool isUninstantiated = (*PI)->hasUninstantiatedDefaultArg();
+
+                if (isUninstantiated &&
                         (FD->getInstantiatedFromMemberFunction() || FD->isTemplateInstantiation()))
+                {
                     DefaultArgExpr = S.BuildCXXDefaultArgExpr(FD->getPointOfInstantiation(),
                                                               const_cast<clang::FunctionDecl*>(FD), *PI).get();
+                    S.ActOnParamDefaultArgument(*PI, FD->getPointOfInstantiation(), DefaultArgExpr); // saves the default argument in the Clang AST, useful for debugging
+                }
                 else
-                    DefaultArgExpr = (*PI)->hasUninstantiatedDefaultArg() ?
+                    DefaultArgExpr = isUninstantiated ?
                                 (*PI)->getUninstantiatedDefaultArg() : (*PI)->getDefaultArg();
 
                 if (DefaultArgExpr) // might be null if BuildCXXDefaultArgExpr returned ExprError
