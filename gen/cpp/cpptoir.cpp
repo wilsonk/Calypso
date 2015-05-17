@@ -272,19 +272,9 @@ void LangPlugin::toInitClass(TypeClass* tc, LLValue* dst)
 LLValue *LangPlugin::toVirtualFunctionPointer(DValue* inst, 
                                               ::FuncDeclaration* fdecl, char* name)
 {
-    auto MD = llvm::cast<const clang::CXXMethodDecl>(getFD(fdecl));
-
-    // get instance
+    auto MD = cast<clang::CXXMethodDecl>(getFD(fdecl));
     LLValue* vthis = inst->getRVal();
-
-    const clangCG::CGFunctionInfo *FInfo = nullptr;
-    if (llvm::isa<clang::CXXConstructorDecl>(MD) || llvm::isa<clang::CXXDestructorDecl>(MD))
-        FInfo = &CGM->getTypes().arrangeCXXStructorDeclaration(MD,
-                                                               clangCG::StructorType::Complete);
-    else
-        FInfo = &CGM->getTypes().arrangeCXXMethodDeclaration(MD);
-  
-    llvm::FunctionType *Ty = CGM->getTypes().GetFunctionType(*FInfo);
+    auto Ty = toFunctionType(fdecl);
     
     return CGM->getCXXABI().getVirtualFunctionPointer(*CGF(), MD, vthis, Ty);
 }
