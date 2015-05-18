@@ -19,6 +19,8 @@
 #include "clang/AST/Type.h"
 #include "clang/Sema/Sema.h"
 
+extern void MODtoDecoBuffer(OutBuffer *buf, MOD mod);
+
 namespace cpp
 {
 
@@ -28,6 +30,14 @@ using llvm::isa;
 
 // Internal Calypso types (unlike TypeValueof which might used by normal D code) essential for template arguments matching.
 // D's const being transitive and since Calypso only needs logical const internally, keeping it outside of DMD seemed like the better idea..
+
+MOD getMOD(const clang::QualType T)
+{
+    if (T.isConstQualified())
+        return MODconst;
+
+    return 0;
+}
 
 class TypeClass : public ::TypeClass
 {
@@ -56,8 +66,21 @@ public:
 
     void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv) override
     {
-        if (!forEquiv && Ty->getAs<clang::ReferenceType>())
-            buf->writeByte('~');
+        if (!Ty)
+            buf->writeByte('&'); // Ty isn't set yet, don't merge! (see trySubstitute()) (UGLY?)
+
+        if (!forEquiv && Ty)
+        {
+            if (Ty->getAs<clang::ReferenceType>())
+                buf->writeByte('~');
+
+            if (auto pmod = getMOD(Ty->getPointeeType()))
+            {
+                buf->writeByte('#');
+                MODtoDecoBuffer(buf, pmod);
+            }
+        }
+
         ::TypeClass::toDecoBuffer(buf, flag, forEquiv);
     }
 
@@ -306,9 +329,9 @@ const clang::Type *getMappedType(Type *t)
     switch (t->ty)
     {
         case Tclass: return static_cast<cpp::TypeClass*>(t)->Ty;
-        case Tident: return static_cast<cpp::TypeClass*>(t)->Ty;
-        case Tinstance: return static_cast<cpp::TypeClass*>(t)->Ty;
-        case Ttypeof: return static_cast<cpp::TypeClass*>(t)->Ty;
+        case Tident: return static_cast<cpp::TypeIdentifier*>(t)->Ty;
+        case Tinstance: return static_cast<cpp::TypeInstance*>(t)->Ty;
+        case Ttypeof: return static_cast<cpp::TypeTypeof*>(t)->Ty;
         default: return nullptr;
     }
 }
@@ -321,9 +344,9 @@ void setMappedType(Type *t, const clang::Type *Ty)
     switch (t->ty)
     {
         case Tclass: static_cast<cpp::TypeClass*>(t)->Ty = Ty; break;
-        case Tident: static_cast<cpp::TypeClass*>(t)->Ty = Ty; break;
-        case Tinstance: static_cast<cpp::TypeClass*>(t)->Ty = Ty; break;
-        case Ttypeof: static_cast<cpp::TypeClass*>(t)->Ty = Ty; break;
+        case Tident: static_cast<cpp::TypeIdentifier*>(t)->Ty = Ty; break;
+        case Tinstance: static_cast<cpp::TypeInstance*>(t)->Ty = Ty; break;
+        case Ttypeof: static_cast<cpp::TypeTypeof*>(t)->Ty = Ty; break;
         default:  break;
     }
 }
@@ -1222,7 +1245,7 @@ Type *TypeMapper::trySubstitute(const clang::Decl *D)
             auto Known = static_cast<cpp::ClassDeclaration*>(s)->RD;
             if (Known->getCanonicalDecl() != D->getCanonicalDecl())
                 continue;
-            auto tc = new ::TypeClass(static_cast<ClassDeclaration*>(s));
+            auto tc = new cpp::TypeClass(static_cast<ClassDeclaration*>(s), nullptr);
             return new TypeValueof(tc);
         }
         else if (s->isTemplateDeclaration())
@@ -2114,8 +2137,7 @@ clang::QualType TypeMapper::toType(Loc loc, Type* t, Scope *sc, StorageClass stc
         {
             auto RT = Context.getRecordType(getRecordDecl(t));
             if (auto OrigTy = getMappedType(t))
-                if (OrigTy->getAs<clang::ReferenceType>())
-                    return Context.getLValueReferenceType(RT);
+                return clang::QualType(OrigTy, 0);
             return Context.getPointerType(RT);
         }
         case Tvalueof:
