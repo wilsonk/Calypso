@@ -1145,7 +1145,7 @@ static clang::Module *tryFindClangModule(Loc loc, Identifiers *packages, Identif
 static inline bool isTopLevelInNamespaceModule (const clang::Decl *D)
 {
     auto Tag = dyn_cast<clang::TagDecl>(D);
-    if (Tag && Tag->getIdentifier())
+    if (Tag && (Tag->getIdentifier() || Tag->getTypedefNameForAnonDecl()))
         return false; // anonymous tags are added as well
 
     auto Func = dyn_cast<clang::FunctionDecl>(D);
