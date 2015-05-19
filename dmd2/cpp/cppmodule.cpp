@@ -1153,7 +1153,7 @@ static inline bool isTopLevelInNamespaceModule (const clang::Decl *D)
 	if (auto *TT = TD->getTypeSourceInfo()->getType()->getAs<clang::TagType>())
 	    if (auto Tag = TT->getAsTagDecl())
 		if (auto RD = dyn_cast<clang::CXXRecordDecl>(Tag))
-		    if (!RD->hasDefinition())
+		    if (!RD->hasDefinition() && RD->isPOD())
 			return false;  // opaque struct
     }
 
