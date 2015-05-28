@@ -14,6 +14,7 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/Template.h"
+#include "clang/Sema/TemplateDeduction.h"
 
 namespace cpp
 {
@@ -38,8 +39,147 @@ TemplateDeclaration::TemplateDeclaration(const TemplateDeclaration &o)
 
 IMPLEMENT_syntaxCopy(TemplateDeclaration, TempOrSpec)
 
+// HACK-ish unfortunately.. but arg deduction isn't trivial. Can't think of a simpler way.
+struct CppSymCollector
+{
+    Dsymbols *substsyms;
+    CppSymCollector(Dsymbols *substsyms)
+        : substsyms(substsyms) {}
+
+    inline void addIfCPP(Dsymbol *s)
+    {
+        if (isCPP(s))
+            substsyms->push(s);
+    }
+
+    void collect(Dsymbol *s)
+    {
+        addIfCPP(s);
+    }
+
+    void collect(Type *t)
+    {
+        switch (t->ty)
+        {
+            case Tstruct:
+                addIfCPP(static_cast<TypeStruct*>(t)->sym);
+                break;
+            case Tclass:
+                addIfCPP(static_cast<TypeClass*>(t)->sym);
+                break;
+            case Tenum:
+                addIfCPP(static_cast<TypeEnum*>(t)->sym);
+                break;
+            case Tarray:
+            case Tsarray:
+            case Tpointer:
+            case Treference:
+            case Tvalueof:
+                collect(static_cast<TypeNext*>(t)->next);
+                break;
+            case Tident:
+            case Tinstance:
+            default:
+//                 ::warning(Loc(), "Collecting C++ symbols unhandled for type %s:\"%s\"",
+//                           t->kind(), t->toChars());
+                break;
+        }
+    }
+
+    void collect(Expression *e)
+    {
+        // TODO DotIdExp ...
+    }
+};
+
+static Dsymbols *collectSymbols(Objects *tiargs)
+{
+    auto substsyms = new Dsymbols;
+    CppSymCollector collector(substsyms);
+
+    for (auto o: *tiargs)
+    {
+        Type *ta = isType(o);
+        Expression *ea = isExpression(o);
+        Dsymbol *sa = isDsymbol(o);
+
+        if (ta) collector.collect(ta);
+        else if (ea) collector.collect(ea);
+        else { assert(sa); collector.collect(sa); }
+    }
+
+    return substsyms;
+}
+
+static void fillTemplateArgumentListInfo(Loc loc, Scope *sc, clang::TemplateArgumentListInfo& Args,
+                                Objects *tiargs, const clang::RedeclarableTemplateDecl *Temp,
+                                TypeMapper& tymap, ExprMapper& expmap)
+{
+    auto& Context = calypso.pch.AST->getASTContext();
+
+    const char *op = nullptr;
+    getIdentifierOrNull(Temp, &op);
+
+    // See translateTemplateArgument() in SemaTemplate.cpp
+    for (unsigned i = 0; i < tiargs->dim; i++)
+    {
+        if (i == 0 && op)
+            continue; // skip the first parameter of opUnary/opBinary/opOpAssign/...
+
+        auto o = (*tiargs)[i];
+
+        Type *ta = isType(o);
+        Expression *ea = isExpression(o);
+        Dsymbol *sa = isDsymbol(o);
+
+        if (ta)
+        {
+            auto T = tymap.toType(loc, ta, sc);
+            auto DI = Context.getTrivialTypeSourceInfo(T);
+
+            clang::TemplateArgumentLoc Loc(clang::TemplateArgument(T), DI);
+            Args.addArgument(Loc);
+        }
+        else if (ea)
+        {
+            auto E = expmap.toExpression(ea);
+
+            clang::TemplateArgumentLoc Loc(clang::TemplateArgument(E), E);
+            Args.addArgument(Loc);
+        }
+        else if (sa)
+        {
+            auto tempdecl = sa->isTemplateDeclaration();
+            assert(tempdecl && isCPP(tempdecl));
+
+            auto c_td = static_cast<cpp::TemplateDeclaration *>(tempdecl);
+            auto Temp = c_td->getPrimaryTemplate();
+            clang::TemplateName Name(Temp);
+
+            clang::TemplateArgumentLoc Loc(clang::TemplateArgument(Name),
+                                    clang::NestedNameSpecifierLoc(),
+                                    Temp->getLocation(), clang::SourceLocation());
+            Args.addArgument(Loc);
+        }
+        else
+            assert(false && "unhandled template arg C++ -> D conversion");
+    }
+}
+
+const clang::TemplateArgumentList *getTemplateInstantiationArgs(const clang::Decl *D)
+{
+    if (auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(D))
+        return &CTSD->getTemplateInstantiationArgs();
+    else if (auto FD = dyn_cast<clang::FunctionDecl>(D))
+        return FD->getTemplateSpecializationArgs();
+    else if (auto VTSD = dyn_cast<clang::VarTemplateSpecializationDecl>(D))
+        return &VTSD->getTemplateInstantiationArgs();
+
+    return nullptr;
+}
+
 MATCH TemplateDeclaration::matchWithInstance(Scope *sc, ::TemplateInstance *ti,
-                                             Objects *atypes, Expressions *fargs, int flag)
+                                             Objects *dedtypes, Expressions *fargs, int flag)
 {
     // Give only the primary template a chance to match
     // The "best matching" is done dy Sema, and then foreignInstance corrects ti->tempdecl
@@ -51,7 +191,73 @@ MATCH TemplateDeclaration::matchWithInstance(Scope *sc, ::TemplateInstance *ti,
             return MATCHnomatch;
     }
 
-    return ::TemplateDeclaration::matchWithInstance(sc, ti, atypes, fargs, flag);
+    auto m = ::TemplateDeclaration::matchWithInstance(sc, ti, dedtypes, fargs, flag);
+
+    if (m == MATCHnomatch || !isForeignInstance(ti) || fargs) // if we're resolving a function call or finding best match then dedtypes is irrelevant
+        return m;
+
+    // Although the match result is ok, the types deducted by DMD may have been stripped of C++-specific info and end up wrong.
+    // That's why we fix dedtypes by taking Inst's instantiation template args.
+
+    auto c_ti = static_cast<cpp::TemplateInstance*>(ti);
+    if (c_ti->origTiargs)
+    {
+        assert(dedtypes->dim == ti->tiargs->dim);
+        for (unsigned i = 0; i < ti->tiargs->dim; i++)
+            (*dedtypes)[i] = (*ti->tiargs)[i]; // tiargs were already deduced by Clang and fixed during correctTiargs
+        return m;
+    }
+
+    auto& S = calypso.pch.AST->getSema();
+    auto Temp = getPrimaryTemplate();
+
+    TypeMapper tymap;
+    ExprMapper expmap(tymap);
+    tymap.addImplicitDecls = false;
+    tymap.substsyms = collectSymbols(dedtypes);
+
+    if (isa<clang::TypeAliasTemplateDecl>(Temp))
+    {
+        // Type alias instances do not remember their template args for some reason, which forces us to redo deduction.
+        // This may be a temporary limitation of Clang.
+
+        clang::TemplateArgumentListInfo ExplicitArgs;
+        fillTemplateArgumentListInfo(ti->loc, sc, ExplicitArgs, ti->tiargs, Temp, tymap, expmap);
+
+        auto fillDedtypes = [&] (llvm::ArrayRef<clang::TemplateArgument> Deduced)
+        {
+            assert(dedtypes->dim == Deduced.size());
+            auto ParamList = Temp->getTemplateParameters();
+
+            for (unsigned i = 0; i < dedtypes->dim; i++)
+            {
+                const clang::NamedDecl *Param = (i < ParamList->size()) ? ParamList->getParam(i) : nullptr;
+                auto atype = TypeMapper::FromType(tymap).fromTemplateArgument(&Deduced[i], Param);
+                assert(atype);
+                (*dedtypes)[i] = atype;
+            }
+        };
+
+        llvm::SmallVector<clang::TemplateArgument, 4> Converted;
+
+        if (S.CheckTemplateArgumentList(Temp, Temp->getLocation(), ExplicitArgs, false, Converted))
+            assert(false && "Sema::CheckTemplateArgumentList failed on matching template");
+
+        fillDedtypes(Converted);
+    }
+    else
+    {
+        auto InstArgs = getTemplateInstantiationArgs(c_ti->Inst)->asArray();
+        auto tdtypes = TypeMapper::FromType(tymap).fromTemplateArguments(InstArgs.begin(), InstArgs.end(),
+                        Temp->getTemplateParameters());
+
+        assert(tdtypes->dim == dedtypes->dim);
+        for (unsigned i = 0; i < tdtypes->dim; i++)
+            (*dedtypes)[i] = (*tdtypes)[i];
+    }
+
+    ::TemplateInstance::semanticTiargs(ti->loc, sc, dedtypes, 0);
+    return m;
 }
 
 bool TemplateDeclaration::isForeignInstance(::TemplateInstance *ti)
@@ -70,8 +276,6 @@ clang::RedeclarableTemplateDecl *TemplateDeclaration::getPrimaryTemplate()
 
 bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
 {
-    auto& Context = calypso.pch.AST->getASTContext();
-
     if (tempinsts.empty())
         return true;
 
@@ -383,59 +587,6 @@ bool TemplateInstance::completeInst(bool mayFail)
     return true;
 }
 
-// HACK-ish unfortunately.. but partial spec arg deduction isn't trivial. Can't think of a simpler way.
-struct CppSymCollector
-{
-    Dsymbols *substsyms;
-    CppSymCollector(Dsymbols *substsyms)
-        : substsyms(substsyms) {}
-
-    inline void addIfCPP(Dsymbol *s)
-    {
-        if (isCPP(s))
-            substsyms->push(s);
-    }
-
-    void collect(Dsymbol *s)
-    {
-        addIfCPP(s);
-    }
-
-    void collect(Type *t)
-    {
-        switch (t->ty)
-        {
-            case Tstruct:
-                addIfCPP(static_cast<TypeStruct*>(t)->sym);
-                break;
-            case Tclass:
-                addIfCPP(static_cast<TypeClass*>(t)->sym);
-                break;
-            case Tenum:
-                addIfCPP(static_cast<TypeEnum*>(t)->sym);
-                break;
-            case Tarray:
-            case Tsarray:
-            case Tpointer:
-            case Treference:
-            case Tvalueof:
-                collect(static_cast<TypeNext*>(t)->next);
-                break;
-            case Tident:
-            case Tinstance:
-            default:
-//                 ::warning(Loc(), "Collecting C++ symbols unhandled for type %s:\"%s\"",
-//                           t->kind(), t->toChars());
-                break;
-        }
-    }
-
-    void collect(Expression *e)
-    {
-        // TODO DotIdExp ...
-    }
-};
-
 void TemplateInstance::correctTiargs()
 {
     auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(Inst);
@@ -453,24 +604,11 @@ void TemplateInstance::correctTiargs()
             // Since the deduced arguments are contained in one form or another in the original args,
             // the trick is to reference C++ symbols inside the original args and tell TypeMapper to use them.
 
-        auto substsyms = new Dsymbols;
-        CppSymCollector collector(substsyms);
-        for (auto o: *tiargs)
-        {
-            Type *ta = isType(o);
-            Expression *ea = isExpression(o);
-            Dsymbol *sa = isDsymbol(o);
-
-            if (ta) collector.collect(ta);
-            else if (ea) collector.collect(ea);
-            else { assert(sa); collector.collect(sa); }
-        }
-
         origTiargs = tiargs;
 
         TypeMapper tymap;
         tymap.addImplicitDecls = false;
-        tymap.substsyms = substsyms;
+        tymap.substsyms = collectSymbols(origTiargs);
 
         tiargs = TypeMapper::FromType(tymap).fromTemplateArguments(Args.begin(), Args.end(),
                         Partial->getTemplateParameters());
