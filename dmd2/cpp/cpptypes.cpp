@@ -66,9 +66,6 @@ public:
 
     void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv) override
     {
-        if (!Ty)
-            buf->writeByte('&'); // Ty isn't set yet, don't merge! (see trySubstitute()) (UGLY?)
-
         if (!forEquiv && Ty)
         {
             if (Ty->getAs<clang::ReferenceType>())
@@ -116,7 +113,11 @@ public:
     {
         auto t = ::TypeIdentifier::semantic(loc, sc);
         if (Ty && t->ty == Tclass)
-            return new TypeClass(static_cast<::TypeClass*>(t)->sym, Ty);
+        {
+            auto tmod = t->mod;
+            t = new TypeClass(static_cast<::TypeClass*>(t)->sym, Ty);
+            t->mod = tmod;
+        }
         return t;
     }
 
@@ -152,7 +153,11 @@ public:
     {
         auto t = ::TypeInstance::semantic(loc, sc);
         if (Ty && t->ty == Tclass)
-            return new TypeClass(static_cast<::TypeClass*>(t)->sym, Ty);
+        {
+            auto tmod = t->mod;
+            t = new TypeClass(static_cast<::TypeClass*>(t)->sym, Ty);
+            t->mod = tmod;
+        }
         return t;
     }
 
@@ -188,7 +193,11 @@ public:
     {
         auto t = ::TypeTypeof::semantic(loc, sc);
         if (Ty && t->ty == Tclass)
-            return new TypeClass(static_cast<::TypeClass*>(t)->sym, Ty);
+        {
+            auto tmod = t->mod;
+            t = new TypeClass(static_cast<::TypeClass*>(t)->sym, Ty);
+            t->mod = tmod;
+        }
         return t;
     }
 
@@ -336,19 +345,32 @@ const clang::Type *getMappedType(Type *t)
     }
 }
 
-void setMappedType(Type *t, const clang::Type *Ty)
+Type *setMappedType(Type *t, const clang::Type *Ty)
 {
-    if (!isCPP(t))
-        return;
+    if (!isCPP(t) && t->ty != Tclass)
+        return t;
 
     switch (t->ty)
     {
-        case Tclass: static_cast<cpp::TypeClass*>(t)->Ty = Ty; break;
+        case Tclass:
+        {
+            auto tc = static_cast<cpp::TypeClass*>(t);
+            if (!isCPP(t))
+            {
+                auto mod = t->mod;
+                t = new cpp::TypeClass(tc->sym, Ty);
+                t->mod = mod;
+            }
+            else
+                static_cast<cpp::TypeClass*>(t)->Ty = Ty;
+            break;
+        }
         case Tident: static_cast<cpp::TypeIdentifier*>(t)->Ty = Ty; break;
         case Tinstance: static_cast<cpp::TypeInstance*>(t)->Ty = Ty; break;
         case Ttypeof: static_cast<cpp::TypeTypeof*>(t)->Ty = Ty; break;
         default:  break;
     }
+    return t;
 }
 
 namespace
@@ -668,7 +690,7 @@ Type *TypeMapper::FromType::fromTypeUnqual(const clang::Type *T)
         {
             for (t = pt; t->ty == Tvalueof;)
                 t = t->nextOf()->addMod(t->mod);
-            setMappedType(t, T);
+            t = setMappedType(t, T);
             assert(isCPP(t) && getMappedType(t) == T);
         }
         else if (Pointer)
@@ -1234,20 +1256,13 @@ Type *TypeMapper::trySubstitute(const clang::Decl *D)
             auto Known = static_cast<cpp::Kind##Declaration*>(s)->Sym; \
             if (Known->getCanonicalDecl() != D->getCanonicalDecl()) \
                 continue; \
-            return new Type##Kind(static_cast<Kind##Declaration*>(s)); \
+            return new ::Type##Kind(static_cast<Kind##Declaration*>(s)); \
         }
 
         if (0) ;
         SUBST(Struct, RD)
+        SUBST(Class, RD)
         SUBST(Enum, ED)
-        else if (s->isClassDeclaration())
-        {
-            auto Known = static_cast<cpp::ClassDeclaration*>(s)->RD;
-            if (Known->getCanonicalDecl() != D->getCanonicalDecl())
-                continue;
-            auto tc = new cpp::TypeClass(static_cast<ClassDeclaration*>(s), nullptr);
-            return new TypeValueof(tc);
-        }
         else if (s->isTemplateDeclaration())
             continue;
         else
