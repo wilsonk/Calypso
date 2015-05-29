@@ -120,7 +120,7 @@ public:
             t = new TypeClass(static_cast<::TypeClass*>(t)->sym, Ty);
             t->mod = tmod;
         }
-        return t;
+        return t->merge();
     }
 
     unsigned short sizeType() override { return sizeof(*this); }
@@ -160,7 +160,7 @@ public:
             t = new TypeClass(static_cast<::TypeClass*>(t)->sym, Ty);
             t->mod = tmod;
         }
-        return t;
+        return t->merge();
     }
 
     unsigned short sizeType() override { return sizeof(*this); }
@@ -200,7 +200,7 @@ public:
             t = new TypeClass(static_cast<::TypeClass*>(t)->sym, Ty);
             t->mod = tmod;
         }
-        return t;
+        return t->merge();
     }
 
     unsigned short sizeType() override { return sizeof(*this); }
@@ -323,7 +323,9 @@ public:
             assert(n->nextOf()->ty == Tclass);
             auto sym = n->nextOf()->isClassHandle();
             auto RT = Context.getRecordType(getRecordDecl(sym));
-            return new TypeClass(sym, Context.getLValueReferenceType(RT).getTypePtr());
+            
+            auto tc = new TypeClass(sym, Context.getLValueReferenceType(RT).getTypePtr());
+            return tc->merge();
         }
 
         return ::TypeReference::semantic(loc, sc);
