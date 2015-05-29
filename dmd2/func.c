@@ -910,7 +910,7 @@ void FuncDeclaration::semantic(Scope *sc)
 
                 if (fdv->tintro)
                     tintro = fdv->tintro;
-                else if (!type->equals(fdv->type))
+                else if (!type->equivs(fdv->type))
                 {
                     /* Only need to have a tintro if the vptr
                      * offsets differ
@@ -964,7 +964,7 @@ void FuncDeclaration::semantic(Scope *sc)
 
                     if (fdv->tintro)
                         ti = fdv->tintro;
-                    else if (!type->equals(fdv->type))
+                    else if (!type->equivs(fdv->type))
                     {
                         /* Only need to have a tintro if the vptr
                          * offsets differ
