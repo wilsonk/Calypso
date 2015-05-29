@@ -434,17 +434,8 @@ Dsymbols *DeclMapper::VisitTypedefNameDecl(const clang::TypedefNameDecl* D)
     if (isAnonTagTypedef(D))
         return nullptr;  // the anon tag will be mapped by VisitRecordDecl to an aggregate named after the typedef identifier
 
-    if (auto TagTy = Ty->getAs<clang::TagType>())
-    {
-        auto Tag = TagTy->getDecl();
-
-        auto Parent = cast<clang::Decl>(D->getDeclContext());
-        auto TagParent = cast<clang::Decl>(Tag->getDeclContext());
-
-        if (Tag->getName() == D->getName() &&
-                TagParent->getCanonicalDecl() == Parent->getCanonicalDecl())
-            return nullptr; // e.g typedef union pthread_attr_t pthread_attr_t needs to be discarded
-    }
+    if (isSameNameTagTypedef(D)) // e.g typedef union pthread_attr_t pthread_attr_t needs to be discarded
+        return nullptr;
 
     if (D->isImplicit())
         if (Ty == Context.Int128Ty || Ty == Context.UnsignedInt128Ty)

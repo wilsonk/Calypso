@@ -1305,10 +1305,9 @@ Type *TypeMapper::trySubstitute(const clang::Decl *D)
 Type* TypeMapper::FromType::fromTypeTypedef(const clang::TypedefType* T)
 {
     auto Typedef = T->getDecl();
-    // Temporary HACK to avoid importing "_" just because of typedefs (eg size_t)
-    // which doesn't even work atm
-    if (getDeclContextNamedOrTU(Typedef)->isTranslationUnit())
-        return fromType(T->desugar());
+    if (isAnonTagTypedef(Typedef) || isSameNameTagTypedef(Typedef) ||
+                getDeclContextNamedOrTU(Typedef)->isTranslationUnit())  // temporary HACK to avoid importing "_" just because of typedefs (eg size_t)
+        return fromType(Typedef->getUnderlyingType());
 
     return typeQualifiedFor(Typedef);
 }
@@ -2025,6 +2024,27 @@ const clang::TagDecl *isAnonTagTypedef(const clang::TypedefNameDecl* D)
     }
 
     return nullptr;
+}
+
+// Returns true e.g typedef union pthread_attr_t pthread_attr_t
+// The typedef need to be discarded, VisitTypedefType needs to map the underlying type
+bool isSameNameTagTypedef(const clang::TypedefNameDecl* D)
+{
+    auto Ty = D->getUnderlyingType();
+
+    if (auto TagTy = Ty->getAs<clang::TagType>())
+    {
+        auto Tag = TagTy->getDecl();
+
+        auto Parent = cast<clang::Decl>(getDeclContextNamedOrTU(D));
+        auto TagParent = cast<clang::Decl>(getDeclContextNamedOrTU(Tag));
+
+        if (Tag->getName() == D->getName() &&
+                TagParent->getCanonicalDecl() == Parent->getCanonicalDecl())
+            return true;
+    }
+
+    return false;
 }
 
 // Returns the topmost parent tagdecl, or the bottom-most namespace or the TU
