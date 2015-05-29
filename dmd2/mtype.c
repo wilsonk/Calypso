@@ -6919,11 +6919,18 @@ const char *TypeIdentifier::kind()
 }
 
 
-Type *TypeIdentifier::syntaxCopy(Type *)
+Type *TypeIdentifier::syntaxCopy(Type *o)
 {
+    // CALYPSO
     TypeIdentifier *t;
 
-    t = new TypeIdentifier(loc, ident);
+    if (o)
+    {
+        assert(o->ty == Tident);
+        t = (TypeIdentifier*)o;
+    }
+    else
+        t = new TypeIdentifier(loc, ident);
     t->syntaxCopyHelper(this);
     t->mod = mod;
     return t;
@@ -7081,12 +7088,19 @@ const char *TypeInstance::kind()
     return "instance";
 }
 
-Type *TypeInstance::syntaxCopy(Type *)
+Type *TypeInstance::syntaxCopy(Type *o)
 {
     //printf("TypeInstance::syntaxCopy() %s, %d\n", toChars(), idents.dim);
+    // CALYPSO
     TypeInstance *t;
 
-    t = new TypeInstance(loc, (TemplateInstance *)tempinst->syntaxCopy(NULL));
+    if (o)
+    {
+        assert(o->ty == Tinstance);
+        t = (TypeInstance*)o;
+    }
+    else
+        t = new TypeInstance(loc, (TemplateInstance *)tempinst->syntaxCopy(NULL));
     t->syntaxCopyHelper(this);
     t->mod = mod;
     return t;
@@ -7203,12 +7217,19 @@ const char *TypeTypeof::kind()
     return "typeof";
 }
 
-Type *TypeTypeof::syntaxCopy(Type *)
+Type *TypeTypeof::syntaxCopy(Type *o)
 {
     //printf("TypeTypeof::syntaxCopy() %s\n", toChars());
+    // CALYPSO
     TypeTypeof *t;
 
-    t = new TypeTypeof(loc, exp->syntaxCopy());
+    if (o)
+    {
+        assert(o->ty == Ttypeof);
+        t = (TypeTypeof*)o;
+    }
+    else
+        t = new TypeTypeof(loc, exp->syntaxCopy());
     t->syntaxCopyHelper(this);
     t->mod = mod;
     return t;

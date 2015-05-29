@@ -56,12 +56,14 @@ public:
         {
             assert(isCPP(o) && o->ty == Tclass);
             t = static_cast<TypeClass*>(o);
+            t->sym = sym;
             t->Ty = Ty;
         }
         else
-            t = new TypeClass(nullptr, Ty);
+            t = new TypeClass(sym, Ty);
 
-        return ::TypeClass::syntaxCopy(t);
+        t->mod = mod;
+        return t;
     }
 
     void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv) override
@@ -354,7 +356,7 @@ Type *setMappedType(Type *t, const clang::Type *Ty)
     {
         case Tclass:
         {
-            auto tc = static_cast<cpp::TypeClass*>(t);
+            auto tc = static_cast<::TypeClass*>(t);
             if (!isCPP(t))
             {
                 auto mod = t->mod;
@@ -365,9 +367,33 @@ Type *setMappedType(Type *t, const clang::Type *Ty)
                 static_cast<cpp::TypeClass*>(t)->Ty = Ty;
             break;
         }
-        case Tident: static_cast<cpp::TypeIdentifier*>(t)->Ty = Ty; break;
-        case Tinstance: static_cast<cpp::TypeInstance*>(t)->Ty = Ty; break;
-        case Ttypeof: static_cast<cpp::TypeTypeof*>(t)->Ty = Ty; break;
+        case Tident:
+        {
+            auto tid = static_cast<::TypeIdentifier*>(t);
+            if (!isCPP(t))
+                t = t->syntaxCopy(new cpp::TypeIdentifier(tid->loc, tid->ident));
+            else
+                static_cast<cpp::TypeIdentifier*>(t)->Ty = Ty;
+            break;
+        }
+        case Tinstance:
+        {
+            auto tid = static_cast<::TypeInstance*>(t);
+            if (!isCPP(t))
+                t = t->syntaxCopy(new cpp::TypeInstance(tid->loc, tid->tempinst));
+            else
+                static_cast<cpp::TypeInstance*>(t)->Ty = Ty;
+            break;
+        }
+        case Ttypeof:
+        {
+            auto tid = static_cast<::TypeTypeof*>(t);
+            if (!isCPP(t))
+                t = t->syntaxCopy(new cpp::TypeTypeof(tid->loc, tid->exp));
+            else
+                static_cast<cpp::TypeTypeof*>(t)->Ty = Ty;
+            break;
+        }
         default:  break;
     }
     return t;
@@ -689,9 +715,9 @@ Type *TypeMapper::FromType::fromTypeUnqual(const clang::Type *T)
         if (pt->ty == Tvalueof)
         {
             for (t = pt; t->ty == Tvalueof;)
-                t = t->nextOf()->addMod(t->mod);
+                t = t->nextOf();
             t = setMappedType(t, T);
-            assert(isCPP(t) && getMappedType(t) == T);
+            assert(getMappedType(t) == T);
         }
         else if (Pointer)
             t = new TypePointer(pt);
@@ -2139,6 +2165,9 @@ clang::QualType TypeMapper::toType(Loc loc, Type* t, Scope *sc, StorageClass stc
 
     t = t->merge2();
 
+    if (auto OrigTy = getMappedType(t))
+        return clang::QualType(OrigTy, 0);
+
     if (auto builtin = calypso.builtinTypes.toClang[t])
         return clang::QualType(builtin, 0);
 
@@ -2151,8 +2180,6 @@ clang::QualType TypeMapper::toType(Loc loc, Type* t, Scope *sc, StorageClass stc
         case Tclass:
         {
             auto RT = Context.getRecordType(getRecordDecl(t));
-            if (auto OrigTy = getMappedType(t))
-                return clang::QualType(OrigTy, 0);
             return Context.getPointerType(RT);
         }
         case Tvalueof:
