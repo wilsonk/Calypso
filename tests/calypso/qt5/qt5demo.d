@@ -21,7 +21,7 @@ import (C++) QWidget, QTextEdit, QLineEdit, QLabel, QLayout, QGridLayout;
 class AddressBook : QWidget
 {
 public:
-    this(QWidget *parent = null)
+    this(QWidget parent = null)
     {
         super(parent);
 
@@ -36,12 +36,12 @@ public:
         addressText = new QTextEdit;
 
         auto mainLayout = new QGridLayout;
-        mainLayout.addWidget(cast(QWidget*) nameLabel, 0, 0); // explicit casts are needed, why?
-        mainLayout.addWidget(cast(QWidget*) nameLine, 0, 1);
-        mainLayout.addWidget(cast(QWidget*) addressLabel, 1, 0, new Alignment(AlignmentFlag.AlignTop));
-        mainLayout.addWidget(cast(QWidget*) addressText, 1, 1);
+        mainLayout.addWidget(nameLabel, 0, 0); // explicit casts are needed, why?
+        mainLayout.addWidget(nameLine, 0, 1);
+        mainLayout.addWidget(addressLabel, 1, 0, new Alignment(AlignmentFlag.AlignTop));
+        mainLayout.addWidget(addressText, 1, 1);
 
-        setLayout(cast(QLayout*) mainLayout);
+        setLayout(mainLayout);
         setWindowTitle(titleStr);
     }
 
