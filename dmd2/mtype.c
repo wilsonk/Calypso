@@ -5333,6 +5333,17 @@ Type *TypeValueof::syntaxCopy(Type *o)
     return t;
 }
 
+Type *TypeValueof::makeConst()
+{
+    // Do not apply const transitively, because we're in reverse
+    if (cto)
+    {
+        assert(cto->mod == MODconst);
+        return cto;
+    }
+    return (TypeNext *)Type::makeConst();
+}
+
 Type *TypeValueof::semantic(Loc loc, Scope *sc)
 {
     Type *n = next->semantic(loc, sc);
@@ -5341,8 +5352,14 @@ Type *TypeValueof::semantic(Loc loc, Scope *sc)
     if (n != next)
         deco = NULL;
     next = n;
-    transitive();
     return merge();
+}
+
+void TypeValueof::transitive()
+{
+    // The order of types is reversed (a reminder that Valueof is a hack)
+    // so we need not be transitive, e.g const(*CppClass) means in C++ const CppClass*
+    // but the TypeClass in D refers to the pointer, so isn't const!
 }
 
 d_uns64 TypeValueof::size(Loc loc)

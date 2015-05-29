@@ -614,8 +614,11 @@ class TypeValueof : public TypeNext
 public:
     TypeValueof(Type *t);
     const char *kind();
-    virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
+    virtual Type *syntaxCopy(Type *o = NULL);
+    virtual Type *makeConst();
+    virtual bool checkTransitiveMod() { return false; }
     Type *semantic(Loc loc, Scope *sc);
+    void transitive();
     d_uns64 size(Loc loc);
     MATCH implicitConvTo(Type *to);
     Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);

@@ -716,7 +716,7 @@ Type *TypeMapper::FromType::fromTypeUnqual(const clang::Type *T)
         {
             for (t = pt; t->ty == Tvalueof;)
                 t = t->nextOf();
-            t = setMappedType(t, T);
+            t = setMappedType(t->nullAttributes(), T); // WARNING: TypeValueof(TypeClass) is a mess and a maze, it's hard to follow what really happens
             assert(getMappedType(t) == T);
         }
         else if (Pointer)
