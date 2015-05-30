@@ -1384,7 +1384,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
     }
     else
     {
-        clang::NamedDecl *D;
+        clang::NamedDecl *D = nullptr;
 
         // Lookups can't find the implicit __va_list_tag record
         if (id == Lexer::idPool("__va_list_tag") && packages->dim == 1)
@@ -1401,22 +1401,25 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
                 fatal();
             }
 
-            D = R[0];
-        }
+            // Module must be a record or enum
+            for (auto Match: R)
+            {
+                if (auto Typedef = dyn_cast<clang::TypedefNameDecl>(Match))
+                {
+                    auto UT = Typedef->getUnderlyingType().getDesugaredType(Context);
+                    if (auto RT = dyn_cast<clang::TagType>(UT))
+                        Match = RT->getDecl();
+                }
 
-        if (auto TD = dyn_cast<clang::TypedefNameDecl>(D)) // FIXME check if typedef for anonymous tag
-        {
-            auto UT = TD->getUnderlyingType().getDesugaredType(Context);
-            if (auto RT = dyn_cast<clang::TagType>(UT))
-                D = RT->getDecl();
-        }
+                if (isa<clang::TagDecl>(Match) || isa<clang::ClassTemplateDecl>(Match))
+                    D = Match;
+            }
 
-        // Module must be a record or enum
-        if (!isa<clang::TagDecl>(D) &&
-            !isa<clang::ClassTemplateDecl>(D))
-        {
-            ::error(loc, "C++ modules have to be records (class/struct, template or not) or enums");
-            fatal();
+            if (!D)
+            {
+                ::error(loc, "C++ modules have to be records (class/struct, template or not) or enums");
+                fatal();
+            }
         }
 
         if (auto Spec = dyn_cast<clang::ClassTemplateSpecializationDecl>(D))
