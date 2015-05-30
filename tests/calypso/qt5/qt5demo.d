@@ -4,7 +4,7 @@
  * Module map files from utils/modulemap/ should be installed in the libc and Qt include folders.
  *
  * Then build with:
- *   $ ldc2 -g -wi -v -cpp-args -D_REENTRANT -cpp-args -fPIE -cpp-args -DQT_WIDGETS_LIB -cpp-args -DQT_GUI_LIB -cpp-args -DQT_CORE_LIB -cpp-args -I/path/to/Qt/5.4/gcc_64/mkspecs/linux-g++ -cpp-args -I/path/to/Qt/5.4/gcc_64/include -cpp-args -I/path/to/Qt/5.4/gcc_64/include/QtWidgets -cpp-args -I/path/to/Qt/5.4/gcc_64/include/QtGui -cpp-args -I/path/to/Qt/5.4/gcc_64/include/QtCore -L-rpath=/path/to/Qt/5.4/gcc_64 -L-rpath=/path/to/Qt/5.4/gcc_64/lib -L-lQt5Widgets -L-lQt5Gui -L-lQt5Core -L-lGL -L-lstdc++ qt5demo.d
+ *   $ ldc2 -g -wi -v -cpp-args -D_REENTRANT -cpp-args -fPIE -cpp-args -DQT_WIDGETS_LIB -cpp-args -DQT_GUI_LIB -cpp-args -DQT_CORE_LIB -cpp-args -I/path/to/Qt/5.4/gcc_64/mkspecs/linux-g++ -cpp-args -I/path/to/Qt/5.4/gcc_64/include -cpp-args -I/path/to/Qt/5.4/gcc_64/include/QtWidgets -cpp-args -I/path/to/Qt/5.4/gcc_64/include/QtGui -cpp-args -I/path/to/Qt/5.4/gcc_64/include/QtCore -L-L/path/to/Qt/5.4/gcc_64/lib -L-rpath=/path/to/Qt/5.4/gcc_64/lib -L-lQt5Widgets -L-lQt5Gui -L-lQt5Core -L-lGL -L-lstdc++ qt5demo.d
  */
 
 modmap (C++) "<QtWidgets>";
@@ -36,7 +36,7 @@ public:
         addressText = new QTextEdit;
 
         auto mainLayout = new QGridLayout;
-        mainLayout.addWidget(nameLabel, 0, 0); // explicit casts are needed, why?
+        mainLayout.addWidget(nameLabel, 0, 0);
         mainLayout.addWidget(nameLine, 0, 1);
         mainLayout.addWidget(addressLabel, 1, 0, new Alignment(AlignmentFlag.AlignTop));
         mainLayout.addWidget(addressText, 1, 1);
