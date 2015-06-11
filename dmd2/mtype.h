@@ -263,6 +263,8 @@ public:
     virtual LangPlugin *langPlugin();
     virtual unsigned short sizeType();
     virtual bool checkTransitiveMod() { return true; }
+    virtual Type *makePointer(); // called by TypePointer::semantic, should return non-NULL if the pointer isn't a normal TypePointer
+    virtual Type *makeReference();
 
     #define SIZE_INVALID (~(d_uns64)0)
     d_uns64 size();

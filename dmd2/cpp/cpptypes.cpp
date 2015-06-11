@@ -334,6 +334,102 @@ public:
     unsigned short sizeType() override { return sizeof(*this); }
 };
 
+// Urghh.. so after adding a base DMD TypeValueof I'm adding a Calypso-specific cpp::TypeValueof
+// that needs hooks in DMD's TypePointer and TypeReference, can't get uglier
+// TypeValueof was already a travesty since it can't be transitive, it should get ridden of asap.
+class TypeValueof : public ::TypeValueof
+{
+public:
+    CALYPSO_LANGPLUGIN
+
+    TypeValueof(Type *t)
+        : ::TypeValueof(t) {}
+
+    void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv) override
+    {
+        if (!forEquiv)
+            buf->writeByte('~');
+        ::TypeValueof::toDecoBuffer(buf, flag, forEquiv);
+    }
+
+    Type *syntaxCopy(Type *o = nullptr) override
+    {
+        TypeValueof *t;
+        if (o)
+        {
+            assert(isCPP(o) && o->ty == Tvalueof);
+            t = static_cast<TypeValueof*>(o);
+        }
+        else
+            t = new TypeValueof(nullptr);
+
+        return ::TypeValueof::syntaxCopy(t);
+    }
+
+    Type *makeConst() override
+    {
+        if (cto)
+        {
+            assert(cto->mod == MODconst);
+            return cto;
+        }
+        return Type::makeConst();
+    }
+
+    Type *makeImmutable() override
+    {
+        if (ito)
+        {
+            assert(ito->isImmutable());
+            return ito;
+        }
+        return Type::makeImmutable();
+    }
+
+    clang::QualType getRecordType()
+    {
+        auto& Context = calypso.pch.AST->getASTContext();
+
+        auto RD = getRecordDecl(static_cast<::TypeClass*>(next));
+        auto RT = Context.getRecordType(RD);
+
+        if (isConst() || isImmutable())
+            return RT.withConst();
+        else
+            return RT;
+    }
+
+    Type *makePointer() override
+    {
+        auto& Context = calypso.pch.AST->getASTContext();
+
+        if (next->ty == Tclass)
+        {
+            auto tc = static_cast<::TypeClass*>(next);
+            auto Ty = Context.getPointerType(getRecordType());
+            return new cpp::TypeClass(tc->sym, Ty.getTypePtr());
+        }
+
+        return ::Type::makePointer();
+    }
+
+    Type *makeReference() override
+    {
+        auto& Context = calypso.pch.AST->getASTContext();
+
+        if (next->ty == Tclass)
+        {
+            auto tc = static_cast<::TypeClass*>(next);
+            auto Ty = Context.getLValueReferenceType(getRecordType());
+            return new cpp::TypeClass(tc->sym, Ty.getTypePtr());
+        }
+
+        return ::Type::makeReference();
+    }
+
+    unsigned short sizeType() override { return sizeof(*this); }
+};
+
 const clang::Type *getMappedType(Type *t)
 {
     if (!isCPP(t))

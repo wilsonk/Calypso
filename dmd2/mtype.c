@@ -1259,6 +1259,17 @@ Type *Type::addStorageClass(StorageClass stc)
     return addMod(mod);
 }
 
+// CALYPSO eww FIXME
+Type *Type::makePointer()
+{
+    return NULL;
+}
+
+Type *Type::makeReference()
+{
+    return NULL;
+}
+
 Type *Type::pointerTo()
 {
     if (ty == Terror)
@@ -5092,6 +5103,8 @@ Type *TypePointer::semantic(Loc loc, Scope *sc)
     if (deco)
         return this;
     Type *n = next->semantic(loc, sc);
+    if (Type *pn = n->makePointer()) // CALYPSO
+        return pn->addMod(mod)->merge();
     switch (n->toBasetype()->ty)
     {
         case Ttuple:
@@ -5267,6 +5280,8 @@ Type *TypeReference::semantic(Loc loc, Scope *sc)
 {
     //printf("TypeReference::semantic()\n");
     Type *n = next->semantic(loc, sc);
+    if (Type *pn = n->makeReference()) // CALYPSO
+        return pn->addMod(mod)->merge();
     if (n != next)
         deco = NULL;
     next = n;
