@@ -745,7 +745,7 @@ static llvm::GlobalValue::LinkageTypes lowerFuncLinkage(FuncDeclaration* fdecl)
 
     // Generated array op functions behave like templates in that they might be
     // emitted into many different modules.
-    if (fdecl->isArrayOp && !isDruntimeArrayOp(fdecl))
+    if (fdecl->isArrayOp && (willInline() || !isDruntimeArrayOp(fdecl)))
         return templateLinkage;
 
     // A body-less declaration always needs to be marked as external in LLVM
@@ -794,7 +794,7 @@ void DtoDefineFunction(FuncDeclaration* fd)
     }
 
     // Skip array ops implemented in druntime
-    if (fd->isArrayOp && isDruntimeArrayOp(fd))
+    if (fd->isArrayOp && !willInline() && isDruntimeArrayOp(fd))
     {
         IF_LOG Logger::println("No code generation for array op %s implemented in druntime", fd->toChars());
         fd->ir.setDefined();
@@ -945,7 +945,11 @@ void DtoDefineFunction(FuncDeclaration* fd)
     {
         // emit a call to llvm_eh_unwind_init
         LLFunction* hack = GET_INTRINSIC_DECL(eh_unwind_init);
+#if LDC_LLVM_VER >= 307
+        gIR->ir->CreateCall(hack, {});
+#else
         gIR->ir->CreateCall(hack, "");
+#endif
     }
 
     // give the 'this' argument storage and debug info
@@ -965,7 +969,7 @@ void DtoDefineFunction(FuncDeclaration* fd)
         assert(getIrParameter(fd->vthis)->value == thisvar);
         getIrParameter(fd->vthis)->value = thismem;
 
-        gIR->DBuilder.EmitLocalVariable(thismem, fd->vthis);
+        gIR->DBuilder.EmitLocalVariable(thismem, fd->vthis, 0, true);
     }
 
     // give the 'nestArg' storage
@@ -994,7 +998,8 @@ void DtoDefineFunction(FuncDeclaration* fd)
 
             bool refout = vd->storage_class & (STCref | STCout);
             bool lazy = vd->storage_class & STClazy;
-            if (!refout && (!irparam->arg->byref || lazy))
+            bool firstClassVal = !refout && (!irparam->arg->byref || lazy);
+            if (firstClassVal)
             {
                 // alloca a stack slot for this first class value arg
                 LLValue* mem = DtoAlloca(irparam->arg->type, vd->ident->toChars());
@@ -1008,7 +1013,7 @@ void DtoDefineFunction(FuncDeclaration* fd)
             }
 
             if (global.params.symdebug && !(isaArgument(irparam->value) && isaArgument(irparam->value)->hasByValAttr()) && !refout)
-                gIR->DBuilder.EmitLocalVariable(irparam->value, vd);
+                gIR->DBuilder.EmitLocalVariable(irparam->value, vd, firstClassVal ? irparam->arg->type : 0);
         }
     }
 
@@ -1066,23 +1071,24 @@ void DtoDefineFunction(FuncDeclaration* fd)
         // in automatically, so we do it here.
 
         // pass the previous block into this block
-        gIR->DBuilder.EmitFuncEnd(fd);
+        gIR->DBuilder.EmitStopPoint(fd->endloc);
         if (func->getReturnType() == LLType::getVoidTy(gIR->context())) {
-            llvm::ReturnInst::Create(gIR->context(), gIR->scopebb());
+            gIR->ir->CreateRetVoid();
         }
         else if (!fd->isMain()) {
             AsmBlockStatement* asmb = fd->fbody->endsWithAsm();
             if (asmb) {
                 assert(asmb->abiret);
-                llvm::ReturnInst::Create(gIR->context(), asmb->abiret, bb);
+                gIR->ir->CreateRet(asmb->abiret);
             }
             else {
-                llvm::ReturnInst::Create(gIR->context(), llvm::UndefValue::get(func->getReturnType()), bb);
+                gIR->ir->CreateRet(llvm::UndefValue::get(func->getReturnType()));
             }
         }
         else
-            llvm::ReturnInst::Create(gIR->context(), LLConstant::getNullValue(func->getReturnType()), bb);
+            gIR->ir->CreateRet(LLConstant::getNullValue(func->getReturnType()));
     }
+    gIR->DBuilder.EmitFuncEnd(fd);
 
     // CALYPSO
     for (auto I = global.langPlugins.begin(),

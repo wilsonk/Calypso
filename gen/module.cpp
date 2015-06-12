@@ -211,7 +211,11 @@ static llvm::Function* build_module_function(const std::string &name, const std:
     typedef std::list<FuncDeclaration*>::const_iterator FuncIterator;
     for (FuncIterator itr = funcs.begin(), end = funcs.end(); itr != end; ++itr) {
         llvm::Function* f = getIrFunc(*itr)->func;
-        llvm::CallInst* call = builder.CreateCall(f,"");
+#if LDC_LLVM_VER >= 307
+        llvm::CallInst* call = builder.CreateCall(f, {});
+#else
+        llvm::CallInst* call = builder.CreateCall(f, "");
+#endif
         call->setCallingConv(gABI->callingConv(LINKd));
     }
 
@@ -588,7 +592,7 @@ static void addCoverageAnalysis(Module* m)
         // For safety, make the array large enough such that the slice passed to _d_cover_register2 is completely valid.
         array_size = m->numlines;
 
-        IF_LOG Logger::println("Build private variable: size_t[%d] _d_cover_valid", array_size);
+        IF_LOG Logger::println("Build private variable: size_t[%llu] _d_cover_valid", (ulonglong) array_size);
 
         llvm::ArrayType* type = llvm::ArrayType::get(DtoSize_t(), array_size);
         llvm::ConstantAggregateZero* zeroinitializer = llvm::ConstantAggregateZero::get(type);
@@ -597,7 +601,7 @@ static void addCoverageAnalysis(Module* m)
         d_cover_valid_slice = DtoConstSlice( DtoConstSize_t(type->getArrayNumElements()),
                                              llvm::ConstantExpr::getGetElementPtr(
 #if LDC_LLVM_VER >= 307
-                                             DtoSize_t(),
+                                             type,
 #endif
                                              m->d_cover_valid, idxs, true) );
 
@@ -618,7 +622,7 @@ static void addCoverageAnalysis(Module* m)
         d_cover_data_slice = DtoConstSlice( DtoConstSize_t(type->getArrayNumElements()),
                                             llvm::ConstantExpr::getGetElementPtr(
 #if LDC_LLVM_VER >= 307
-                                            LLType::getInt32Ty(gIR->context()),
+                                            type,
 #endif
                                             m->d_cover_data, idxs, true) );
     }

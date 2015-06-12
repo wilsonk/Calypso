@@ -323,6 +323,7 @@ macro(compile_druntime d_flags lib_suffix path_suffix outlist_o outlist_bc)
     # are/were some broken invariants around; druntime is always built in
     # release mode in upstream builds).
     set(rt_flags "${d_flags};-disable-invariants")
+
     if(BUILD_SHARED_LIBS)
         set(shared ";-d-version=Shared")
     else()

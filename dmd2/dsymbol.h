@@ -307,8 +307,6 @@ public:
     // CALYPSO
     virtual LangPlugin *langPlugin() { return NULL; }
 #if IN_LLVM
-    virtual ClassInfoDeclaration* isClassInfoDeclaration() { return NULL; }
-
     // llvm stuff
     int llvmInternal;
 

@@ -304,7 +304,7 @@ LLIntegerType* DtoSize_t()
     // the type of size_t does not change once set
     static LLIntegerType* t = NULL;
     if (t == NULL)
-        t = (global.params.is64bit) ? LLType::getInt64Ty(gIR->context()) : LLType::getInt32Ty(gIR->context());
+        t = (global.params.isLP64) ? LLType::getInt64Ty(gIR->context()) : LLType::getInt32Ty(gIR->context());
     return t;
 }
 
@@ -425,7 +425,11 @@ LLValue* DtoMemCmp(LLValue* lhs, LLValue* rhs, LLValue* nbytes)
     lhs = DtoBitCast(lhs, VoidPtrTy);
     rhs = DtoBitCast(rhs, VoidPtrTy);
 
+#if LDC_LLVM_VER >= 307
+    return gIR->ir->CreateCall(fn, { lhs, rhs, nbytes });
+#else
     return gIR->ir->CreateCall3(fn, lhs, rhs, nbytes);
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////

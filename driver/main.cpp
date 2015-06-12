@@ -546,15 +546,23 @@ static void initializePasses() {
 /// Register the MIPS ABI.
 static void registerMipsABI()
 {
-    llvm::StringRef features = gTargetMachine->getTargetFeatureString();
-    if (features.find("+o32") != std::string::npos)
-        VersionCondition::addPredefinedGlobalIdent("MIPS_O32");
-    if (features.find("+n32") != std::string::npos)
-        VersionCondition::addPredefinedGlobalIdent("MIPS_N32");
-    if (features.find("+n64") != std::string::npos)
-        VersionCondition::addPredefinedGlobalIdent("MIPS_N64");
-    if (features.find("+eabi") != std::string::npos)
-        VersionCondition::addPredefinedGlobalIdent("MIPS_EABI");
+    switch (getMipsABI())
+    {
+        case MipsABI::EABI:
+            VersionCondition::addPredefinedGlobalIdent("MIPS_EABI");
+            break;
+        case MipsABI::O32:
+            VersionCondition::addPredefinedGlobalIdent("MIPS_O32");
+            break;
+        case MipsABI::N32:
+            VersionCondition::addPredefinedGlobalIdent("MIPS_N32");
+            break;
+        case MipsABI::N64:
+            VersionCondition::addPredefinedGlobalIdent("MIPS_N64");
+            break;
+        case MipsABI::Unknown:
+            break;
+    }
 }
 
 /// Register the float ABI.
@@ -562,7 +570,12 @@ static void registerMipsABI()
 static void registerPredefinedFloatABI(const char *soft, const char *hard, const char *softfp=NULL)
 {
     // Use target floating point unit instead of s/w float routines
+#if LDC_LLVM_VER >= 307
+    // FIXME: This is a semantic change!
+    bool useFPU = gTargetMachine->Options.FloatABIType == llvm::FloatABI::Hard;
+#else
     bool useFPU = !gTargetMachine->Options.UseSoftFloat;
+#endif
     VersionCondition::addPredefinedGlobalIdent(useFPU ? "D_HardFloat" : "D_SoftFloat");
 
     if (gTargetMachine->Options.FloatABIType == llvm::FloatABI::Soft)
@@ -684,7 +697,7 @@ static void registerPredefinedTargetVersions() {
     }
 
     // a generic 64bit version
-    if (global.params.is64bit) {
+    if (global.params.isLP64) {
         VersionCondition::addPredefinedGlobalIdent("D_LP64");
     }
 
@@ -1060,20 +1073,6 @@ int main(int argc, char **argv)
         bitness, mFloatABI, mRelocModel, mCodeModel, codeGenOptLevel(),
         global.params.symdebug || disableFpElim, disableLinkerStripDead);
 
-    {
-        llvm::Triple triple = llvm::Triple(gTargetMachine->getTargetTriple());
-        global.params.targetTriple = triple;
-        global.params.isLinux      = triple.getOS() == llvm::Triple::Linux;
-        global.params.isOSX        = triple.isMacOSX();
-        global.params.isWindows    = triple.isOSWindows();
-        global.params.isFreeBSD    = triple.getOS() == llvm::Triple::FreeBSD;
-        global.params.isOpenBSD    = triple.getOS() == llvm::Triple::OpenBSD;
-        global.params.isSolaris    = triple.getOS() == llvm::Triple::Solaris;
-        // FIXME: Correctly handle the x32 ABI (AMD64 ILP32) here.
-        global.params.isLP64       = triple.isArch64Bit();
-        global.params.is64bit      = triple.isArch64Bit();
-    }
-
 #if LDC_LLVM_VER >= 307
     gDataLayout = gTargetMachine->getDataLayout();
 #elif LDC_LLVM_VER >= 306
@@ -1083,6 +1082,19 @@ int main(int argc, char **argv)
 #else
     gDataLayout = gTargetMachine->getTargetData();
 #endif
+
+    {
+        llvm::Triple triple = llvm::Triple(gTargetMachine->getTargetTriple());
+        global.params.targetTriple = triple;
+        global.params.isLinux      = triple.getOS() == llvm::Triple::Linux;
+        global.params.isOSX        = triple.isMacOSX();
+        global.params.isWindows    = triple.isOSWindows();
+        global.params.isFreeBSD    = triple.getOS() == llvm::Triple::FreeBSD;
+        global.params.isOpenBSD    = triple.getOS() == llvm::Triple::OpenBSD;
+        global.params.isSolaris    = triple.getOS() == llvm::Triple::Solaris;
+        global.params.isLP64       = gDataLayout->getPointerSizeInBits() == 64;
+        global.params.is64bit      = triple.isArch64Bit();
+    }
 
     // allocate the target abi
     gABI = TargetABI::getTarget();

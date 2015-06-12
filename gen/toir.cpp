@@ -2073,7 +2073,7 @@ public:
         // call assert runtime functions
         p->scope() = IRScope(assertbb, endbb);
 
-        /* DMD Bugzilla 8360: If the condition is evalated to true,
+        /* DMD Bugzilla 8360: If the condition is evaluated to true,
          * msg is not evaluated at all. So should use toElemDtor()
          * instead of toElem().
          */
@@ -2269,7 +2269,11 @@ public:
         IF_LOG Logger::print("HaltExp::toElem: %s\n", e->toChars());
         LOG_SCOPE;
 
+#if LDC_LLVM_VER >= 307
+        p->ir->CreateCall(GET_INTRINSIC_DECL(trap), {});
+#else
         p->ir->CreateCall(GET_INTRINSIC_DECL(trap), "");
+#endif
         p->ir->CreateUnreachable();
 
         // this terminated the basicblock, start a new one
@@ -2446,7 +2450,7 @@ public:
         LOG_SCOPE;
 
         Type* dtype = e->type->toBasetype();
-        LLValue *retPtr = 0;
+        LLValue* retPtr = 0;
         if (dtype->ty != Tvoid) {
             // allocate a temporary for pointer to the final result.
             retPtr = DtoAlloca(dtype->pointerTo(), "condtmp");
@@ -2459,22 +2463,26 @@ public:
 
         DValue* c = toElem(e->econd);
         LLValue* cond_val = DtoCast(e->loc, c, Type::tbool)->getRVal();
-        llvm::BranchInst::Create(condtrue,condfalse,cond_val,p->scopebb());
+        llvm::BranchInst::Create(condtrue, condfalse, cond_val, p->scopebb());
 
         p->scope() = IRScope(condtrue, condfalse);
         DValue* u = toElemDtor(e->e1);
-        if (dtype->ty != Tvoid)
-            DtoStore(makeLValue(e->loc, u), retPtr);
+        if (retPtr) {
+            LLValue* lval = makeLValue(e->loc, u);
+            DtoStore(lval, DtoBitCast(retPtr, lval->getType()->getPointerTo()));
+        }
         llvm::BranchInst::Create(condend, p->scopebb());
 
         p->scope() = IRScope(condfalse, condend);
         DValue* v = toElemDtor(e->e2);
-        if (dtype->ty != Tvoid)
-            DtoStore(makeLValue(e->loc, v), retPtr);
+        if (retPtr) {
+            LLValue* lval = makeLValue(e->loc, v);
+            DtoStore(lval, DtoBitCast(retPtr, lval->getType()->getPointerTo()));
+        }
         llvm::BranchInst::Create(condend, p->scopebb());
 
         p->scope() = IRScope(condend, oldend);
-        if (dtype->ty != Tvoid)
+        if (retPtr)
             result = new DVarValue(e->type, DtoLoad(retPtr));
         else
             result = new DConstValue(e->type, getNullValue(voidToI8(DtoType(dtype))));
@@ -3201,7 +3209,12 @@ public:
 
     virtual void visit(AssertExp *e)
     {
-        applyTo(e->e1);
+        // If assertions are turned off e.g. in release mode then
+        // the expression is ignored. Only search for destructors
+        // inside the assert expression if assertions are turned on.
+        // See GitHub issue #953.
+        if (global.params.useAssert)
+            applyTo(e->e1);
         // same as above
         // applyTo(e->msg);
     }

@@ -199,9 +199,6 @@ void DtoAssert(Module* M, Loc& loc, DValue* msg)
     // call
     gIR->CreateCallOrInvoke(fn, args);
 
-    // end debug info
-    gIR->DBuilder.EmitFuncEnd(gIR->func()->decl);
-
     // after assert is always unreachable
     gIR->ir->CreateUnreachable();
 }
@@ -462,11 +459,6 @@ void DtoAssign(Loc& loc, DValue* lhs, DValue* rhs, int op, bool canSkipPostblit)
         }
         gIR->ir->CreateStore(r, l);
     }
-
-    DVarValue *var = lhs->isVar();
-    VarDeclaration *vd = var ? var->var : 0;
-    if (vd)
-        gIR->DBuilder.EmitValue(DtoLoad(var->getLVal()), vd);
 }
 
 /****************************************************************************************/
@@ -1741,13 +1733,6 @@ DValue* DtoSymbolAddress(Loc& loc, Type* type, Declaration* decl)
             assert(!gIR->arrays.empty());
             val = DtoArrayLen(gIR->arrays.back());
             return new DImValue(type, val);
-        }
-        // classinfo
-        else if (ClassInfoDeclaration* cid = vd->isClassInfoDeclaration())
-        {
-            Logger::println("ClassInfoDeclaration: %s", cid->cd->toChars());
-            DtoResolveClass(cid->cd);
-            return new DVarValue(type, vd, getIrAggr(cid->cd)->getClassInfoSymbol());
         }
         // typeinfo
         else if (TypeInfoDeclaration* tid = vd->isTypeInfoDeclaration())

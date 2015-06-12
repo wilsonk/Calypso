@@ -372,7 +372,7 @@ public:
         LOG_SCOPE;
 
         // emit dwarf stop point
-        gIR->DBuilder.EmitStopPoint(stmt->loc.linnum);
+        gIR->DBuilder.EmitStopPoint(stmt->loc);
 
         emitCoverageLinecountInc(stmt->loc);
 
@@ -403,11 +403,8 @@ public:
                 // emit scopes
                 DtoEnclosingHandlers(stmt->loc, NULL);
 
-                // emit dbg end function
-                gIR->DBuilder.EmitFuncEnd(f->decl);
-
                 // emit ret
-                llvm::ReturnInst::Create(gIR->context(), irs->scopebb());
+                gIR->ir->CreateRetVoid();
             }
             // the return type is not void, so this is a normal "register" return
             else
@@ -467,8 +464,13 @@ public:
                 // emit scopes
                 DtoEnclosingHandlers(stmt->loc, NULL);
 
-                gIR->DBuilder.EmitFuncEnd(irs->func()->decl);
-                llvm::ReturnInst::Create(gIR->context(), v, irs->scopebb());
+                // Hack: the frontend generates 'return 0;' as last statement of
+                // 'void main()'. But the debug location is missing. Use the end
+                // of function as debug location.
+                if (f->decl->isMain() && !stmt->loc.linnum)
+                    gIR->DBuilder.EmitStopPoint(f->decl->endloc);
+
+                gIR->ir->CreateRet(v);
             }
         }
         // no return value expression means it's a void function
@@ -476,8 +478,7 @@ public:
         {
             assert(irs->topfunc()->getReturnType() == LLType::getVoidTy(gIR->context()));
             DtoEnclosingHandlers(stmt->loc, NULL);
-            gIR->DBuilder.EmitFuncEnd(irs->func()->decl);
-            llvm::ReturnInst::Create(gIR->context(), irs->scopebb());
+            gIR->ir->CreateRetVoid();
         }
 
         // the return terminated this basicblock, start a new one
@@ -493,7 +494,7 @@ public:
         LOG_SCOPE;
 
         // emit dwarf stop point
-        gIR->DBuilder.EmitStopPoint(stmt->loc.linnum);
+        gIR->DBuilder.EmitStopPoint(stmt->loc);
 
         emitCoverageLinecountInc(stmt->loc);
 
@@ -810,7 +811,7 @@ public:
             return;
 
         // emit dwarf stop point
-        gIR->DBuilder.EmitStopPoint(stmt->loc.linnum);
+        gIR->DBuilder.EmitStopPoint(stmt->loc);
 
         emitCoverageLinecountInc(stmt->loc);
 
@@ -873,7 +874,7 @@ public:
         LOG_SCOPE;
 
         // emit dwarf stop point
-        gIR->DBuilder.EmitStopPoint(stmt->loc.linnum);
+        gIR->DBuilder.EmitStopPoint(stmt->loc);
 
         emitCoverageLinecountInc(stmt->loc);
 
@@ -941,7 +942,7 @@ public:
         LOG_SCOPE;
 
         // emit dwarf stop point
-        gIR->DBuilder.EmitStopPoint(stmt->loc.linnum);
+        gIR->DBuilder.EmitStopPoint(stmt->loc);
 
         // if there's no finalbody or no body, things are simple
         if (!stmt->finalbody) {
@@ -1033,7 +1034,7 @@ public:
         LOG_SCOPE;
 
         // emit dwarf stop point
-        gIR->DBuilder.EmitStopPoint(stmt->loc.linnum);
+        gIR->DBuilder.EmitStopPoint(stmt->loc);
 
         // create basic blocks
         llvm::BasicBlock* oldend = irs->scopeend();
@@ -1090,14 +1091,12 @@ public:
         LOG_SCOPE;
 
         // emit dwarf stop point
-        gIR->DBuilder.EmitStopPoint(stmt->loc.linnum);
+        gIR->DBuilder.EmitStopPoint(stmt->loc);
 
         emitCoverageLinecountInc(stmt->loc);
 
         assert(stmt->exp);
         DValue* e = toElemDtor(stmt->exp);
-
-        gIR->DBuilder.EmitFuncEnd(gIR->func()->decl);
 
         llvm::Function* fn = LLVM_D_GetRuntimeFunction(stmt->loc, gIR->module, "_d_throw_exception");
         //Logger::cout() << "calling: " << *fn << '\n';
@@ -1119,7 +1118,7 @@ public:
         LOG_SCOPE;
 
         // emit dwarf stop point
-        gIR->DBuilder.EmitStopPoint(stmt->loc.linnum);
+        gIR->DBuilder.EmitStopPoint(stmt->loc);
 
         emitCoverageLinecountInc(stmt->loc);
 
@@ -1691,7 +1690,7 @@ public:
         IF_LOG Logger::println("GotoStatement::toIR(): %s", stmt->loc.toChars());
         LOG_SCOPE;
 
-        gIR->DBuilder.EmitStopPoint(stmt->loc.linnum);
+        gIR->DBuilder.EmitStopPoint(stmt->loc);
 
         emitCoverageLinecountInc(stmt->loc);
 
@@ -1709,7 +1708,7 @@ public:
         IF_LOG Logger::println("GotoDefaultStatement::toIR(): %s", stmt->loc.toChars());
         LOG_SCOPE;
 
-        gIR->DBuilder.EmitStopPoint(stmt->loc.linnum);
+        gIR->DBuilder.EmitStopPoint(stmt->loc);
 
         emitCoverageLinecountInc(stmt->loc);
 
@@ -1731,7 +1730,7 @@ public:
         IF_LOG Logger::println("GotoCaseStatement::toIR(): %s", stmt->loc.toChars());
         LOG_SCOPE;
 
-        gIR->DBuilder.EmitStopPoint(stmt->loc.linnum);
+        gIR->DBuilder.EmitStopPoint(stmt->loc);
 
         emitCoverageLinecountInc(stmt->loc);
 
