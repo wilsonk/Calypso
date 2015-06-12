@@ -84,7 +84,6 @@ namespace opts {
 
     // CALYPSO
     extern cl::list<std::string> cppArgs;
-    extern cl::opt<bool> cppDebug;
 
     // Arguments to -d-debug
     extern std::vector<std::string> debugArgs;

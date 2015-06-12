@@ -456,9 +456,6 @@ cl::opt<unsigned char, true, CoverageParser> coverageAnalysis("cov",
 cl::list<std::string> cppArgs("cpp-args",
     cl::desc("Clang args (PCH)"));
 
-cl::opt<bool> cppDebug("cpp-debug",
-    cl::desc("CALYPSO DEBUG"));
-
 
 static cl::extrahelp footer("\n"
 "-d-debug can also be specified without options, in which case it enables all\n"

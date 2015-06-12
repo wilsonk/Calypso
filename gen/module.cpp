@@ -739,10 +739,6 @@ static void codegenModule(Module* m)
     #endif
     }
 
-    //TEMP CALYPSO
-    if (opts::cppDebug)
-        gIR->module->dump();
-
     // CALYPSO
     for (auto I = global.langPlugins.begin(), E = global.langPlugins.end();
             I != E; I++)
