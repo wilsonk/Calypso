@@ -256,7 +256,24 @@ MATCH TemplateDeclaration::matchWithInstance(Scope *sc, ::TemplateInstance *ti,
             (*dedtypes)[i] = (*tdtypes)[i];
     }
 
-    ::TemplateInstance::semanticTiargs(ti->loc, sc, dedtypes, 0);
+    // Set up scope for template parameters
+    ScopeDsymbol *paramsym = new ScopeDsymbol();
+    paramsym->parent = scope->parent;
+    Scope *paramscope = scope->push(paramsym);
+    paramscope->tinst = ti;
+    paramscope->callsc = sc;
+    paramscope->stc = 0;
+
+    for (size_t i = 0; i < dedtypes->dim; i++)
+    {
+        TemplateParameter *tp = (*parameters)[i];
+        RootObject *o = (*dedtypes)[i];
+
+        if (!declareParameter(paramscope, tp, o))
+            assert(false);
+    }
+
+    ::TemplateInstance::semanticTiargs(ti->loc, paramscope, dedtypes, 0);
     return m;
 }
 
