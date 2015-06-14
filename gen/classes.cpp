@@ -166,8 +166,7 @@ void DtoInitClass(TypeClass* tc, LLValue* dst)
     // CALYPSO
     if (auto lp = tc->sym->langPlugin())
     {
-        auto cg = lp->codegen();
-        cg->toInitClass(tc, dst);
+        lp->codegen()->toInitClass(tc, dst);
         return;
     }
 
@@ -364,6 +363,9 @@ DValue* DtoDynamicCastObject(Loc& loc, DValue* val, Type* _to)
 {
     // call:
     // Object _d_dynamic_cast(Object o, ClassInfo c)
+
+    assert(!val->type->langPlugin()); // CALYPSO temporary checks, dynamic casts aren't supported
+    assert(!_to->langPlugin());
 
     DtoResolveClass(ClassDeclaration::object);
     DtoResolveClass(Type::typeinfoclass);
