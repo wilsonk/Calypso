@@ -120,7 +120,7 @@ public:
 
     PROT prot();
 
-    Type *handleType() { return type; } // 'this' type
+    virtual Type *handleType() { return type; } // 'this' type // CALYPSO
 #if IN_DMD
 
     // Back end
@@ -131,6 +131,7 @@ public:
     
     // CALYPSO
     virtual void buildLayout(); // determine the agg size and field offsets
+    virtual bool byRef() { return false; }
 
     AggregateDeclaration *isAggregateDeclaration() { return this; }
     void accept(Visitor *v) { v->visit(this); }
@@ -300,8 +301,10 @@ public:
     void addLocalClass(ClassDeclarations *);
 
     // CALYPSO
+    virtual bool byRef() { return true; }
+    Type *handleType() { return byRef() ? type : type->pointerTo(); } // 'this' type // CALYPSO
     virtual bool allowMultipleInheritance() { return false; }  // will allow more than one non-interface base
-    virtual bool allowInheritFromStruct() { return false; }
+    virtual bool allowInheritFromStruct() { return false; }  // even though C++ class types are value, we may want to keep mapping POD classes to D structs to keep init lists
     virtual void initVtbl();
     virtual void finalizeVtbl() {}
     virtual void buildLayout(); // determine the agg size and field offsets

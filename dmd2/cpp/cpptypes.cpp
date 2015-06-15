@@ -28,478 +28,12 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
-// Internal Calypso types (unlike TypeValueof which might used by normal D code) essential for template arguments matching.
-// D's const being transitive and since Calypso only needs logical const internally, keeping it outside of DMD seemed like the better idea..
-
 MOD getMOD(const clang::QualType T)
 {
     if (T.isConstQualified())
         return MODconst;
 
     return 0;
-}
-
-class TypeClass : public ::TypeClass
-{
-public:
-    CALYPSO_LANGPLUGIN
-
-    const clang::Type *Ty; // because C++ pointers and lvalueref of a class would be mapped to the same D type, this is required to differentiate the two
-
-    TypeClass(::ClassDeclaration *sym, const clang::Type *Ty)
-        : ::TypeClass(sym), Ty(Ty) {}
-
-    Type *syntaxCopy(Type *o = nullptr) override
-    {
-        TypeClass *t;
-        if (o)
-        {
-            assert(isCPP(o) && o->ty == Tclass);
-            t = static_cast<TypeClass*>(o);
-            t->sym = sym;
-            t->Ty = Ty;
-        }
-        else
-            t = new TypeClass(sym, Ty);
-
-        t->mod = mod;
-        return t;
-    }
-
-    void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv) override
-    {
-        if (!forEquiv && Ty)
-        {
-            if (Ty->getAs<clang::ReferenceType>())
-                buf->writeByte('~');
-
-            if (auto pmod = getMOD(Ty->getPointeeType()))
-            {
-                buf->writeByte('#');
-                MODtoDecoBuffer(buf, pmod);
-            }
-        }
-
-        ::TypeClass::toDecoBuffer(buf, flag, forEquiv);
-    }
-
-    unsigned short sizeType() override { return sizeof(*this); }
-};
-
-class TypeIdentifier : public ::TypeIdentifier
-{
-public:
-    CALYPSO_LANGPLUGIN
-
-    const clang::Type *Ty;
-
-    TypeIdentifier(Loc loc, Identifier *ident, const clang::Type *Ty = nullptr)
-        : ::TypeIdentifier(loc, ident), Ty(Ty) {}
-
-    Type *syntaxCopy(Type *o = nullptr) override
-    {
-        TypeIdentifier *t;
-        if (o)
-        {
-            assert(isCPP(o) && o->ty == Tident);
-            t = static_cast<TypeIdentifier*>(o);
-            t->Ty = Ty;
-        }
-        else
-            t = new TypeIdentifier(loc, ident, Ty);
-
-        return ::TypeIdentifier::syntaxCopy(t);
-    }
-
-    Type *semantic(Loc loc, Scope *sc) override
-    {
-        auto t = ::TypeIdentifier::semantic(loc, sc);
-        if (Ty && t->ty == Tclass)
-        {
-            auto tmod = t->mod;
-            t = new TypeClass(static_cast<::TypeClass*>(t)->sym, Ty);
-            t->mod = tmod;
-        }
-        return t->merge();
-    }
-
-    unsigned short sizeType() override { return sizeof(*this); }
-};
-
-class TypeInstance : public ::TypeInstance
-{
-public:
-    CALYPSO_LANGPLUGIN
-
-    const clang::Type *Ty;
-
-    TypeInstance(Loc loc, ::TemplateInstance *tempinst, const clang::Type *Ty = nullptr)
-        : ::TypeInstance(loc, tempinst), Ty(Ty) {}
-
-    Type *syntaxCopy(Type *o = nullptr) override
-    {
-        TypeInstance *t;
-        if (o)
-        {
-            assert(isCPP(o) && o->ty == Tinstance);
-            t = static_cast<TypeInstance*>(o);
-            t->Ty = Ty;
-        }
-        else
-            t = new TypeInstance(loc, tempinst, Ty);
-
-        return ::TypeInstance::syntaxCopy(t);
-    }
-
-    Type *semantic(Loc loc, Scope *sc) override
-    {
-        auto t = ::TypeInstance::semantic(loc, sc);
-        if (Ty && t->ty == Tclass)
-        {
-            auto tmod = t->mod;
-            t = new TypeClass(static_cast<::TypeClass*>(t)->sym, Ty);
-            t->mod = tmod;
-        }
-        return t->merge();
-    }
-
-    unsigned short sizeType() override { return sizeof(*this); }
-};
-
-class TypeTypeof : public ::TypeTypeof
-{
-public:
-    CALYPSO_LANGPLUGIN
-
-    const clang::Type *Ty;
-
-    TypeTypeof(Loc loc, Expression *exp, const clang::Type *Ty = nullptr)
-        : ::TypeTypeof(loc, exp), Ty(Ty) {}
-
-    Type *syntaxCopy(Type *o = nullptr) override
-    {
-        TypeTypeof *t;
-        if (o)
-        {
-            assert(isCPP(o) && o->ty == Ttypeof);
-            t = static_cast<TypeTypeof*>(o);
-            t->Ty = Ty;
-        }
-        else
-            t = new TypeTypeof(loc, exp, Ty);
-
-        return ::TypeTypeof::syntaxCopy(t);
-    }
-
-    Type *semantic(Loc loc, Scope *sc) override
-    {
-        auto t = ::TypeTypeof::semantic(loc, sc);
-        if (Ty && t->ty == Tclass)
-        {
-            auto tmod = t->mod;
-            t = new TypeClass(static_cast<::TypeClass*>(t)->sym, Ty);
-            t->mod = tmod;
-        }
-        return t->merge();
-    }
-
-    unsigned short sizeType() override { return sizeof(*this); }
-};
-
-class TypePointer : public ::TypePointer
-{
-public:
-    CALYPSO_LANGPLUGIN
-
-    TypePointer(Type *t)
-        : ::TypePointer(t) {}
-
-    void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv) override
-    {
-        if (!forEquiv)
-            buf->writeByte('~');
-        ::TypePointer::toDecoBuffer(buf, flag, forEquiv);
-    }
-
-    Type *syntaxCopy(Type *o = nullptr) override
-    {
-        TypePointer *t;
-        if (o)
-        {
-            assert(isCPP(o) && o->ty == Tpointer);
-            t = static_cast<TypePointer*>(o);
-        }
-        else
-            t = new TypePointer(nullptr);
-
-        return ::TypePointer::syntaxCopy(t);
-    }
-
-    bool checkTransitiveMod() override { return false; }
-    void transitive() override {}
-
-    Type *makeConst() override
-    {
-        if (cto)
-        {
-            assert(cto->mod == MODconst);
-            return cto;
-        }
-        return Type::makeConst();
-    }
-
-    Type *makeImmutable() override
-    {
-        if (ito)
-        {
-            assert(ito->isImmutable());
-            return ito;
-        }
-        return Type::makeImmutable();
-    }
-
-    unsigned short sizeType() override { return sizeof(*this); }
-};
-
-class TypeReference : public ::TypeReference
-{
-public:
-    CALYPSO_LANGPLUGIN
-
-    TypeReference(Type *t)
-        : ::TypeReference(t) {}
-
-    void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv) override
-    {
-        if (!forEquiv)
-            buf->writeByte('~');
-        ::TypeReference::toDecoBuffer(buf, flag, forEquiv);
-    }
-
-    Type *syntaxCopy(Type *o = nullptr) override
-    {
-        TypeReference *t;
-        if (o)
-        {
-            assert(isCPP(o) && o->ty == Treference);
-            t = static_cast<TypeReference*>(o);
-        }
-        else
-            t = new TypeReference(nullptr);
-
-        return ::TypeReference::syntaxCopy(t);
-    }
-
-    bool checkTransitiveMod() override { return false; }
-    void transitive() override {}
-
-    Type *makeConst() override
-    {
-        if (cto)
-        {
-            assert(cto->mod == MODconst);
-            return cto;
-        }
-        return Type::makeConst();
-    }
-
-    Type *makeImmutable() override
-    {
-        if (ito)
-        {
-            assert(ito->isImmutable());
-            return ito;
-        }
-        return Type::makeImmutable();
-    }
-
-    Type *semantic(Loc loc, Scope *sc) override
-    {
-        auto& Context = calypso.pch.AST->getASTContext();
-
-        auto n = next->semantic(loc, sc);
-        if (n->ty == Tvalueof)
-        {
-            assert(n->nextOf()->ty == Tclass);
-            auto sym = n->nextOf()->isClassHandle();
-            auto RT = Context.getRecordType(getRecordDecl(sym));
-            
-            auto tc = new TypeClass(sym, Context.getLValueReferenceType(RT).getTypePtr());
-            return tc->merge();
-        }
-
-        return ::TypeReference::semantic(loc, sc);
-    }
-
-    unsigned short sizeType() override { return sizeof(*this); }
-};
-
-// Urghh.. so after adding a base DMD TypeValueof I'm adding a Calypso-specific cpp::TypeValueof
-// that needs hooks in DMD's TypePointer and TypeReference, can't get uglier
-// TypeValueof was already a travesty since it can't be transitive, it should get ridden of asap.
-class TypeValueof : public ::TypeValueof
-{
-public:
-    CALYPSO_LANGPLUGIN
-
-    TypeValueof(Type *t)
-        : ::TypeValueof(t) {}
-
-    void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv) override
-    {
-        if (!forEquiv)
-            buf->writeByte('~');
-        ::TypeValueof::toDecoBuffer(buf, flag, forEquiv);
-    }
-
-    Type *syntaxCopy(Type *o = nullptr) override
-    {
-        TypeValueof *t;
-        if (o)
-        {
-            assert(isCPP(o) && o->ty == Tvalueof);
-            t = static_cast<TypeValueof*>(o);
-        }
-        else
-            t = new TypeValueof(nullptr);
-
-        return ::TypeValueof::syntaxCopy(t);
-    }
-
-    Type *makeConst() override
-    {
-        if (cto)
-        {
-            assert(cto->mod == MODconst);
-            return cto;
-        }
-        return Type::makeConst();
-    }
-
-    Type *makeImmutable() override
-    {
-        if (ito)
-        {
-            assert(ito->isImmutable());
-            return ito;
-        }
-        return Type::makeImmutable();
-    }
-
-    clang::QualType getRecordType()
-    {
-        auto& Context = calypso.pch.AST->getASTContext();
-
-        auto RD = getRecordDecl(static_cast<::TypeClass*>(next));
-        auto RT = Context.getRecordType(RD);
-
-        if (isConst() || isImmutable())
-            return RT.withConst();
-        else
-            return RT;
-    }
-
-    Type *makePointer() override
-    {
-        auto& Context = calypso.pch.AST->getASTContext();
-
-        if (next->ty == Tclass)
-        {
-            auto tc = static_cast<::TypeClass*>(next);
-            auto Ty = Context.getPointerType(getRecordType());
-            return new cpp::TypeClass(tc->sym, Ty.getTypePtr());
-        }
-
-        return ::Type::makePointer();
-    }
-
-    Type *makeReference() override
-    {
-        auto& Context = calypso.pch.AST->getASTContext();
-
-        if (next->ty == Tclass)
-        {
-            auto tc = static_cast<::TypeClass*>(next);
-            auto Ty = Context.getLValueReferenceType(getRecordType());
-            return new cpp::TypeClass(tc->sym, Ty.getTypePtr());
-        }
-
-        return ::Type::makeReference();
-    }
-
-    unsigned short sizeType() override { return sizeof(*this); }
-};
-
-const clang::Type *getMappedType(Type *t)
-{
-    if (!isCPP(t))
-        return nullptr;
-
-    switch (t->ty)
-    {
-        case Tclass: return static_cast<cpp::TypeClass*>(t)->Ty;
-        case Tident: return static_cast<cpp::TypeIdentifier*>(t)->Ty;
-        case Tinstance: return static_cast<cpp::TypeInstance*>(t)->Ty;
-        case Ttypeof: return static_cast<cpp::TypeTypeof*>(t)->Ty;
-        default: return nullptr;
-    }
-}
-
-Type *setMappedType(Type *t, const clang::Type *Ty)
-{
-    if (!isCPP(t) && t->ty != Tclass)
-        return t;
-
-    switch (t->ty)
-    {
-        case Tclass:
-        {
-            auto tc = static_cast<::TypeClass*>(t);
-            if (!isCPP(t))
-            {
-                auto mod = t->mod;
-                t = new cpp::TypeClass(tc->sym, Ty);
-                t->mod = mod;
-            }
-            else
-                static_cast<cpp::TypeClass*>(t)->Ty = Ty;
-            break;
-        }
-        case Tident:
-        {
-            auto tid = static_cast<::TypeIdentifier*>(t);
-            if (!isCPP(t))
-                t = t->syntaxCopy(new cpp::TypeIdentifier(tid->loc, tid->ident));
-            else
-                static_cast<cpp::TypeIdentifier*>(t)->Ty = Ty;
-            break;
-        }
-        case Tinstance:
-        {
-            auto tid = static_cast<::TypeInstance*>(t);
-            if (!isCPP(t))
-                t = t->syntaxCopy(new cpp::TypeInstance(tid->loc, tid->tempinst));
-            else
-                static_cast<cpp::TypeInstance*>(t)->Ty = Ty;
-            break;
-        }
-        case Ttypeof:
-        {
-            auto tid = static_cast<::TypeTypeof*>(t);
-            if (!isCPP(t))
-                t = t->syntaxCopy(new cpp::TypeTypeof(tid->loc, tid->exp));
-            else
-                static_cast<cpp::TypeTypeof*>(t)->Ty = Ty;
-            break;
-        }
-        default:  break;
-    }
-    return t;
-}
-
-namespace
-{
-    inline Type *pointerTo(Type *t) { return (new TypePointer(t))->merge(); }
 }
 
 //  There are a few D builtin types that are mapped to several C++ ones, such as wchar_t/dchar <=> wchar_t. Even though they're the same, we have to differentiate them (e.g char_traits<wchar_t>char_traits<char32>) or else two template instances might have different tempdecl while their aggregate member get the same deco
@@ -693,23 +227,6 @@ bool isNonSupportedType(clang::QualType T)
     return false;
 }
 
-bool isClassReferenceType(const clang::QualType T)
-{
-    auto Pointee = T->getPointeeType();
-    if (Pointee.isNull())
-        return false;
-    return isNonPODRecord(Pointee);
-}
-
-// As soon as the type is or might be a non-POD record, wrap it in TypeValueof
-inline static Type *adjustAggregateType(Type *t, const clang::RecordDecl *RD = nullptr)
-{
-    if (t && (!RD || RD->isDependentType() || isNonPODRecord(RD)))
-        return new TypeValueof(t);
-    else
-        return t;
-}
-
 inline bool isTypeQualifed(Type *t)
 {
     return t->ty == Tident || t->ty == Tinstance || t->ty == Ttypeof || t->ty == Treturn;
@@ -810,18 +327,10 @@ Type *TypeMapper::FromType::fromTypeUnqual(const clang::Type *T)
             return nullptr;
 
         Type *t;
-        if (pt->ty == Tvalueof)
-        {
-            for (t = pt; t->ty == Tvalueof;)
-                t = t->nextOf();
-            t = setMappedType(t->nullAttributes(), T); // WARNING: TypeValueof(TypeClass) is a mess and a maze, it's hard to follow what really happens
-            assert(getMappedType(t) == T);
-        }
-        else if (Pointer)
+        if (Pointer)
             t = new TypePointer(pt);
         else
             t = new TypeReference(pt);
-
         return t->merge();
     }
 
@@ -881,7 +390,7 @@ Type* TypeMapper::FromType::fromTypeArray(const clang::ArrayType* T)
     }
     else if (auto IAT = dyn_cast<clang::IncompleteArrayType>(T))
     {
-        return pointerTo(t);
+        return new TypePointer(t);
     }
 
     llvm::llvm_unreachable_internal("Unrecognized C++ array type");
@@ -1415,8 +924,7 @@ Type* TypeMapper::FromType::fromTypeEnum(const clang::EnumType* T)
 
 Type *TypeMapper::FromType::fromTypeRecord(const clang::RecordType *T)
 {
-    return adjustAggregateType(typeQualifiedFor(T->getDecl()),
-                    T->getDecl());
+    return typeQualifiedFor(T->getDecl());
 }
 
 Type *TypeMapper::FromType::fromTypeElaborated(const clang::ElaboratedType *T)
@@ -1639,7 +1147,7 @@ TypeQualified *TypeMapper::FromType::fromTemplateName(const clang::TemplateName 
 static Type *fromInjectedClassName(const clang::RecordDecl *RD)
 {
     auto className = fromIdentifier(RD->getIdentifier());
-    return adjustAggregateType(new TypeIdentifier(Loc(), className), RD);
+    return new TypeIdentifier(Loc(), className);
 }
 
 Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::TemplateSpecializationType* T)
@@ -1680,23 +1188,9 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
             if (!ti->completeInst(true))
                 return nullptr;
         }
-
-        if (!T->isTypeAlias())
-        {
-            const clang::RecordDecl *RD;
-            if (RT)
-                RD = RT->getDecl();
-            else
-            {
-                auto ICNT = T->castAs<clang::InjectedClassNameType>();
-                RD = ICNT->getDecl();
-            }
-
-            return adjustAggregateType(tqual, RD);
-        }
     }
 
-    return adjustAggregateType(tqual);
+    return tqual;
 }
 
 Identifier *TypeMapper::getIdentifierForTemplateTypeParm(const clang::TemplateTypeParmType *T)
@@ -1827,8 +1321,6 @@ TypeQualified *TypeMapper::FromType::fromNestedNameSpecifierImpl(const clang::Ne
             auto t = fromTypeUnqual(NNS->getAsType());
             if (!t)
                 return nullptr;
-            if (t->ty == Tvalueof)
-                t = t->nextOf();
             assert(t->ty == Tinstance || t->ty == Tident || t->ty == Ttypeof);
             result = (TypeQualified*) t;
             break;
@@ -1871,7 +1363,7 @@ Type* TypeMapper::FromType::fromTypeDependentName(const clang::DependentNameType
     else
         tqual->addIdent(ident);
 
-    return adjustAggregateType(tqual);
+    return tqual;
 }
 
 Type* TypeMapper::FromType::fromTypeDependentTemplateSpecialization(const clang::DependentTemplateSpecializationType* T)
@@ -1892,7 +1384,7 @@ Type* TypeMapper::FromType::fromTypeDependentTemplateSpecialization(const clang:
     else
         tqual->addInst(tempinst);
 
-    return adjustAggregateType(tqual);
+    return tqual;
 }
 
 template <typename _Type>
@@ -2283,28 +1775,15 @@ clang::QualType TypeMapper::toType(Loc loc, Type* t, Scope *sc, StorageClass stc
 
     t = t->merge2();
 
-    if (auto OrigTy = getMappedType(t))
-        return clang::QualType(OrigTy, 0);
-
     if (auto builtin = calypso.builtinTypes.toClang[t])
         return clang::QualType(builtin, 0);
 
     switch (t->ty)
     {
         case Tstruct:
-        {
-            return Context.getRecordType(getRecordDecl(t));
-        }
         case Tclass:
         {
-            auto RT = Context.getRecordType(getRecordDecl(t));
-            return Context.getPointerType(RT);
-        }
-        case Tvalueof:
-        {
-            auto Ty = toType(loc, t->nextOf(), sc, stc);
-            auto CVR = Ty.getCVRQualifiers();
-            return Ty->getPointeeType().withCVRQualifiers(CVR);
+            return Context.getRecordType(getRecordDecl(t));
         }
         case Tenum:
         {

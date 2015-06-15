@@ -244,7 +244,10 @@ std::vector<llvm::Type*> IrTypeClass::buildVtblType(Type* first, FuncDeclaration
 
 llvm::Type * IrTypeClass::getLLType()
 {
-    return llvm::PointerType::get(type, 0);
+    if (tc->byRef())
+        return llvm::PointerType::get(type, 0);
+    else
+        return type;
 }
 
 //////////////////////////////////////////////////////////////////////////////

@@ -11,6 +11,7 @@
 #include "gen/functions.h"
 #include "gen/logger.h"
 #include "gen/irstate.h"
+#include "gen/classes.h"
 #include "ir/irfunction.h"
 #include "gen/llvmhelpers.h"
 #include "ir/irtype.h"
@@ -63,7 +64,6 @@ void LangPlugin::leaveModule()
     if (!getASTUnit())
         return;
 
-    auto& Context = getASTContext();
     CGM->Release();
     CGM.reset();
 }
@@ -257,14 +257,12 @@ void LangPlugin::buildGEPIndices(IrTypeAggr *irTyAgrr,
 
 void LangPlugin::toInitClass(TypeClass* tc, LLValue* dst)
 {
-    auto& Context = getASTContext();
-
     uint64_t const dataBytes = tc->sym->structsize;
     if (dataBytes == 0)
         return;
 
     LLValue* initsym = getIrAggr(tc->sym)->getInitSymbol();
-    initsym = DtoBitCast(initsym, DtoType(tc));
+    initsym = DtoBitCast(initsym, DtoClassHandleType(tc));
 
     DtoMemCpy(dst, initsym, DtoConstSize_t(dataBytes));
 }
@@ -307,7 +305,6 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
     auto fd = dfnval->func;
 
     // get function type info
-    IrFuncTy &irFty = DtoIrTypeFunction(fnval);
     TypeFunction* tf = DtoTypeFunction(fnval);
 
     // get callee llvm value
@@ -322,8 +319,6 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
     auto MD = llvm::dyn_cast<const clang::CXXMethodDecl>(FD);
 
     auto This = MD ? dfnval->vthis : nullptr;
-
-    const clang::FunctionProtoType *FPT = FD->getType()->castAs<clang::FunctionProtoType>();
 
     auto Dtor = llvm::dyn_cast<clang::CXXDestructorDecl>(FD);
     if (Dtor && Dtor->isVirtual())
@@ -352,9 +347,10 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
         assert(fnarg);
         DValue* argval = DtoArgument(fnarg, arguments->data[i]);
 
-        auto ArgTy = TypeMapper().toType(loc, fnarg->type,
+        auto argty = fnarg->type;
+        auto ArgTy = TypeMapper().toType(loc, argty,
                                         fd->scope, fnarg->storageClass);
-        if (fnarg->type->ty == Tvalueof)
+        if (argty->ty == Tstruct || (argty->ty == Tclass && !static_cast<::TypeClass*>(argty)->byRef()))
         {
 //             llvm::Value *tmp = CGF()->CreateMemTemp(type);
 //             CGF()->EmitAggregateCopy(tmp, L.getAddress(), type, /*IsVolatile*/false,
@@ -510,8 +506,6 @@ void LangPlugin::toDefineVariable(::VarDeclaration* vd)
 
 void LangPlugin::toDefineTemplateInstance(::TemplateInstance *inst)
 {
-    auto& Context = getASTContext();
-
     auto c_ti = static_cast<cpp::TemplateInstance *>(inst);
 
     if (auto CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(c_ti->Inst))

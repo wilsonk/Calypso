@@ -153,7 +153,6 @@ protected:
 
 bool isNonPODRecord(const clang::QualType T);
 bool isNonSupportedType(clang::QualType T);
-bool isClassReferenceType(const clang::QualType T);
 const clang::DeclContext *getDeclContextNamedOrTU(const clang::Decl *D); // to skip LinkageSpec
 const clang::NamedDecl *getTemplateSpecializedDecl(const clang::ClassTemplateSpecializationDecl *Spec);
 const clang::TagDecl *isAnonTagTypedef(const clang::TypedefNameDecl* D);

@@ -451,7 +451,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
     }
     else if (isa<clang::CXXScalarValueInitExpr>(E))
     {
-        if (isClassReferenceType(E->getType()))
+        if (E->getType()->getAs<clang::ReferenceType>())
             return new NullExp(loc);
 
         t = tymap.fromType(E->getType().withoutLocalFastQualifiers());
@@ -465,7 +465,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
         if (!e)
             return nullptr;
 
-        if (isClassReferenceType(Ty) && e->op == TOKnull)
+        if (Ty->getAs<clang::ReferenceType>() && e->op == TOKnull)
             return nullptr; // FIXME once we may finally pass rvalues to ref arguments
                     // for other types there are workarounds but for null class references
                     // I couldn't find any way to turn them into lvalues.

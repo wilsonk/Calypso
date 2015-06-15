@@ -38,7 +38,7 @@ bool DtoIsPassedByRef(Type* type)
 {
     Type* typ = type->toBasetype();
     TY t = typ->ty;
-    return (t == Tstruct || t == Tsarray);
+    return (t == Tstruct || t == Tsarray || isClassValue(type));
 }
 
 RET retStyle(TypeFunction *tf)
@@ -166,11 +166,6 @@ LLType* DtoType(Type* t)
             return tc->sym->type->ctype->getLLType();
         }
         return IrTypeClass::get(tc->sym)->getLLType();
-    }
-
-    case Tvalueof: // CALYPSO
-    {
-        return IrTypeValueof::get(t)->getLLType();
     }
 
     // functions

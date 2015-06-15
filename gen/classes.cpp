@@ -32,6 +32,27 @@
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
+// CALYPSO
+LLValue *DtoClassHandle(DValue *val)
+{
+    assert(val->type->ty == Tclass);
+    auto tc = static_cast<TypeClass*>(val->type);
+    if (tc->byRef())
+        return val->getRVal();
+    else
+        return val->getLVal();
+}
+
+DValue *DtoClassDValue(Type *t, LLValue *v)
+{
+    assert(t->ty == Tclass);
+    auto tc = static_cast<TypeClass*>(t);
+    if (tc->byRef())
+        return new DImValue(t, v);
+    else
+        return new DVarValue(t, v);
+}
+
 // FIXME: this needs to be cleaned up
 
 void DtoResolveClass(ClassDeclaration* cd)
@@ -84,6 +105,12 @@ void DtoResolveAggregate(AggregateDeclaration* ad) // CALYPSO
         DtoResolveStruct(static_cast<StructDeclaration*>(ad));
 }
 
+LLType* DtoClassHandleType(TypeClass *tc) // CALYPSO
+{
+    auto Ty = DtoType(tc);
+    return tc->byRef() ? Ty : Ty->getPointerTo();
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////
 
 DValue* DtoNewClass(Loc& loc, TypeClass* tc, NewExp* newexp)
@@ -96,7 +123,7 @@ DValue* DtoNewClass(Loc& loc, TypeClass* tc, NewExp* newexp)
     if (newexp->onstack)
     {
         // FIXME align scope class to its largest member
-        mem = DtoRawAlloca(DtoType(tc)->getContainedType(0), 0, ".newclass_alloca");
+        mem = DtoRawAlloca(DtoClassHandleType(tc)->getContainedType(0), 0, ".newclass_alloca");
     }
     // custom allocator
     else if (newexp->allocator)
@@ -104,7 +131,7 @@ DValue* DtoNewClass(Loc& loc, TypeClass* tc, NewExp* newexp)
         DtoResolveFunction(newexp->allocator);
         DFuncValue dfn(newexp->allocator, getIrFunc(newexp->allocator)->func);
         DValue* res = DtoCallFunction(newexp->loc, NULL, &dfn, newexp->newargs);
-        mem = DtoBitCast(res->getRVal(), DtoType(tc), ".newclass_custom");
+        mem = DtoBitCast(res->getRVal(), DtoClassHandleType(tc), ".newclass_custom");
     }
     // default allocator
     else
@@ -112,7 +139,7 @@ DValue* DtoNewClass(Loc& loc, TypeClass* tc, NewExp* newexp)
         llvm::Function* fn = LLVM_D_GetRuntimeFunction(loc, gIR->module, "_d_newclass");
         LLConstant* ci = DtoBitCast(getIrAggr(tc->sym)->getClassInfoSymbol(), DtoType(Type::typeinfoclass->type));
         mem = gIR->CreateCallOrInvoke(fn, ci, ".newclass_gc_alloc").getInstruction();
-        mem = DtoBitCast(mem, DtoType(tc), ".newclass_gc");
+        mem = DtoBitCast(mem, DtoClassHandleType(tc), ".newclass_gc");
     }
 
     // init
@@ -146,7 +173,7 @@ DValue* DtoNewClass(Loc& loc, TypeClass* tc, NewExp* newexp)
         /*return */DtoCallFunction(newexp->loc, tc, &dfn, newexp->arguments); // CALYPSO WARNING: was the return really needed? The return value is expected to be "this" but Clang doesn't return it
     }
 
-    DValue *result = new DImValue(tc, mem);
+    DValue *result = new DImValue(tc->sym->handleType(), mem); // CALYPSO
 
     // CALYPSO NOTE: while LDC set the vptr inside DtoInitClass, Clang makes the ctor sets it
     // So here, after the ctor call is the most natural place to make the C++ vptrs "mature" to the derived class vptrs
@@ -224,46 +251,31 @@ DValue* DtoCastClass(Loc& loc, DValue* val, Type* _to)
 
     Type* to = _to->toBasetype();
 
+    // get class ptr
+    LLValue *v = DtoClassHandle(val); // CALYPSO
+
     // class -> pointer
     if (to->ty == Tpointer) {
         IF_LOG Logger::println("to pointer");
         LLType* tolltype = DtoType(_to);
-        LLValue* rval = DtoBitCast(val->getRVal(), tolltype);
+        LLValue* rval = DtoBitCast(v, tolltype);
         return new DImValue(_to, rval);
     }
     // class -> bool
     else if (to->ty == Tbool) {
         IF_LOG Logger::println("to bool");
-        LLValue* llval = val->getRVal();
-        LLValue* zero = LLConstant::getNullValue(llval->getType());
-        return new DImValue(_to, gIR->ir->CreateICmpNE(llval, zero));
+        LLValue* zero = LLConstant::getNullValue(v->getType());
+        return new DImValue(_to, gIR->ir->CreateICmpNE(v, zero));
     }
     // class -> integer
     else if (to->isintegral()) {
         IF_LOG Logger::println("to %s", to->toChars());
 
-        // get class ptr
-        LLValue* v = val->getRVal();
         // cast to size_t
         v = gIR->ir->CreatePtrToInt(v, DtoSize_t(), "");
         // cast to the final int type
         DImValue im(Type::tsize_t, v);
         return DtoCastInt(loc, &im, _to);
-    }
-    // class reference -> class value (CALYPSO)
-    else if (to->ty == Tvalueof) {
-        IF_LOG Logger::println("to class value");
-
-        assert(to->nextOf()->ty == Tclass);
-        TypeClass *tc = static_cast<TypeClass*>(to->nextOf());
-
-        if (tc->equals(val->getType()->toBasetype())) {
-            return val; // NOTE: casting to the same class will result in a dynamic cast not supported yet by Calypso
-        } else {
-            DValue* dv =  DtoCastClass(loc, val, to->nextOf());
-            dv->type = to; // HACK-ish, handled in cpptoir.cpp
-            return dv;
-        }
     }
 
     // must be class/interface
@@ -273,7 +285,7 @@ DValue* DtoCastClass(Loc& loc, DValue* val, Type* _to)
     // from type
     Type* from = val->getType()->toBasetype();
     TypeClass* fc = static_cast<TypeClass*>(from);
-
+    
     // x -> interface
     if (InterfaceDeclaration* it = tc->sym->isInterfaceDeclaration()) {
         Logger::println("to interface");
@@ -335,19 +347,18 @@ DValue* DtoCastClass(Loc& loc, DValue* val, Type* _to)
         // class -> class - static down cast
         else if (tc->sym->isBaseOf(fc->sym, &offset)) {
             Logger::println("static down cast");
-            LLType* tolltype = DtoType(_to);
+            LLType* tolltype = DtoClassHandleType(tc); // CALYPSO previously _to
             // CALYPSO
-            LLValue* rval = DtoBitCast(val->getRVal(),
+            LLValue* rval = DtoBitCast(DtoClassHandle(val),
                                        llvm::Type::getInt8PtrTy(gIR->context()));
-            if (offset)
-            {
+            if (offset) {
                 auto baseOffset =
                     llvm::ConstantInt::get(DtoType(Type::tptrdiff_t), offset);
                 rval = gIR->ir->CreateInBoundsGEP(rval,
                                                   baseOffset, "add.ptr");
             }
             rval = DtoBitCast(rval, tolltype);
-            return new DImValue(_to, rval);
+            return DtoClassDValue(tc, rval);
         }
         // class -> class - dynamic up cast
         else {
@@ -467,7 +478,7 @@ LLValue* DtoVirtualFunctionPointer(DValue* inst, FuncDeclaration* fdecl, char* n
     assert(inst->getType()->toBasetype()->ty == Tclass);
 
     // get instance
-    LLValue* vthis = inst->getRVal();
+    LLValue* vthis = DtoClassHandle(inst); // CALYPSO
     IF_LOG Logger::cout() << "vthis: " << *vthis << '\n';
     
     // CALYPSO

@@ -93,7 +93,7 @@ LLGlobalVariable * IrAggr::getClassInfoSymbol()
     if (classdecl && !aggrdecl->isInterfaceDeclaration()) {
         // Gather information
         LLType* type = DtoType(aggrdecl->type);
-        LLType* bodyType = llvm::cast<LLPointerType>(type)->getElementType();
+        LLType* bodyType = classdecl->byRef() ? llvm::cast<LLPointerType>(type)->getElementType() : type; // CALYPSO
         bool hasDestructor = (classdecl->dtor != NULL);
         bool hasCustomDelete = (classdecl->aggDelete != NULL);
         // Construct the fields

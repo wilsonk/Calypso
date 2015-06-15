@@ -68,7 +68,6 @@ class TypeDArray;
 class TypeAArray;
 class TypePointer;
 class TypeReference;
-class TypeValueof;
 class TypeFunction;
 class TypeDelegate;
 class TypeQualified;
@@ -345,7 +344,6 @@ public:
     virtual void visit(TypeAArray *t) { visit((TypeArray *)t); }
     virtual void visit(TypePointer *t) { visit((TypeNext *)t); }
     virtual void visit(TypeReference *t) { visit((TypeNext *)t); }
-    virtual void visit(TypeValueof *t) { visit((TypeNext *)t); }
     virtual void visit(TypeFunction *t) { visit((TypeNext *)t); }
     virtual void visit(TypeDelegate *t) { visit((TypeNext *)t); }
     virtual void visit(TypeQualified *t) { visit((Type *)t); }

@@ -4791,8 +4791,6 @@ Lagain:
     else
     {
         type = newtype->semantic(loc, sc);
-        if (type->ty == Tvalueof)  // CALYPSO
-            type = type->nextOf();
         if (type->ty == Terror)
             goto Lerr;
     }
@@ -4985,6 +4983,9 @@ Lagain:
                 goto Lerr;
             }
         }
+
+        if (!tc->byRef())
+            type = type->pointerTo();
     }
     else if (tb->ty == Tstruct)
     {
@@ -8459,15 +8460,13 @@ Lagain:
     // Check for call operator overload
     if (t1)
     {
-        AggregateDeclaration *ad;
-        if (t1->ty == Tstruct)
+        AggregateDeclaration *ad = getAggregateSym(t1);
+        if (ad && !ad->byRef()) // CALYPSO
         {
-            ad = ((TypeStruct *)t1)->sym;
-
             // First look for constructor
             if (e1->op == TOKtype && ad->ctor)
             {
-                if (!ad->noDefaultCtor && !(arguments && arguments->dim))
+                if (t1->ty == Tstruct && !ad->noDefaultCtor && !(arguments && arguments->dim)) // CALYPSO
                     goto Lx;
 
                 // Create variable that will get constructed
@@ -8476,6 +8475,7 @@ Lagain:
                 ExpInitializer *ei = NULL;
                 if (t1->needsNested())
                 {
+                    assert(ad->isStructDeclaration()); // CALYPSO
                     StructDeclaration *sd = (StructDeclaration *)ad;
                     StructLiteralExp *sle = new StructLiteralExp(loc, sd, NULL, e1->type);
                     if (!sd->fill(loc, sle->elements, true))
@@ -8526,13 +8526,15 @@ Lagain:
             /* It's a struct literal
              */
         Lx:
+            if (t1->ty != Tstruct)
+                goto L1; // CALYPSO FIXME more grace
+
             Expression *e = new StructLiteralExp(loc, (StructDeclaration *)ad, arguments, e1->type);
             e = e->semantic(sc);
             return e;
         }
         else if (t1->ty == Tclass)
         {
-            ad = ((TypeClass *)t1)->sym;
             goto L1;
         L1:
             // Rewrite as e1.call(arguments)

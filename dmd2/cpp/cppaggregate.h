@@ -54,6 +54,7 @@ public:
     bool isBaseOf(::ClassDeclaration* cd, int* poffset) override;
     void interfaceSemantic(Scope *sc) override;
     
+    bool byRef() override { return false; }
     bool allowMultipleInheritance() override { return true; }
     bool allowInheritFromStruct() override { return true; }
     void makeNested() override;

@@ -24,11 +24,17 @@ class FuncDeclaration;
 class NewExp;
 class TypeClass;
 
+/// CALYPSO
+llvm::Value* DtoClassHandle(DValue* val);
+DValue *DtoClassDValue(Type *t, LLValue *v);
+
 /// Resolves the llvm type for a class declaration
 void DtoResolveClass(ClassDeclaration* cd);
 
 // CALYPSO
 void DtoResolveAggregate(AggregateDeclaration* ad);
+
+LLType* DtoClassHandleType(TypeClass *tc);
 
 /// Provides the llvm declaration for a class declaration
 void DtoDeclareClass(ClassDeclaration* cd);

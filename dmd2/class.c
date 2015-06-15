@@ -392,8 +392,6 @@ void ClassDeclaration::semantic(Scope *sc)
         {
             BaseClass *b = (*baseclasses)[0];
             Type *tb = b->type->toBasetype();
-            if (tb->ty == Tvalueof)
-                tb = tb->nextOf();
             TypeClass *tc = (tb->ty == Tclass) ? (TypeClass *)tb : NULL;
             TypeStruct *ts = (allowInheritFromStruct() && (tb->ty == Tstruct)) ? (TypeStruct *)tb : NULL; // CALYPSO
 
@@ -474,8 +472,6 @@ void ClassDeclaration::semantic(Scope *sc)
         {
             BaseClass *b = (*baseclasses)[i];
             Type *tb = b->type->toBasetype();
-            if (tb->ty == Tvalueof)
-                tb = tb->nextOf();
             TypeClass *tc = (tb->ty == Tclass) ? (TypeClass *)tb : NULL;
             TypeStruct *ts = (allowInheritFromStruct() && (tb->ty == Tstruct)) ? (TypeStruct *)tb : NULL;
             if ((!tc && !ts) ||  // CALYPSO
@@ -866,6 +862,17 @@ Lancestorsdone:
     }
     structsize = offset;
     sizeok = SIZEOKdone;
+
+    if (!byRef()) // CALYPSO
+    {
+        // Round struct size up to next alignsize boundary.
+        // This will ensure that arrays of structs will get their internals
+        // aligned properly.
+//         if (alignment == STRUCTALIGN_DEFAULT)
+            structsize = (structsize + alignsize - 1) & ~(alignsize - 1);
+//         else
+//             structsize = (structsize + alignment - 1) & ~(alignment - 1);
+    }
 
     Module::dprogress++;
     semanticRun = PASSsemanticdone;
