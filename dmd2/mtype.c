@@ -9001,6 +9001,9 @@ MATCH TypeClass::implicitConvTo(Type *to)
     if (m > MATCHnomatch)
         return m;
 
+    if (byRef() && isClassValueHandle(to))
+        to = to->nextOf(); // CALYPSO downcast from DCXX class to C++ base ptr/ref
+
     ClassDeclaration *cdto = to->isClassHandle();
     if (cdto)
     {
@@ -9037,6 +9040,8 @@ MATCH TypeClass::constConv(Type *to)
 
     /* Conversion derived to const(base)
      */
+    if (byRef() && isClassValueHandle(to))
+        to = to->nextOf(); // CALYPSO downcast from DCXX class to C++ base ptr/ref
     int offset = 0;
     if (to->isBaseOf(this, &offset) && offset == 0 &&
         MODimplicitConv(mod, to->mod))
@@ -9804,6 +9809,12 @@ bool isClassValue(Type *t)
     if (t->ty != Tclass) return false;
     TypeClass* tc = (TypeClass*)t;
     return !tc->byRef();
+}
+
+bool isClassValueHandle(Type *t)
+{
+    if (t->ty != Tpointer && t->ty != Treference) return false;
+    return isClassValue(t->nextOf());
 }
 
 LangPlugin* Type::langPlugin()

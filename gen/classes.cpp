@@ -251,6 +251,13 @@ DValue* DtoCastClass(Loc& loc, DValue* val, Type* _to)
 
     Type* to = _to->toBasetype();
 
+    // from type
+    Type* from = val->getType()->toBasetype();
+    TypeClass* fc = static_cast<TypeClass*>(from);
+
+    if (fc->byRef() && isClassValueHandle(to)) // CALYPSO
+        to = to->nextOf();
+
     // get class ptr
     LLValue *v = DtoClassHandle(val); // CALYPSO
 
@@ -281,10 +288,6 @@ DValue* DtoCastClass(Loc& loc, DValue* val, Type* _to)
     // must be class/interface
     assert(to->ty == Tclass);
     TypeClass* tc = static_cast<TypeClass*>(to);
-
-    // from type
-    Type* from = val->getType()->toBasetype();
-    TypeClass* fc = static_cast<TypeClass*>(from);
     
     // x -> interface
     if (InterfaceDeclaration* it = tc->sym->isInterfaceDeclaration()) {
