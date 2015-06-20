@@ -470,7 +470,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
                     // for other types there are workarounds but for null class references
                     // I couldn't find any way to turn them into lvalues.
 
-        if (!e->isLvalue() && !isNonPODRecord(Ty))
+        if (!e->isLvalue())
         {
             if (Ty->getAs<clang::RecordType>())
             {
@@ -509,10 +509,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
         for (auto Arg: CCE->arguments())
             args->push(fromExpression(Arg));
 
-        if (isNonPODRecord(E->getType()))
-            e = new NewExp(loc, nullptr, nullptr, t, args);
-        else // structs
-            e = new CallExp(loc, new TypeExp(loc, t), args);
+        e = new CallExp(loc, new TypeExp(loc, t), args);
     }
     else if (auto CNE = dyn_cast<clang::CXXNewExpr>(E))
     {
@@ -529,8 +526,6 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
         }
 
         e = new NewExp(loc, nullptr, nullptr, t, args);
-        if (isNonPODRecord(E->getType()))
-            e = new AddrExp(loc, e);
     }
 
 
