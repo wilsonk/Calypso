@@ -74,12 +74,9 @@ Expression *getRightThis(Loc loc, Scope *sc, AggregateDeclaration *ad,
 {
     //printf("\ngetRightThis(e1 = %s, ad = %s, var = %s)\n", e1->toChars(), ad->toChars(), var->toChars());
 
-    // CALYPSO
-    if (auto lp = ad->langPlugin())
-    {
+    if (auto lp = ad->langPlugin()) // CALYPSO
         if (auto result = lp->getRightThis(loc, sc, ad, e1, var, flag))
             return result;
-    }
 
  L1:
     Type *t = e1->type->toBasetype();

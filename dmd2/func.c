@@ -541,7 +541,7 @@ void FuncDeclaration::semantic(Scope *sc)
             }
             tf->next = tret;
 
-            if (ad && ad->isStructDeclaration())
+            if (ad && !ad->byRef()) // CALYPSO
                 sc->stc |= STCref;
         }
 
@@ -2479,7 +2479,7 @@ VarDeclaration *FuncDeclaration::declareThis(Scope *sc, AggregateDeclaration *ad
             thandle = thandle->addStorageClass(storage_class);
             v = new ThisDeclaration(loc, thandle);
             v->storage_class |= STCparameter;
-            if (thandle->ty == Tstruct)
+            if (thandle->ty == Tstruct || isClassValue(thandle)) // CALYPSO
                 v->storage_class |= STCref;
             v->semantic(sc);
             if (!sc->insert(v))

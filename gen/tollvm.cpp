@@ -38,7 +38,7 @@ bool DtoIsPassedByRef(Type* type)
 {
     Type* typ = type->toBasetype();
     TY t = typ->ty;
-    return (t == Tstruct || t == Tsarray || isClassValue(type));
+    return (t == Tstruct || t == Tsarray || isClassValue(type)); // CALYPSO
 }
 
 RET retStyle(TypeFunction *tf)

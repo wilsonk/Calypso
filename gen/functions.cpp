@@ -112,7 +112,8 @@ llvm::FunctionType* DtoFunctionType(Type* type, IrFuncTy &irFty, Type* thistype,
         if (isCtor)
             attrBuilder.add(LDC_ATTRIBUTE(Returned));
 #endif
-        newIrFty.arg_this = new IrFuncTyArg(thistype, thistype->toBasetype()->ty == Tstruct, attrBuilder);
+        Type *t = thistype->toBasetype();
+        newIrFty.arg_this = new IrFuncTyArg(thistype, t->ty == Tstruct || isClassValue(t), attrBuilder);
         lidx++;
     }
 
@@ -382,7 +383,7 @@ llvm::FunctionType* DtoFunctionType(FuncDeclaration* fdecl)
             dthis = ad->type;
             LLType* thisty = DtoType(dthis);
             //Logger::cout() << "this llvm type: " << *thisty << '\n';
-            if (ad->isStructDeclaration())
+            if (!ad->byRef()) // CALYPSO
                 thisty = getPtrToType(thisty);
         }
         else {

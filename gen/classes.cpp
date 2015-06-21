@@ -173,7 +173,7 @@ DValue* DtoNewClass(Loc& loc, TypeClass* tc, NewExp* newexp)
         /*return */DtoCallFunction(newexp->loc, tc, &dfn, newexp->arguments); // CALYPSO WARNING: was the return really needed? The return value is expected to be "this" but Clang doesn't return it
     }
 
-    DValue *result = new DImValue(tc->sym->handleType(), mem); // CALYPSO
+    DValue *result = new DImValue(newexp->type, mem); // CALYPSO
 
     // CALYPSO NOTE: while LDC set the vptr inside DtoInitClass, Clang makes the ctor sets it
     // So here, after the ctor call is the most natural place to make the C++ vptrs "mature" to the derived class vptrs

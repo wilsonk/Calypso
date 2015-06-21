@@ -344,7 +344,7 @@ void ClassDeclaration::buildLayout()
 Expression *LangPlugin::getRightThis(Loc loc, Scope *sc, ::AggregateDeclaration *ad,
         Expression *e1, Declaration *var, int)
 {
-    if (!ad->isClassDeclaration())
+    if (!ad->isClassDeclaration()) // FIXME handle 2nd, 3rd etc. struct base, or revert the inherit from struct commit
         return nullptr;
 
     auto cd = static_cast<cpp::ClassDeclaration*>(ad);
