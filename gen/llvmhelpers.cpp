@@ -338,7 +338,7 @@ void DtoAssign(Loc& loc, DValue* lhs, DValue* rhs, int op, bool canSkipPostblit)
     if (t->ty == Tbool) {
         DtoStoreZextI8(rhs->getRVal(), lhs->getLVal());
     }
-    else if (t->ty == Tstruct) {
+    else if (t->ty == Tstruct || isClassValue(t)) { // CALYPSO
         llvm::Value* src = rhs->getRVal();
         llvm::Value* dst = lhs->getLVal();
 
