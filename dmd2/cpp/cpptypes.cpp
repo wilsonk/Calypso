@@ -1467,6 +1467,13 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
         if (!at)
             return nullptr;
 
+        // Turn a TypeReference into « ref nextOf() » as early as possible as this helps function resolving
+        if (at->ty == Treference)
+        {
+            stc |= STCref;
+            at = at->nextOf();
+        }
+
         if (FD)
         {
             ident = getIdentifierOrNull(*PI);
@@ -1504,6 +1511,11 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
     auto rt = FromType(tm)(T->getReturnType());
     if (!rt)
         return nullptr;
+    if (rt->ty == Treference)
+    {
+        stc |= STCref;
+        rt = rt->nextOf();
+    }
 
     auto tf = new TypeFunction(params, rt, 0, LINKd, stc);
     tf = static_cast<TypeFunction*>(tf->addSTC(stc));
