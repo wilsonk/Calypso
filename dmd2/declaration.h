@@ -343,9 +343,9 @@ public:
 class SymbolDeclaration : public Declaration
 {
 public:
-    StructDeclaration *dsym;
+    AggregateDeclaration *dsym;
 
-    SymbolDeclaration(Loc loc, StructDeclaration *dsym);
+    SymbolDeclaration(Loc loc, AggregateDeclaration *dsym); // CALYPSO
 
     // Eliminate need for dynamic_cast
     SymbolDeclaration *isSymbolDeclaration() { return (SymbolDeclaration *)this; }

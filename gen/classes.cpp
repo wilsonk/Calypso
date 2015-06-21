@@ -102,7 +102,10 @@ void DtoResolveAggregate(AggregateDeclaration* ad) // CALYPSO
     if (auto cd = ad->isClassDeclaration())
         DtoResolveClass(cd);
     else
+    {
+        assert(ad->isStructDeclaration());
         DtoResolveStruct(static_cast<StructDeclaration*>(ad));
+    }
 }
 
 LLType* DtoClassHandleType(TypeClass *tc) // CALYPSO

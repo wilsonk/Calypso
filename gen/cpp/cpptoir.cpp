@@ -509,6 +509,22 @@ void LangPlugin::toDefineVariable(::VarDeclaration* vd)
     // FIXME: initialize static variables from template instantiations
 }
 
+void LangPlugin::toDefaultInitVarDeclaration(::VarDeclaration* vd)
+{
+    // HACK-ish, it would be more elegant to add CallExp(TypeExp()) as init and do NRVO
+    // but TypeClass::defaultInit() lacking context causes "recursive" evaluation of the init exp
+    auto irLocal = getIrLocal(vd);
+    auto tc = isClassValue(vd->type->toBasetype());
+
+    if (tc && tc->sym->defaultCtor)
+    {
+        auto cf = tc->sym->defaultCtor;
+        DtoResolveFunction(cf);
+        DFuncValue dfn(cf, getIrFunc(cf)->func, irLocal->value);
+        DtoCallFunction(vd->loc, tc, &dfn, new Expressions);
+    }
+}
+
 void LangPlugin::toDefineTemplateInstance(::TemplateInstance *inst)
 {
     auto c_ti = static_cast<cpp::TemplateInstance *>(inst);

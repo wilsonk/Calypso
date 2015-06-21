@@ -8427,7 +8427,7 @@ Lagain:
     {
         t1 = e1->type->toBasetype();
 
-        if (t1->ty == Tstruct)
+        if (t1->ty == Tstruct || isClassValue(t1)) // CALYPSO
         {
             AggregateDeclaration *ad = ((TypeStruct *)t1)->sym;
             if (ad->sizeok == SIZEOKnone)

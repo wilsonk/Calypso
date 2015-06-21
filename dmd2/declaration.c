@@ -1532,8 +1532,9 @@ Lnomatch:
         {
             init = getExpInitializer();
         }
-        // Default initializer is always a blit
-        isBlit = true;
+        // Default initializer is always a blit, unless it's a ctor call // CALYPSO
+        if (!init || !init->isExpInitializer() || init->toExpression()->op != TOKcall)
+            isBlit = true;
     }
 
     if (init)
@@ -2297,7 +2298,7 @@ void ObjectNotFound(Identifier *id)
 
 /******************************** SymbolDeclaration ********************************/
 
-SymbolDeclaration::SymbolDeclaration(Loc loc, StructDeclaration *dsym)
+SymbolDeclaration::SymbolDeclaration(Loc loc, AggregateDeclaration *dsym)
         : Declaration(dsym->ident)
 {
     this->loc = loc;

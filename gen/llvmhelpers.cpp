@@ -1045,7 +1045,7 @@ void DtoVarDeclaration(VarDeclaration* vd)
             T t = f();    // t's memory address is taken hidden pointer
         */
         ExpInitializer *ei = 0;
-        if ((vd->type->toBasetype()->ty == Tstruct ||
+        if ((vd->type->toBasetype()->ty == Tstruct || isClassValue(vd->type->toBasetype()) || // CALYPSO
              vd->type->toBasetype()->ty == Tsarray /* new in 2.064*/) &&
             vd->init &&
             (ei = vd->init->isExpInitializer()))
@@ -1089,6 +1089,13 @@ void DtoVarDeclaration(VarDeclaration* vd)
             Logger::println("expression initializer");
             toElem(ex->exp);
         }
+    }
+    else
+    {
+        auto tb = vd->type->toBasetype();
+        if (auto tsym = tb->toDsymbol(vd->scope)) // CALYPSO
+            if (auto lp = tsym->langPlugin())
+                lp->codegen()->toDefaultInitVarDeclaration(vd);
     }
 }
 
@@ -1819,13 +1826,13 @@ DValue* DtoSymbolAddress(Loc& loc, Type* type, Declaration* decl)
         // this seems to be the static initialiser for structs
         Type* sdecltype = sdecl->type->toBasetype();
         IF_LOG Logger::print("Sym: type=%s\n", sdecltype->toChars());
-        assert(sdecltype->ty == Tstruct);
-        TypeStruct* ts = static_cast<TypeStruct*>(sdecltype);
-        assert(ts->sym);
-        DtoResolveStruct(ts->sym);
+        assert(sdecltype->ty == Tstruct || isClassValue(sdecltype)); // CALYPSO
+        AggregateDeclaration *sym = getAggregateSym(sdecltype);
+        assert(sym);
+        DtoResolveAggregate(sym);
 
-        LLValue* initsym = getIrAggr(ts->sym)->getInitSymbol();
-        initsym = DtoBitCast(initsym, DtoType(ts->pointerTo()));
+        LLValue* initsym = getIrAggr(sym)->getInitSymbol();
+        initsym = DtoBitCast(initsym, DtoType(sdecltype->pointerTo()));
         return new DVarValue(type, initsym);
     }
 
