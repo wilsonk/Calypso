@@ -8254,13 +8254,7 @@ structalign_t TypeStruct::alignment()
 
 Expression *TypeStruct::defaultInit(Loc loc)
 {
-#if LOGDEFAULTINIT
-    printf("TypeStruct::defaultInit() '%s'\n", toChars());
-#endif
-    Declaration *d = new SymbolDeclaration(sym->loc, sym);
-    assert(d);
-    d->type = this;
-    return new VarExp(sym->loc, d);
+    return sym->defaultInit(loc); // CALYPSO
 }
 
 /***************************************
@@ -9081,10 +9075,7 @@ Type *TypeClass::toHeadMutable()
 
 Expression *TypeClass::defaultInit(Loc loc)
 {
-#if LOGDEFAULTINIT
-    printf("TypeClass::defaultInit() '%s'\n", toChars());
-#endif
-    return new NullExp(loc, this);
+    return sym->defaultInit(loc); // CALYPSO
 }
 
 bool TypeClass::isZeroInit(Loc loc)
@@ -9804,11 +9795,11 @@ AggregateDeclaration *getAggregateSym(Type *t)
     return NULL;
 }
 
-bool isClassValue(Type *t)
+TypeClass *isClassValue(Type *t)
 {
     if (t->ty != Tclass) return false;
     TypeClass* tc = (TypeClass*)t;
-    return !tc->byRef();
+    return tc->byRef() ? NULL : tc;
 }
 
 bool isClassValueHandle(Type *t)

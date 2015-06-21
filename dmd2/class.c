@@ -1292,6 +1292,19 @@ void ClassDeclaration::addLocalClass(ClassDeclarations *aclasses)
  */
 
 // CALYPSO
+Expression *ClassDeclaration::defaultInit(Loc loc)
+{
+#if LOGDEFAULTINIT
+    printf("TypeClass::defaultInit() '%s'\n", toChars());
+#endif
+    if (byRef())
+        return new NullExp(loc, type);
+
+    Declaration *d = new SymbolDeclaration(this->loc, this);
+    d->type = type;
+    return new VarExp(this->loc, d);
+}
+
 void ClassDeclaration::initVtbl()
 {
     // initialize vtbl

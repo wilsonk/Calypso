@@ -1055,7 +1055,7 @@ void identifierToDocBuffer(Identifier* ident, OutBuffer *buf, HdrGenState *hgs);
 
 // CALYPSO
 AggregateDeclaration *getAggregateSym(Type *t);
-bool isClassValue(Type *t);
+TypeClass *isClassValue(Type *t);
 bool isClassValueHandle(Type *t);
 
 #endif /* DMD_MTYPE_H */

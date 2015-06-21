@@ -132,6 +132,7 @@ public:
     // CALYPSO
     virtual void buildLayout(); // determine the agg size and field offsets
     virtual bool byRef() { return false; }
+    virtual Expression *defaultInit(Loc loc) { assert(false); return NULL; }
 
     AggregateDeclaration *isAggregateDeclaration() { return this; }
     void accept(Visitor *v) { v->visit(this); }
@@ -184,6 +185,8 @@ public:
 #if IN_DMD
     void toObjFile(bool multiobj);                       // compile to .obj file
 #endif
+
+    virtual Expression *defaultInit(Loc loc); // CALYPSO
 
     StructDeclaration *isStructDeclaration() { return this; }
     void accept(Visitor *v) { v->visit(this); }
@@ -302,6 +305,7 @@ public:
 
     // CALYPSO
     virtual bool byRef() { return true; }
+    virtual Expression *defaultInit(Loc loc); // CALYPSO
     virtual bool allowMultipleInheritance() { return false; }  // will allow more than one non-interface base
     virtual bool allowInheritFromStruct() { return false; }  // even though C++ class types are value, we may want to keep mapping POD classes to D structs to keep init lists
     virtual void initVtbl();

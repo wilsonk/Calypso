@@ -1226,6 +1226,18 @@ bool StructDeclaration::isPOD()
     return (ispod == ISPODyes);
 }
 
+// CALYPSO
+Expression *StructDeclaration::defaultInit(Loc loc)
+{
+#if LOGDEFAULTINIT
+    printf("TypeStruct::defaultInit() '%s'\n", toChars());
+#endif
+    Declaration *d = new SymbolDeclaration(this->loc, this);
+    assert(d);
+    d->type = type;
+    return new VarExp(this->loc, d);
+}
+
 void StructDeclaration::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
 {
     buf->printf("%s ", kind());
