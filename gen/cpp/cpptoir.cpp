@@ -316,11 +316,11 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
     clangCG::CallArgList Args;
 
     auto FD = getFD(fd);
-    auto MD = llvm::dyn_cast<const clang::CXXMethodDecl>(FD);
+    auto MD = dyn_cast<const clang::CXXMethodDecl>(FD);
 
     auto This = MD ? dfnval->vthis : nullptr;
 
-    auto Dtor = llvm::dyn_cast<clang::CXXDestructorDecl>(FD);
+    auto Dtor = dyn_cast<clang::CXXDestructorDecl>(FD);
     if (Dtor && Dtor->isVirtual())
     {
         CGM->getCXXABI().EmitVirtualDestructorCall(*CGF(), Dtor, clang::Dtor_Complete,
@@ -370,7 +370,12 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
     auto &FInfo = arrangeFunctionCall(CGM.get(), FD, Args);
     RV = CGF()->EmitCall(FInfo, callable, clangCG::ReturnValueSlot(), Args, FD);
 
-    if (tf->isref)
+    if (isa<clang::CXXConstructorDecl>(FD))
+    {
+        assert(RV.isScalar() && RV.getScalarVal() == nullptr);
+        return new DVarValue(resulttype, This); // EmitCall returns a null value for ctors so we need to return this
+    }
+    else if (tf->isref)
     {
         assert(RV.isScalar());
         return new DVarValue(resulttype, RV.getScalarVal());
