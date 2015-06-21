@@ -350,7 +350,7 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
         auto argty = fnarg->type;
         auto ArgTy = TypeMapper().toType(loc, argty,
                                         fd->scope, fnarg->storageClass);
-        if (argty->ty == Tstruct || (argty->ty == Tclass && !static_cast<::TypeClass*>(argty)->byRef()))
+        if ((argty->ty == Tstruct || isClassValue(argty)) && !(fnarg->storageClass & STCref))
         {
 //             llvm::Value *tmp = CGF()->CreateMemTemp(type);
 //             CGF()->EmitAggregateCopy(tmp, L.getAddress(), type, /*IsVolatile*/false,
