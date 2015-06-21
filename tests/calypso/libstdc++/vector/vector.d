@@ -38,8 +38,7 @@ void main()
     writeln("vector capacity = ", v.capacity());
 
     write("printing vector with iterator: ");
-    auto it = new vector!(char).iterator;
-    it = v.begin();
+    vector!(char).iterator it = v.begin();
     // Idiomatic C++ iterator use isn't working yet...see list.d also
     for (int i = 0; i < v.size(); it++, i++)
         write(*it);
