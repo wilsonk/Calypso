@@ -20,7 +20,7 @@ void main()
 {
     auto l = new list!int;
     //auto l1 = new list!(4, 100);  // FAILURE
-    auto l2 = new list!(int)(l);
+    auto l2 = new list!int(*l);
     auto l3 = new list!int;
     auto l4 = new list!int;
 
@@ -41,7 +41,7 @@ void main()
     // isn't explicitly initialized like below!
     // auto k = l.begin();
 
-    auto k = new list!(int).iterator;
+    list!(int).iterator k;
 
     // for(; k != l.end(); k++)
     // FAILURE: classes.cpp:256: DValue* DtoCastClass(Loc&,
@@ -56,7 +56,7 @@ void main()
 
     writeln("\nList2 after swapping in List:");
     // swap works
-    l2.swap(l);
+    l2.swap(*l);
     k = l2.begin;
     for (int i=0; i < l2.size() ; k++, i++)
       writeln(*k);
@@ -72,8 +72,7 @@ void main()
 
 
     writeln("\nList4 after single_digits removed:");
-    bool function(const int) sd = &single_digit;
-    l4.remove_if(sd);
+    l4.remove_if(&single_digit);
     k = l4.begin;
     for (int i=0; i < l4.size() ; k++, i++)
       writeln(*k);
