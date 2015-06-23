@@ -9797,15 +9797,16 @@ AggregateDeclaration *getAggregateSym(Type *t)
 
 TypeClass *isClassValue(Type *t)
 {
-    if (t->ty != Tclass) return false;
+    if (t->ty != Tclass) return NULL;
     TypeClass* tc = (TypeClass*)t;
     return tc->byRef() ? NULL : tc;
 }
 
-bool isClassValueHandle(Type *t)
+TypeClass *isClassValueHandle(Type *t)
 {
-    if (t->ty != Tpointer && t->ty != Treference) return false;
-    return isClassValue(t->nextOf());
+    if (t->ty != Tpointer && t->ty != Treference) return NULL;
+    if (!isClassValue(t->nextOf())) return NULL;
+    return (TypeClass*) t->nextOf();
 }
 
 LangPlugin* Type::langPlugin()
