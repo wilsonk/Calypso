@@ -261,7 +261,7 @@ public:
     // CALYPSO
     virtual LangPlugin *langPlugin();
     virtual unsigned short sizeType();
-    virtual bool checkTransitiveMod() { return true; }
+    virtual bool isTransitive() { return true; }
 
     #define SIZE_INVALID (~(d_uns64)0)
     d_uns64 size();
@@ -411,7 +411,7 @@ public:
     Type *makeMutable();
     MATCH constConv(Type *to);
     unsigned char deduceWild(Type *t, bool isRef);
-    virtual void transitive(); // CALYPSO
+    void transitive();
     void accept(Visitor *v) { v->visit(this); }
 };
 

@@ -894,7 +894,7 @@ void Type::check()
     if (tn && ty != Tfunction && tn->ty != Tfunction && ty != Tenum)
     {
         // Verify transitivity
-        if (checkTransitiveMod())
+        if (isTransitive()) // CALYPSO
         {
             switch (mod)
             {
@@ -2674,7 +2674,8 @@ Type *TypeNext::makeConst()
         return cto;
     }
     TypeNext *t = (TypeNext *)Type::makeConst();
-    if (ty != Tfunction && next->ty != Tfunction &&
+    if (isTransitive() && // CALYPSO
+        ty != Tfunction && next->ty != Tfunction &&
         !next->isImmutable())
     {
         if (next->isShared())
@@ -2705,7 +2706,8 @@ Type *TypeNext::makeImmutable()
         return ito;
     }
     TypeNext *t = (TypeNext *)Type::makeImmutable();
-    if (ty != Tfunction && next->ty != Tfunction &&
+    if (isTransitive() && // CALYPSO
+        ty != Tfunction && next->ty != Tfunction &&
         !next->isImmutable())
     {
         t->next = next->immutableOf();
@@ -2924,7 +2926,8 @@ void TypeNext::transitive()
 {
     /* Invoke transitivity of type attributes
      */
-    next = next->addMod(mod);
+    if (isTransitive()) // CALYPSO
+        next = next->addMod(mod);
 }
 
 /* ============================= TypeBasic =========================== */

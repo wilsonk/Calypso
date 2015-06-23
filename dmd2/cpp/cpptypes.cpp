@@ -28,6 +28,9 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
+// Internal Calypso types (unlike TypeValueof which might used by normal D code) essential for template arguments matching.
+// D's const being transitive and since Calypso only needs logical const internally, keeping it outside of DMD seemed like the better idea..
+
 MOD getMOD(const clang::QualType T)
 {
     if (T.isConstQualified())
@@ -35,6 +38,72 @@ MOD getMOD(const clang::QualType T)
 
     return 0;
 }
+
+class TypePointer : public ::TypePointer
+{
+public:
+    CALYPSO_LANGPLUGIN
+
+    TypePointer(Type *t)
+        : ::TypePointer(t) {}
+
+    void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv) override
+    {
+        if (!forEquiv)
+            buf->writeByte('~');
+        ::TypePointer::toDecoBuffer(buf, flag, forEquiv);
+    }
+
+    Type *syntaxCopy(Type *o = nullptr) override
+    {
+        TypePointer *t;
+        if (o)
+        {
+            assert(isCPP(o) && o->ty == Tpointer);
+            t = static_cast<TypePointer*>(o);
+        }
+        else
+            t = new TypePointer(nullptr);
+
+        return ::TypePointer::syntaxCopy(t);
+    }
+
+    bool isTransitive() override { return false; }
+    unsigned short sizeType() override { return sizeof(*this); }
+};
+
+class TypeReference : public ::TypeReference
+{
+public:
+    CALYPSO_LANGPLUGIN
+
+    TypeReference(Type *t)
+        : ::TypeReference(t) {}
+
+    void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv) override
+    {
+        if (!forEquiv)
+            buf->writeByte('~');
+        ::TypeReference::toDecoBuffer(buf, flag, forEquiv);
+    }
+
+    Type *syntaxCopy(Type *o = nullptr) override
+    {
+        TypeReference *t;
+        if (o)
+        {
+            assert(isCPP(o) && o->ty == Treference);
+            t = static_cast<TypeReference*>(o);
+        }
+        else
+            t = new TypeReference(nullptr);
+
+        return ::TypeReference::syntaxCopy(t);
+    }
+
+    bool isTransitive() override { return false; }
+    unsigned short sizeType() override { return sizeof(*this); }
+};
 
 //  There are a few D builtin types that are mapped to several C++ ones, such as wchar_t/dchar <=> wchar_t. Even though they're the same, we have to differentiate them (e.g char_traits<wchar_t>char_traits<char32>) or else two template instances might have different tempdecl while their aggregate member get the same deco
 class TypeBasic : public ::TypeBasic
