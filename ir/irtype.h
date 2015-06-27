@@ -144,20 +144,6 @@ protected:
 
 //////////////////////////////////////////////////////////////////////////////
 
-/// IrType from C++ class values (CALYPSO).
-class IrTypeValueof : public IrType
-{
-public:
-    ///
-    static IrTypeValueof* get(Type* dt);
-
-protected:
-    ///
-    IrTypeValueof(Type* dt, llvm::Type *lt);
-};
-
-//////////////////////////////////////////////////////////////////////////////
-
 /// IrType for static arrays
 class IrTypeSArray : public IrType
 {

@@ -35,6 +35,7 @@ public:
     StructDeclaration(const StructDeclaration&);
     Dsymbol *syntaxCopy(Dsymbol *s) override;
     void semantic(Scope *sc) override;
+//     unsigned size(Loc loc) override;
 };
 
 // The rest, i.e anything involving inheritance, virtual functions.
@@ -50,10 +51,13 @@ public:
     ClassDeclaration(const ClassDeclaration&);
     Dsymbol *syntaxCopy(Dsymbol *s) override;
     void semantic(Scope *sc) override;
+    unsigned size(Loc loc) override;
     
     bool isBaseOf(::ClassDeclaration* cd, int* poffset) override;
     void interfaceSemantic(Scope *sc) override;
     
+    bool byRef() override { return false; }
+    Expression *defaultInit(Loc loc) override;
     bool allowMultipleInheritance() override { return true; }
     bool allowInheritFromStruct() override { return true; }
     void makeNested() override;

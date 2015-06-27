@@ -217,7 +217,6 @@ void Type::init()
     sizeTy[Taarray] = sizeof(TypeAArray);
     sizeTy[Tpointer] = sizeof(TypePointer);
     sizeTy[Treference] = sizeof(TypeReference);
-    sizeTy[Tvalueof] = sizeof(TypeValueof);
     sizeTy[Tfunction] = sizeof(TypeFunction);
     sizeTy[Tdelegate] = sizeof(TypeDelegate);
     sizeTy[Tident] = sizeof(TypeIdentifier);
@@ -241,7 +240,6 @@ void Type::init()
     mangleChar[Taarray] = 'H';
     mangleChar[Tpointer] = 'P';
     mangleChar[Treference] = 'R';
-    mangleChar[Tvalueof] = 'V';
     mangleChar[Tfunction] = 'F';
     mangleChar[Tident] = 'I';
     mangleChar[Tclass] = 'C';
@@ -896,7 +894,7 @@ void Type::check()
     if (tn && ty != Tfunction && tn->ty != Tfunction && ty != Tenum)
     {
         // Verify transitivity
-        if (checkTransitiveMod())
+        if (isTransitive()) // CALYPSO
         {
             switch (mod)
             {
@@ -1257,17 +1255,6 @@ Type *Type::addStorageClass(StorageClass stc)
             mod |= MODshared;
     }
     return addMod(mod);
-}
-
-// CALYPSO eww FIXME
-Type *Type::makePointer()
-{
-    return NULL;
-}
-
-Type *Type::makeReference()
-{
-    return NULL;
 }
 
 Type *Type::pointerTo()
@@ -2687,7 +2674,8 @@ Type *TypeNext::makeConst()
         return cto;
     }
     TypeNext *t = (TypeNext *)Type::makeConst();
-    if (ty != Tfunction && next->ty != Tfunction &&
+    if (isTransitive() && // CALYPSO
+        ty != Tfunction && next->ty != Tfunction &&
         !next->isImmutable())
     {
         if (next->isShared())
@@ -2718,7 +2706,8 @@ Type *TypeNext::makeImmutable()
         return ito;
     }
     TypeNext *t = (TypeNext *)Type::makeImmutable();
-    if (ty != Tfunction && next->ty != Tfunction &&
+    if (isTransitive() && // CALYPSO
+        ty != Tfunction && next->ty != Tfunction &&
         !next->isImmutable())
     {
         t->next = next->immutableOf();
@@ -2937,7 +2926,8 @@ void TypeNext::transitive()
 {
     /* Invoke transitivity of type attributes
      */
-    next = next->addMod(mod);
+    if (isTransitive()) // CALYPSO
+        next = next->addMod(mod);
 }
 
 /* ============================= TypeBasic =========================== */
@@ -5103,16 +5093,12 @@ Type *TypePointer::semantic(Loc loc, Scope *sc)
     if (deco)
         return this;
     Type *n = next->semantic(loc, sc);
-    if (Type *pn = n->makePointer()) // CALYPSO
-        return pn->addMod(mod)->merge();
     switch (n->toBasetype()->ty)
     {
         case Ttuple:
             error(loc, "can't have pointer to %s", n->toChars());
         case Terror:
             return Type::terror;
-        case Tvalueof: // CALYPSO
-            return n->nextOf()->addMod(mod)->merge();
         default:
             break;
     }
@@ -5200,7 +5186,12 @@ MATCH TypePointer::implicitConvTo(Type *to)
             return MATCHconvert;
         }
 
-        MATCH m = next->constConv(tp->next);
+        MATCH m;
+        if (isClassValue(next) && isClassValue(tp->next)) // CALYPSO
+            m = next->implicitConvTo(tp->next);
+        else
+            m = next->constConv(tp->next);
+
         if (m > MATCHnomatch)
         {
             if (m == MATCHexact && mod != to->mod)
@@ -5280,13 +5271,10 @@ Type *TypeReference::semantic(Loc loc, Scope *sc)
 {
     //printf("TypeReference::semantic()\n");
     Type *n = next->semantic(loc, sc);
-    if (Type *pn = n->makeReference()) // CALYPSO
-        return pn->addMod(mod)->merge();
     if (n != next)
         deco = NULL;
     next = n;
     transitive();
-    assert(next->ty != Tvalueof);  // CALYPSO
     return merge();
 }
 
@@ -5317,93 +5305,6 @@ Expression *TypeReference::defaultInit(Loc loc)
 bool TypeReference::isZeroInit(Loc loc)
 {
     return true;
-}
-
-
-/***************************** TypeValueof *****************************/ // CALYPSO
-
-TypeValueof::TypeValueof(Type *t)
-    : TypeNext(Tvalueof, t)
-{
-}
-
-const char *TypeValueof::kind()
-{
-    return "valueof";
-}
-
-Type *TypeValueof::syntaxCopy(Type *o)
-{
-    TypeValueof *t;
-    Type *n = next->syntaxCopy();
-    if (o)
-        t = (TypeValueof *)(o);
-    else if (n == next)
-        t = this;
-    else
-        t = new TypeValueof(n);
-
-    t->next = n;
-    t->mod = mod;
-    return t;
-}
-
-Type *TypeValueof::makeConst()
-{
-    // Do not apply const transitively, because we're in reverse
-    if (cto)
-    {
-        assert(cto->mod == MODconst);
-        return cto;
-    }
-    return (TypeNext *)Type::makeConst();
-}
-
-Type *TypeValueof::semantic(Loc loc, Scope *sc)
-{
-    Type *n = next->semantic(loc, sc);
-    if (n->ty != Tclass)
-        return n->addMod(mod)->semantic(loc, sc);
-    if (n != next)
-        deco = NULL;
-    next = n;
-    return merge();
-}
-
-void TypeValueof::transitive()
-{
-    // The order of types is reversed (a reminder that Valueof is a hack)
-    // so we need not be transitive, e.g const(*CppClass) means in C++ const CppClass*
-    // but the TypeClass in D refers to the pointer, so isn't const!
-}
-
-d_uns64 TypeValueof::size(Loc loc)
-{
-    assert(next->ty == Tclass && "TypeValueof::size() called while next isn't a class");
-    return ((TypeClass*)next)->sym->size(loc);
-}
-
-MATCH TypeValueof::implicitConvTo(Type *to)
-{
-    assert(next->ty == Tclass);
-
-    if (this->equals(to))
-        return MATCHexact;
-
-    if (next->implicitConvTo(to))
-        return MATCHconvert; // always make implicitCastTo create a cast
-
-    return MATCHnomatch;
-}
-
-Expression *TypeValueof::dotExp(Scope *sc, Expression *e, Identifier *ident, int flag)
-{
-    return next->dotExp(sc, e, ident, flag);
-}
-
-Dsymbol *TypeValueof::toDsymbol(Scope *sc)
-{
-    return next->toDsymbol(sc);
 }
 
 
@@ -8356,13 +8257,7 @@ structalign_t TypeStruct::alignment()
 
 Expression *TypeStruct::defaultInit(Loc loc)
 {
-#if LOGDEFAULTINIT
-    printf("TypeStruct::defaultInit() '%s'\n", toChars());
-#endif
-    Declaration *d = new SymbolDeclaration(sym->loc, sym);
-    assert(d);
-    d->type = this;
-    return new VarExp(sym->loc, d);
+    return sym->defaultInit(loc); // CALYPSO
 }
 
 /***************************************
@@ -8638,9 +8533,31 @@ Type *TypeClass::semantic(Loc loc, Scope *sc)
     return merge();
 }
 
+unsigned int TypeClass::alignsize() // CALYPSO
+{
+    if (byRef())
+        return Type::alignsize();
+
+    sym->size(Loc());               // give error for forward references
+    return sym->alignsize;
+}
+
+structalign_t TypeClass::alignment()
+{
+    if (byRef())
+        return Type::alignment();
+
+    if (sym->alignment == 0)
+        sym->size(Loc());
+    return sym->alignment;
+}
+
 d_uns64 TypeClass::size(Loc loc)
 {
-    return Target::ptrsize;
+    if (byRef()) // CALYPSO
+        return Target::ptrsize;
+    else
+        return sym->size(loc);
 }
 
 Dsymbol *TypeClass::toDsymbol(Scope *sc)
@@ -9052,6 +8969,11 @@ ClassDeclaration *TypeClass::isClassHandle()
     return sym;
 }
 
+bool TypeClass::byRef() // CALYPSO
+{
+    return sym->byRef();
+}
+
 bool TypeClass::isscope()
 {
     return sym->isscope;
@@ -9071,13 +8993,12 @@ int TypeClass::isBaseOf(Type *t, int *poffset)
 MATCH TypeClass::implicitConvTo(Type *to)
 {
     //printf("TypeClass::implicitConvTo(to = '%s') %s\n", to->toChars(), toChars());
-    if (to->ty == Tvalueof) // CALYPSO
-        if (implicitConvTo(to->nextOf()) > MATCHnomatch)
-            return MATCHconvert;
-
     MATCH m = constConv(to);
     if (m > MATCHnomatch)
         return m;
+
+    if (byRef() && isClassValueHandle(to))
+        to = to->nextOf(); // CALYPSO downcast from DCXX class to C++ base ptr/ref
 
     ClassDeclaration *cdto = to->isClassHandle();
     if (cdto)
@@ -9115,6 +9036,8 @@ MATCH TypeClass::constConv(Type *to)
 
     /* Conversion derived to const(base)
      */
+    if (byRef() && isClassValueHandle(to))
+        to = to->nextOf(); // CALYPSO downcast from DCXX class to C++ base ptr/ref
     int offset = 0;
     if (to->isBaseOf(this, &offset) && offset == 0 &&
         MODimplicitConv(mod, to->mod))
@@ -9154,10 +9077,7 @@ Type *TypeClass::toHeadMutable()
 
 Expression *TypeClass::defaultInit(Loc loc)
 {
-#if LOGDEFAULTINIT
-    printf("TypeClass::defaultInit() '%s'\n", toChars());
-#endif
-    return new NullExp(loc, this);
+    return sym->defaultInit(loc); // CALYPSO
 }
 
 bool TypeClass::isZeroInit(Loc loc)
@@ -9868,7 +9788,28 @@ int Parameter::foreach(Parameters *args, Parameter::ForeachDg dg, void *ctx, siz
     return result;
 }
 
-//CALYPSO
+// CALYPSO
+
+AggregateDeclaration *getAggregateSym(Type *t)
+{
+    if (t->ty == Tstruct) return ((TypeStruct *)t)->sym;
+    if (t->ty == Tclass) return ((TypeClass *)t)->sym;
+    return NULL;
+}
+
+TypeClass *isClassValue(Type *t)
+{
+    if (t->ty != Tclass) return NULL;
+    TypeClass* tc = (TypeClass*)t;
+    return tc->byRef() ? NULL : tc;
+}
+
+TypeClass *isClassValueHandle(Type *t)
+{
+    if (t->ty != Tpointer && t->ty != Treference) return NULL;
+    if (!isClassValue(t->nextOf())) return NULL;
+    return (TypeClass*) t->nextOf();
+}
 
 LangPlugin* Type::langPlugin()
 {

@@ -11,6 +11,7 @@
 #include "gen/functions.h"
 #include "gen/logger.h"
 #include "gen/irstate.h"
+#include "gen/classes.h"
 #include "ir/irfunction.h"
 #include "gen/llvmhelpers.h"
 #include "ir/irtype.h"
@@ -63,7 +64,6 @@ void LangPlugin::leaveModule()
     if (!getASTUnit())
         return;
 
-    auto& Context = getASTContext();
     CGM->Release();
     CGM.reset();
 }
@@ -257,14 +257,12 @@ void LangPlugin::buildGEPIndices(IrTypeAggr *irTyAgrr,
 
 void LangPlugin::toInitClass(TypeClass* tc, LLValue* dst)
 {
-    auto& Context = getASTContext();
-
     uint64_t const dataBytes = tc->sym->structsize;
     if (dataBytes == 0)
         return;
 
     LLValue* initsym = getIrAggr(tc->sym)->getInitSymbol();
-    initsym = DtoBitCast(initsym, DtoType(tc));
+    initsym = DtoBitCast(initsym, DtoClassHandleType(tc));
 
     DtoMemCpy(dst, initsym, DtoConstSize_t(dataBytes));
 }
@@ -307,7 +305,6 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
     auto fd = dfnval->func;
 
     // get function type info
-    IrFuncTy &irFty = DtoIrTypeFunction(fnval);
     TypeFunction* tf = DtoTypeFunction(fnval);
 
     // get callee llvm value
@@ -319,13 +316,11 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
     clangCG::CallArgList Args;
 
     auto FD = getFD(fd);
-    auto MD = llvm::dyn_cast<const clang::CXXMethodDecl>(FD);
+    auto MD = dyn_cast<const clang::CXXMethodDecl>(FD);
 
     auto This = MD ? dfnval->vthis : nullptr;
 
-    const clang::FunctionProtoType *FPT = FD->getType()->castAs<clang::FunctionProtoType>();
-
-    auto Dtor = llvm::dyn_cast<clang::CXXDestructorDecl>(FD);
+    auto Dtor = dyn_cast<clang::CXXDestructorDecl>(FD);
     if (Dtor && Dtor->isVirtual())
     {
         CGM->getCXXABI().EmitVirtualDestructorCall(*CGF(), Dtor, clang::Dtor_Complete,
@@ -352,9 +347,10 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
         assert(fnarg);
         DValue* argval = DtoArgument(fnarg, arguments->data[i]);
 
-        auto ArgTy = TypeMapper().toType(loc, fnarg->type,
+        auto argty = fnarg->type;
+        auto ArgTy = TypeMapper().toType(loc, argty,
                                         fd->scope, fnarg->storageClass);
-        if (fnarg->type->ty == Tvalueof)
+        if ((argty->ty == Tstruct || isClassValue(argty)) && !(fnarg->storageClass & STCref))
         {
 //             llvm::Value *tmp = CGF()->CreateMemTemp(type);
 //             CGF()->EmitAggregateCopy(tmp, L.getAddress(), type, /*IsVolatile*/false,
@@ -374,7 +370,12 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
     auto &FInfo = arrangeFunctionCall(CGM.get(), FD, Args);
     RV = CGF()->EmitCall(FInfo, callable, clangCG::ReturnValueSlot(), Args, FD);
 
-    if (tf->isref)
+    if (isa<clang::CXXConstructorDecl>(FD))
+    {
+        assert(RV.isScalar() && RV.getScalarVal() == nullptr);
+        return new DVarValue(resulttype, This); // EmitCall returns a null value for ctors so we need to return this
+    }
+    else if (tf->isref)
     {
         assert(RV.isScalar());
         return new DVarValue(resulttype, RV.getScalarVal());
@@ -508,10 +509,24 @@ void LangPlugin::toDefineVariable(::VarDeclaration* vd)
     // FIXME: initialize static variables from template instantiations
 }
 
+void LangPlugin::toDefaultInitVarDeclaration(::VarDeclaration* vd)
+{
+    // HACK-ish, it would be more elegant to add CallExp(TypeExp()) as init and do NRVO
+    // but TypeClass::defaultInit() lacking context causes "recursive" evaluation of the init exp
+    auto irLocal = getIrLocal(vd);
+    auto tc = isClassValue(vd->type->toBasetype());
+
+    if (tc && tc->sym->defaultCtor)
+    {
+        auto cf = tc->sym->defaultCtor;
+        DtoResolveFunction(cf);
+        DFuncValue dfn(cf, getIrFunc(cf)->func, irLocal->value);
+        DtoCallFunction(vd->loc, tc, &dfn, new Expressions);
+    }
+}
+
 void LangPlugin::toDefineTemplateInstance(::TemplateInstance *inst)
 {
-    auto& Context = getASTContext();
-
     auto c_ti = static_cast<cpp::TemplateInstance *>(inst);
 
     if (auto CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(c_ti->Inst))

@@ -107,7 +107,6 @@ enum ENUMTY
     Ttypeof,
     Ttuple,
     Tslice,
-    Tvalueof,   // CALYPSO
 
     Treturn,
     Tnull,
@@ -262,9 +261,7 @@ public:
     // CALYPSO
     virtual LangPlugin *langPlugin();
     virtual unsigned short sizeType();
-    virtual bool checkTransitiveMod() { return true; }
-    virtual Type *makePointer(); // called by TypePointer::semantic, should return non-NULL if the pointer isn't a normal TypePointer
-    virtual Type *makeReference();
+    virtual bool isTransitive() { return true; }
 
     #define SIZE_INVALID (~(d_uns64)0)
     d_uns64 size();
@@ -414,7 +411,7 @@ public:
     Type *makeMutable();
     MATCH constConv(Type *to);
     unsigned char deduceWild(Type *t, bool isRef);
-    virtual void transitive(); // CALYPSO
+    void transitive();
     void accept(Visitor *v) { v->visit(this); }
 };
 
@@ -607,24 +604,6 @@ public:
     Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);
     Expression *defaultInit(Loc loc);
     bool isZeroInit(Loc loc);
-    void accept(Visitor *v) { v->visit(this); }
-};
-
-// CALYPSO
-class TypeValueof : public TypeNext
-{
-public:
-    TypeValueof(Type *t);
-    const char *kind();
-    virtual Type *syntaxCopy(Type *o = NULL);
-    virtual Type *makeConst();
-    virtual bool checkTransitiveMod() { return false; }
-    Type *semantic(Loc loc, Scope *sc);
-    void transitive();
-    d_uns64 size(Loc loc);
-    MATCH implicitConvTo(Type *to);
-    Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);
-    Dsymbol *toDsymbol(Scope *sc);
     void accept(Visitor *v) { v->visit(this); }
 };
 
@@ -958,10 +937,13 @@ public:
     char *toChars();
     virtual Type *syntaxCopy(Type *o = NULL); // CALYPSO
     Type *semantic(Loc loc, Scope *sc);
+    unsigned alignsize(); // CALYPSO
+    structalign_t alignment(); // CALYPSO
     Dsymbol *toDsymbol(Scope *sc);
     void toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv);
     Expression *dotExp(Scope *sc, Expression *e, Identifier *ident, int flag);
     ClassDeclaration *isClassHandle();
+    bool byRef(); // CALYPSO
     int isBaseOf(Type *t, int *poffset);
     MATCH implicitConvTo(Type *to);
     MATCH constConv(Type *to);
@@ -1070,5 +1052,10 @@ bool MODimplicitConv(MOD modfrom, MOD modto);
 bool MODmethodConv(MOD modfrom, MOD modto);
 MOD MODmerge(MOD mod1, MOD mod2);
 void identifierToDocBuffer(Identifier* ident, OutBuffer *buf, HdrGenState *hgs);
+
+// CALYPSO
+AggregateDeclaration *getAggregateSym(Type *t);
+TypeClass *isClassValue(Type *t);
+TypeClass *isClassValueHandle(Type *t);
 
 #endif /* DMD_MTYPE_H */

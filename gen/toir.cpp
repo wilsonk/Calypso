@@ -1358,7 +1358,11 @@ public:
                 if (tc->sym->isInterfaceDeclaration() && nonFinal && !tc->sym->isCPPinterface())
                     passedThis = DtoCastInterfaceToObject(e->loc, l, NULL)->getRVal();
             }
-            LLValue* vthis = l->getRVal();
+            LLValue* vthis;
+            if (e1type->ty == Tclass)
+                vthis = DtoClassHandle(l); // CALYPSO
+            else
+                vthis = l->getRVal();
             if (!passedThis) passedThis = vthis;
 
             // Decide whether this function needs to be looked up in the vtable.
@@ -1380,8 +1384,7 @@ public:
             LLValue* funcval = 0;
             if (vtbllookup)
             {
-                DImValue thisVal(e1type, vthis);
-                funcval = DtoVirtualFunctionPointer(&thisVal, fdecl, e->toChars());
+                funcval = DtoVirtualFunctionPointer(DtoClassDValue(e1type, vthis), fdecl, e->toChars()); // CALYPSO
             }
             else
             {

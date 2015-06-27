@@ -104,7 +104,7 @@ public:
     void setScope(Scope *sc);
     void semantic2(Scope *sc);
     void semantic3(Scope *sc);
-    unsigned size(Loc loc);
+    virtual unsigned size(Loc loc); // CALYPSO
     static void alignmember(structalign_t salign, unsigned size, unsigned *poffset);
     static unsigned placeField(unsigned *nextoffset,
         unsigned memsize, unsigned memalignsize, structalign_t memalign,
@@ -131,6 +131,8 @@ public:
     
     // CALYPSO
     virtual void buildLayout(); // determine the agg size and field offsets
+    virtual bool byRef() { return false; }
+    virtual Expression *defaultInit(Loc loc) { assert(false); return NULL; }
 
     AggregateDeclaration *isAggregateDeclaration() { return this; }
     void accept(Visitor *v) { v->visit(this); }
@@ -183,6 +185,8 @@ public:
 #if IN_DMD
     void toObjFile(bool multiobj);                       // compile to .obj file
 #endif
+
+    virtual Expression *defaultInit(Loc loc); // CALYPSO
 
     StructDeclaration *isStructDeclaration() { return this; }
     void accept(Visitor *v) { v->visit(this); }
@@ -274,6 +278,8 @@ public:
                                         // calling semantic() at least once, due to fill symtab
                                         // and do addMember(). [== Semantic(Start,In,Done)]
 
+    structalign_t alignment;    // alignment applied outside of the class value // CALYPSO
+
     ClassDeclaration(Loc loc, Identifier *id, BaseClasses *baseclasses, bool inObject = false);
     virtual Dsymbol *syntaxCopy(Dsymbol *s);
     virtual void semantic(Scope *sc);
@@ -300,8 +306,10 @@ public:
     void addLocalClass(ClassDeclarations *);
 
     // CALYPSO
+    virtual bool byRef() { return true; }
+    virtual Expression *defaultInit(Loc loc); // CALYPSO
     virtual bool allowMultipleInheritance() { return false; }  // will allow more than one non-interface base
-    virtual bool allowInheritFromStruct() { return false; }
+    virtual bool allowInheritFromStruct() { return false; }  // even though C++ class types are value, we may want to keep mapping POD classes to D structs to keep init lists
     virtual void initVtbl();
     virtual void finalizeVtbl() {}
     virtual void buildLayout(); // determine the agg size and field offsets

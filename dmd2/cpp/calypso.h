@@ -130,6 +130,7 @@ public:
     void toDefineFunction(::FuncDeclaration* fdecl) override;
     void toDeclareVariable(::VarDeclaration* vd) override;
     void toDefineVariable(::VarDeclaration* vd) override;
+    void toDefaultInitVarDeclaration(::VarDeclaration* vd) override;
     void toDefineTemplateInstance(::TemplateInstance *tempinst) override;
 
     LLValue *toVirtualFunctionPointer(DValue* inst, ::FuncDeclaration* fdecl, char* name) override;

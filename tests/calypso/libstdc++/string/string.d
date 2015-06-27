@@ -13,7 +13,7 @@ import (C++) std._ : cppstring = string;
 
 void main()
 {
-    auto s = new cppstring; // basic_string!char would do too
+    cppstring s; // basic_string!char would do too
 
     immutable char[] charArray = "Haumea";
     s.reserve(charArray.length * 2);
@@ -24,7 +24,7 @@ void main()
     writeln("Size: ", s.size);
     writeln("Capacity: ", s.capacity);
 
-    auto s2 = new cppstring("Hi'iaka");
+    auto s2 = cppstring("Hi'iaka");
     s.push_back(',');
     s.push_back(' ');
     s += s2;

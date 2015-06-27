@@ -12,11 +12,10 @@ import (C++) std.deque;
 
 void main()
 {
-    auto dq = new deque!int;
-    auto dq2 = new deque!(int)(dq);
-    auto dq3 = new deque!(double)(10);
-    auto dq4 = new deque!(int);
-    auto dq5 = new deque!(int);
+    deque!int dq;
+    auto dq2 = deque!(int)(dq);
+    auto dq3 = deque!(double)(10);
+    deque!(int) dq4, dq5;
 
     // Fill deque with 10 ints
     writeln("push_back 10 ints onto dq");

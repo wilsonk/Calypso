@@ -196,6 +196,14 @@ void ClassDeclaration::semantic(Scope *sc)
     ::ClassDeclaration::semantic(sc);
 }
 
+unsigned int ClassDeclaration::size(Loc loc)
+{
+    if (sizeok != SIZEOKdone)
+        buildLayout();
+
+    return AggregateDeclaration::size(loc);
+}
+
 bool ClassDeclaration::isBaseOf(::ClassDeclaration *cd, int *poffset)
 {
     if (!isBaseOf2(cd))
@@ -266,6 +274,17 @@ FuncDeclaration *ClassDeclaration::findMethod(const clang::CXXMethodDecl* MD)
     return nullptr;
 }
 
+Expression *ClassDeclaration::defaultInit(Loc loc)
+{
+    if (!defaultCtor)
+        return ::ClassDeclaration::defaultInit(loc);
+
+//     auto arguments = new Expressions;
+//     return new CallExp(loc, new TypeExp(loc, type), arguments);
+
+    return nullptr; // handled in cpptoir.cpp because CallExp(TypeExp()) causes recursive evaluation
+}
+
 void ClassDeclaration::makeNested()
 {
     // do not add vthis
@@ -311,7 +330,7 @@ void ClassDeclaration::buildLayout()
     auto& Context = calypso.getASTContext();
     auto& RL = Context.getASTRecordLayout(RD);
     
-    alignsize = RL.getAlignment().getQuantity();
+    alignment = alignsize = RL.getAlignment().getQuantity();
     structsize = RL.getSize().getQuantity();
     
     for (size_t i = 0; i < members->dim; i++)
@@ -344,7 +363,7 @@ void ClassDeclaration::buildLayout()
 Expression *LangPlugin::getRightThis(Loc loc, Scope *sc, ::AggregateDeclaration *ad,
         Expression *e1, Declaration *var, int)
 {
-    if (!ad->isClassDeclaration())
+    if (!ad->isClassDeclaration()) // FIXME handle 2nd, 3rd etc. struct base, or revert the inherit from struct commit
         return nullptr;
 
     auto cd = static_cast<cpp::ClassDeclaration*>(ad);

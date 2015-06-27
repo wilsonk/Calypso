@@ -338,7 +338,7 @@ void DtoAssign(Loc& loc, DValue* lhs, DValue* rhs, int op, bool canSkipPostblit)
     if (t->ty == Tbool) {
         DtoStoreZextI8(rhs->getRVal(), lhs->getLVal());
     }
-    else if (t->ty == Tstruct) {
+    else if (t->ty == Tstruct || isClassValue(t)) { // CALYPSO
         llvm::Value* src = rhs->getRVal();
         llvm::Value* dst = lhs->getLVal();
 
@@ -725,18 +725,6 @@ DValue* DtoCastVector(Loc& loc, DValue* val, Type* to)
     }
 }
 
-DValue* DtoCastValueof(Loc& loc, DValue* val, Type* to) // CALYPSO
-{
-    Type* fromtype = val->getType()->toBasetype();
-    Type* totype = to->toBasetype();
-
-    assert(fromtype->ty == Tvalueof);
-    assert(totype->ty == Tclass);
-
-    auto refVal = new DImValue(fromtype->nextOf(), val->getLVal());
-    return DtoCast(loc, refVal, totype);
-}
-
 DValue* DtoCast(Loc& loc, DValue* val, Type* to)
 {
     Type* fromtype = val->getType()->toBasetype();
@@ -790,9 +778,6 @@ DValue* DtoCast(Loc& loc, DValue* val, Type* to)
     }
     else if (fromtype->ty == Tdelegate) {
         return DtoCastDelegate(loc, val, to);
-    }
-    else if (fromtype->ty == Tvalueof) { // CALYPSO
-        return DtoCastValueof(loc, val, to);
     }
     else if (fromtype->ty == Tnull) {
         return DtoNullValue(to, loc);
@@ -1060,7 +1045,7 @@ void DtoVarDeclaration(VarDeclaration* vd)
             T t = f();    // t's memory address is taken hidden pointer
         */
         ExpInitializer *ei = 0;
-        if ((vd->type->toBasetype()->ty == Tstruct ||
+        if ((vd->type->toBasetype()->ty == Tstruct || isClassValue(vd->type->toBasetype()) || // CALYPSO
              vd->type->toBasetype()->ty == Tsarray /* new in 2.064*/) &&
             vd->init &&
             (ei = vd->init->isExpInitializer()))
@@ -1104,6 +1089,13 @@ void DtoVarDeclaration(VarDeclaration* vd)
             Logger::println("expression initializer");
             toElem(ex->exp);
         }
+    }
+    else
+    {
+        auto tb = vd->type->toBasetype();
+        if (auto tsym = tb->toDsymbol(vd->scope)) // CALYPSO
+            if (auto lp = tsym->langPlugin())
+                lp->codegen()->toDefaultInitVarDeclaration(vd);
     }
 }
 
@@ -1834,13 +1826,13 @@ DValue* DtoSymbolAddress(Loc& loc, Type* type, Declaration* decl)
         // this seems to be the static initialiser for structs
         Type* sdecltype = sdecl->type->toBasetype();
         IF_LOG Logger::print("Sym: type=%s\n", sdecltype->toChars());
-        assert(sdecltype->ty == Tstruct);
-        TypeStruct* ts = static_cast<TypeStruct*>(sdecltype);
-        assert(ts->sym);
-        DtoResolveStruct(ts->sym);
+        assert(sdecltype->ty == Tstruct || isClassValue(sdecltype)); // CALYPSO
+        AggregateDeclaration *sym = getAggregateSym(sdecltype);
+        assert(sym);
+        DtoResolveAggregate(sym);
 
-        LLValue* initsym = getIrAggr(ts->sym)->getInitSymbol();
-        initsym = DtoBitCast(initsym, DtoType(ts->pointerTo()));
+        LLValue* initsym = getIrAggr(sym)->getInitSymbol();
+        initsym = DtoBitCast(initsym, DtoType(sdecltype->pointerTo()));
         return new DVarValue(type, initsym);
     }
 
@@ -1965,7 +1957,7 @@ LLValue* DtoIndexAggregate(LLValue* src, AggregateDeclaration* ad, VarDeclaratio
     // Cast the pointer we got to the canonical struct type the indices are
     // based on.
     LLType* st = DtoType(ad->type);
-    if (ad->isStructDeclaration())
+    if (!ad->byRef()) // CALYPSO
         st = getPtrToType(st);
     src = DtoBitCast(src, st);
 

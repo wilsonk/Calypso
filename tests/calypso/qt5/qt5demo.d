@@ -21,13 +21,13 @@ import (C++) QWidget, QTextEdit, QLineEdit, QLabel, QLayout, QGridLayout;
 class AddressBook : QWidget
 {
 public:
-    this(QWidget parent = null)
+    this(QWidget* parent = null)
     {
         super(parent);
 
-        auto nameStr = new QString("Name:");
-        auto addressStr = new QString("Address:");
-        auto titleStr = new QString("Simple Address Book");
+        auto nameStr = QString("Name:");
+        auto addressStr = QString("Address:");
+        auto titleStr = QString("Simple Address Book");
 
         auto nameLabel = new QLabel(nameStr);
         nameLine = new QLineEdit;
@@ -38,7 +38,7 @@ public:
         auto mainLayout = new QGridLayout;
         mainLayout.addWidget(nameLabel, 0, 0);
         mainLayout.addWidget(nameLine, 0, 1);
-        mainLayout.addWidget(addressLabel, 1, 0, new Alignment(AlignmentFlag.AlignTop));
+        mainLayout.addWidget(addressLabel, 1, 0, Alignment(AlignmentFlag.AlignTop));
         mainLayout.addWidget(addressText, 1, 1);
 
         setLayout(mainLayout);
@@ -46,8 +46,8 @@ public:
     }
 
 private:
-    QLineEdit nameLine;
-    QTextEdit addressText;
+    QLineEdit *nameLine;
+    QTextEdit *addressText;
 }
 
 int main()
