@@ -10,7 +10,7 @@ modmap (C++) "<list>";
 import std.stdio, std.conv, std.string;
 import (C++) std.list;
 
-bool single_digit (const int value) { return (value<10); }
+bool single_digit (int value) { return (value<10); }
 
 struct is_odd {
   bool opCall (const int value) { return (value%2)==1; }
