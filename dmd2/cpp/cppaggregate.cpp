@@ -196,6 +196,14 @@ void ClassDeclaration::semantic(Scope *sc)
     ::ClassDeclaration::semantic(sc);
 }
 
+unsigned int ClassDeclaration::size(Loc loc)
+{
+    if (sizeok != SIZEOKdone)
+        buildLayout();
+
+    return AggregateDeclaration::size(loc);
+}
+
 bool ClassDeclaration::isBaseOf(::ClassDeclaration *cd, int *poffset)
 {
     if (!isBaseOf2(cd))
@@ -322,7 +330,7 @@ void ClassDeclaration::buildLayout()
     auto& Context = calypso.getASTContext();
     auto& RL = Context.getASTRecordLayout(RD);
     
-    alignsize = RL.getAlignment().getQuantity();
+    alignment = alignsize = RL.getAlignment().getQuantity();
     structsize = RL.getSize().getQuantity();
     
     for (size_t i = 0; i < members->dim; i++)

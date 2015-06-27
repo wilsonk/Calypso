@@ -104,7 +104,7 @@ public:
     void setScope(Scope *sc);
     void semantic2(Scope *sc);
     void semantic3(Scope *sc);
-    unsigned size(Loc loc);
+    virtual unsigned size(Loc loc); // CALYPSO
     static void alignmember(structalign_t salign, unsigned size, unsigned *poffset);
     static unsigned placeField(unsigned *nextoffset,
         unsigned memsize, unsigned memalignsize, structalign_t memalign,
@@ -277,6 +277,8 @@ public:
     Semantic doAncestorsSemantic;       // Before searching symbol, whole ancestors should finish
                                         // calling semantic() at least once, due to fill symtab
                                         // and do addMember(). [== Semantic(Start,In,Done)]
+
+    structalign_t alignment;    // alignment applied outside of the class value // CALYPSO
 
     ClassDeclaration(Loc loc, Identifier *id, BaseClasses *baseclasses, bool inObject = false);
     virtual Dsymbol *syntaxCopy(Dsymbol *s);

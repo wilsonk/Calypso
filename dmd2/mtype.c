@@ -8547,10 +8547,9 @@ structalign_t TypeClass::alignment()
     if (byRef())
         return Type::alignment();
 
-//     if (sym->alignment == 0)
+    if (sym->alignment == 0)
         sym->size(Loc());
-//     return sym->alignment;
-        return Type::alignment();
+    return sym->alignment;
 }
 
 d_uns64 TypeClass::size(Loc loc)

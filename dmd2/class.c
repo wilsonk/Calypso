@@ -70,6 +70,8 @@ ClassDeclaration::ClassDeclaration(Loc loc, Identifier *id, BaseClasses *basecla
 #endif
     vclassinfo = NULL;
 
+    alignment = 0; // CALYPSO
+
     if (id)
     {
         // Look for special class names
