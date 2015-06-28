@@ -237,6 +237,13 @@ Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
         }
     }
 
+    if (!D->getIdentifier())
+    {
+        auto FD = cast<clang::FieldDecl>(D);
+        assert(FD->isBitField());
+        return nullptr; // unnamed bitfield
+    }
+
     auto id = fromIdentifier(D->getIdentifier());
     auto t = fromType(D->getType());
 
