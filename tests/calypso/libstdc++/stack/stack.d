@@ -23,7 +23,7 @@ void main()
     //auto v = new vector!(int)(2,200);   //FAILURE
 
     auto st1 = new stack!char;
-    auto dq2 = new stack!(int)(dq);
+    auto dq2 = new stack!(int)(*dq);
     //auto st2 = new stack!(int, vector!int);    //FAILURE
 
     writeln("stack appears to work");

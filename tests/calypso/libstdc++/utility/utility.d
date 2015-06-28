@@ -15,8 +15,7 @@ void main()
 {
     writeln("utility compiles");
 
-    auto p = new pair!(int, int);
-    p = stlmakepair!(int,int)(10,20);
+    auto p = stlmakepair!(int,int)(10,20);
     writeln("first in pair = ", p.first);
     writeln("second in pair = ", p.second);
 }

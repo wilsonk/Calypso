@@ -17,7 +17,7 @@ void main()
     auto ms1 = new multiset!int;
     auto ms2 = new multiset!int;
 
-    auto it = new multiset!(int).iterator;
+    multiset!(int).iterator it;
 
     int[] ints = [1,9,55,77,99,33];
 
@@ -40,18 +40,12 @@ void main()
         writeln("multiset2 after ranged insert = ", *it);
 
     auto kcomp = ms1.key_comp();
-    // auto typing here works but then using kcomp in the do-while below fails with
-    // 'function expected before (), not kcomp of type *less!int'. Use kcomp1 instead
-    auto kcomp1 = new multiset!(int).key_compare;
-
-    // REMEMBER that 'auto rit = ms1.rbegin();' doesn't work...be explicit as in the next two lines.
-    auto rit = new multiset!(int).reverse_iterator;
-    rit = ms1.rbegin();
+    auto rit = ms1.rbegin();
     auto highest = *rit;
 
     do {
         writeln("multiset1 using compare and reverse iterator = ", *rit);
-    } while ( kcomp1(*rit++, highest) );
+    } while ( kcomp(*rit++, highest) );
 
 
     writeln("set compiles");
