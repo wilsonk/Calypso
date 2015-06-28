@@ -1899,11 +1899,11 @@ clang::QualType TypeMapper::toType(Loc loc, Type* t, Scope *sc, StorageClass stc
         {
             auto tf = static_cast<TypeFunction*>(t);
 
-            auto ResultTy = toType(loc, tf->next, sc);
+            auto ResultTy = toType(loc, tf->next, sc, tf->isref ? STCref : 0);
 
             llvm::SmallVector<clang::QualType, 4> Args;
             for (auto p: *tf->parameters)
-                Args.push_back(toType(loc, p->type, sc));
+                Args.push_back(toType(loc, p->type, sc, p->storageClass));
 
             clang::FunctionProtoType::ExtProtoInfo EPI;
             return Context.getFunctionType(ResultTy, Args, EPI);
