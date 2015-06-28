@@ -482,13 +482,15 @@ static bool RequireCompleteType(clang::SourceLocation Loc, clang::QualType T)
 
 class FunctionReferencer : public clang::RecursiveASTVisitor<FunctionReferencer>
 {
+    DeclMapper &mapper;
     clang::Sema &S;
     clang::SourceLocation Loc;
 
     llvm::DenseSet<const clang::FunctionDecl *> Referenced;
 public:
-    FunctionReferencer(clang::Sema &S,
-                        clang::SourceLocation Loc) : S(S), Loc(Loc) {}
+    FunctionReferencer(DeclMapper &mapper,
+                        clang::Sema &S,
+                        clang::SourceLocation Loc) : mapper(mapper), S(S), Loc(Loc) {}
     bool VisitCallExpr(const clang::CallExpr *E);
 };
 
@@ -505,6 +507,8 @@ bool FunctionReferencer::VisitCallExpr(const clang::CallExpr *E)
 
     if (Callee->isImplicitlyInstantiable())
         S.InstantiateFunctionDefinition(Loc, Callee);
+
+    mapper.AddImplicitImportForDecl(Callee);
 
     const clang::FunctionDecl *Def;
     if (!Callee->hasBody(Def))
@@ -562,7 +566,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 
         const clang::FunctionDecl *Def;
         if (D->hasBody(Def))
-            FunctionReferencer(S, clang::SourceLocation()).TraverseStmt(Def->getBody());
+            FunctionReferencer(*this, S, clang::SourceLocation()).TraverseStmt(Def->getBody());
 
         S.PerformPendingInstantiations();
     }

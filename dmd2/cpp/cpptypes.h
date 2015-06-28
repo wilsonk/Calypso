@@ -122,6 +122,8 @@ public:
 
     // DMD -> Clang
     clang::QualType toType(Loc loc, Type* t, Scope *sc, StorageClass stc = STCundefined);
+    
+    ::Import *AddImplicitImportForDecl(const clang::NamedDecl *D, bool fake = false);
 
 protected:
     cpp::Module *mod;
@@ -140,7 +142,6 @@ protected:
 
     const clang::Decl *GetRootForTypeQualified(clang::NamedDecl* D);
 
-    ::Import *AddImplicitImportForDecl(const clang::NamedDecl *D, bool fake = false);
     ::Import *BuildImplicitImport(const clang::Decl *D);
     ::Import *BuildImplicitImport(const clang::Decl *D, const clang::Module *Mod);
     const clang::Decl *GetImplicitImportKeyForDecl(const clang::NamedDecl *D);
