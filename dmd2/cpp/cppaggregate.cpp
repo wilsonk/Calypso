@@ -201,7 +201,7 @@ unsigned int ClassDeclaration::size(Loc loc)
     if (sizeok != SIZEOKdone)
         buildLayout();
 
-    return AggregateDeclaration::size(loc);
+    return structsize;
 }
 
 bool ClassDeclaration::isBaseOf(::ClassDeclaration *cd, int *poffset)
@@ -324,6 +324,9 @@ void ClassDeclaration::finalizeVtbl()
 
 void ClassDeclaration::buildLayout()
 {
+    if (layoutQueried)
+        return;
+
     if (RD->isInvalidDecl())
         return; // if it's a forward reference, consider the record empty
 
@@ -354,8 +357,8 @@ void ClassDeclaration::buildLayout()
         
         fields.push(c_vd);
     }
-    
-    sizeok = SIZEOKdone;
+
+    layoutQueried = true;
 }
 
 // NOTE: we need to adjust every "this" pointer when accessing fields from bases

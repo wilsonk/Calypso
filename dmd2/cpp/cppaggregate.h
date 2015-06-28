@@ -45,6 +45,7 @@ public:
     CALYPSO_LANGPLUGIN
 
     const clang::CXXRecordDecl *RD;
+    bool layoutQueried = false;
 
     ClassDeclaration(Loc loc, Identifier *id, BaseClasses *baseclasses,
                      const clang::CXXRecordDecl *RD);
