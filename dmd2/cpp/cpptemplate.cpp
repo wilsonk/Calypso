@@ -76,6 +76,14 @@ struct CppSymCollector
             case Treference:
                 collect(static_cast<TypeNext*>(t)->next);
                 break;
+            case Tfunction:
+            {
+                auto tf = static_cast<TypeFunction*>(t);
+                collect(tf->next);
+                for (auto p: *tf->parameters)
+                    collect(p->type);
+                break;
+            }
             case Tident:
             case Tinstance:
             default:
