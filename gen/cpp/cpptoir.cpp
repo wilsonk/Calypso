@@ -270,6 +270,8 @@ void LangPlugin::toInitClass(TypeClass* tc, LLValue* dst)
 LLValue *LangPlugin::toVirtualFunctionPointer(DValue* inst, 
                                               ::FuncDeclaration* fdecl, char* name)
 {
+    updateCGFInsertPoint();
+    
     auto MD = cast<clang::CXXMethodDecl>(getFD(fdecl));
     LLValue* vthis = inst->getRVal();
     auto Ty = toFunctionType(fdecl);
