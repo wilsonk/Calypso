@@ -405,19 +405,20 @@ void LangPlugin::toResolveFunction(::FuncDeclaration* fdecl)
     irFty.funcType = resolved.Ty;
 }
 
-class DiscardableODREmitter : public clang::RecursiveASTVisitor<DiscardableODREmitter>
+// Emits functions with internal linkage the function being defined depends upon.
+class InternalFunctionEmitter : public clang::RecursiveASTVisitor<InternalFunctionEmitter>
 {
     clang::ASTContext &Context;
     clangCG::CodeGenModule &CGM;
 
     llvm::DenseSet<const clang::FunctionDecl *> Emitted;
 public:
-    DiscardableODREmitter(clang::ASTContext &Context,
+    InternalFunctionEmitter(clang::ASTContext &Context,
                         clangCG::CodeGenModule &CGM) : Context(Context), CGM(CGM) {}
     bool VisitCallExpr(const clang::CallExpr *E);
 };
 
-bool DiscardableODREmitter::VisitCallExpr(const clang::CallExpr *E)
+bool InternalFunctionEmitter::VisitCallExpr(const clang::CallExpr *E)
 {
     auto Callee = E->getDirectCallee();
     const clang::FunctionDecl *Def;
@@ -431,7 +432,8 @@ bool DiscardableODREmitter::VisitCallExpr(const clang::CallExpr *E)
 
     auto resolved = ResolvedFunc::get(CGM, Callee);
 
-    if (Context.GetGVALinkageForFunction(Callee) != clang::GVA_DiscardableODR || Emitted.count(Def))
+    auto Linkage = Context.GetGVALinkageForFunction(Callee);
+    if ((Linkage != clang::GVA_Internal && Linkage != clang::GVA_DiscardableODR) || Emitted.count(Def))
         return true;
 
     Emitted.insert(Def);
@@ -455,7 +457,7 @@ void LangPlugin::toDefineFunction(::FuncDeclaration* fdecl)
         CGM->EmitTopLevelDecl(const_cast<clang::FunctionDecl*>(Def)); // TODO remove const_cast
 
         // Emit inline functions this function depends upon
-        DiscardableODREmitter(Context, *CGM).TraverseStmt(Def->getBody());
+        InternalFunctionEmitter(Context, *CGM).TraverseStmt(Def->getBody());
     }
 }
 
