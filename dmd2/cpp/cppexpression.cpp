@@ -543,10 +543,28 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
         if (!Ty.isNull() && !DestTy.isNull()
                 && Ty->getAs<clang::RecordType>())
         {
+            auto DestRecordTy = DestTy->getAs<clang::RecordType>();
             if (DestTy->getAs<clang::ReferenceType>())
+                DestRecordTy = DestTy->getPointeeType()->getAs<clang::RecordType>();
+
+            if (!DestRecordTy)
                 goto Lcast;
-            else
+
+            auto ExprRecord = Ty->castAs<clang::RecordType>()->getDecl();
+            auto ExprCXXRecord = dyn_cast<clang::CXXRecordDecl>(ExprRecord);
+            auto DestRecord = DestRecordTy->getDecl();
+            auto DestCXXRecord = dyn_cast<clang::CXXRecordDecl>(DestRecord);
+
+            if (!DestRecord)
+                goto Lcast;
+
+            if (DestRecord->getCanonicalDecl() == ExprRecord->getCanonicalDecl())
                 return e;
+
+            if (!DestCXXRecord || !ExprCXXRecord || !ExprCXXRecord->isDerivedFrom(DestCXXRecord))
+                goto Lcast;
+            
+            return e;
         }
 
         if (destType && destType->ty == Treference)
