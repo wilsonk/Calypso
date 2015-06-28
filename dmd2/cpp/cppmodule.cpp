@@ -748,6 +748,8 @@ Dsymbols *DeclMapper::VisitRedeclarableTemplateDecl(const clang::RedeclarableTem
         packFound = isTemplateParameterPack(P);
 
         auto tp = VisitTemplateParameter(P);
+        if (!tp)
+            return nullptr; // should be extremely rare, e.g if there's a int128_t value parameter
         tpl->push(tp);
     }
 
@@ -796,6 +798,9 @@ TemplateParameter *DeclMapper::VisitTemplateParameter(const clang::NamedDecl *Pa
     {
         id = getIdentifierForTemplateNonTypeParm(NTTPD);
         auto valTy = fromType(NTTPD->getType());
+
+        if (!valTy || isNonSupportedType(NTTPD->getType()))
+            return nullptr;
 
         if (NTTPD->isParameterPack())
         {
@@ -862,7 +867,11 @@ TemplateParameter *DeclMapper::VisitTemplateParameter(const clang::NamedDecl *Pa
 
             if (SpecArg)
             {
-                tp_spectype = isType(FromType(*this).fromTemplateArgument(SpecArg));
+                auto SpecTy = SpecArg->getAsType();
+                auto specArg = FromType(*this).fromTemplateArgument(SpecArg);
+                if (!specArg || isNonSupportedType(SpecTy))
+                    return nullptr; // might be a non supported type
+                tp_spectype = isType(specArg);
                 assert(tp_spectype);
             }
 
@@ -968,6 +977,8 @@ Dsymbols *DeclMapper::VisitClassTemplateSpecializationDecl(const clang::ClassTem
         PI != PE; PI++)
     {
         auto tp = VisitTemplateParameter(*PI, AI);
+        if (!tp)
+            return nullptr;
         tpl->push(tp);
 
         if (AI) AI++;
