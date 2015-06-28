@@ -882,7 +882,7 @@ Lancestorsdone:
     dtor = buildDtor(this, sc2);
     if (FuncDeclaration *f = hasIdentityOpAssign(this, sc2))
     {
-        if (!(f->storage_class & STCdisable))
+        if (byRef() && !(f->storage_class & STCdisable)) // CALYPSO
             error(f->loc, "identity assignment operator overload is illegal");
     }
     sc2->pop();
