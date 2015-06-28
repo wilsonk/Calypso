@@ -611,7 +611,7 @@ public:
     bool isDirectParent(const clang::Decl *D)
     {
         auto Parent = cast<clang::Decl>(
-                        getDeclContextNamedOrTU(D));
+                        getDeclContextNonLinkSpec(D));
         return operator()(Parent);
     }
 
@@ -876,7 +876,7 @@ const clang::Decl *TypeMapper::GetRootForTypeQualified(clang::NamedDecl *D)
                 return DI;
 
             DI = cast<clang::Decl>(
-                    getDeclContextNamedOrTU(DI));
+                    getDeclContextNonLinkSpec(DI));
         }
 
 //         bool fullyQualify = false;
@@ -1921,12 +1921,19 @@ TypeMapper::TypeMapper(cpp::Module* mod)
 {
 }
 
-const clang::DeclContext *getDeclContextNamedOrTU(const clang::Decl *D)
+const clang::DeclContext *getDeclContextNonLinkSpec(const clang::Decl *D)
 {
     auto DC = D->getDeclContext();
 
     while (isa<clang::LinkageSpecDecl>(DC))
         DC = DC->getParent();
+
+    return DC;
+}
+
+const clang::DeclContext *getDeclContextNamedOrTU(const clang::Decl *D)
+{
+    auto DC = getDeclContextNonLinkSpec(D);
 
     auto NamedDC = dyn_cast<clang::NamedDecl>(DC);
     if (NamedDC && NamedDC->getDeclName().isEmpty())
