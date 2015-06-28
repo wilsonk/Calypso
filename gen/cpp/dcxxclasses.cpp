@@ -462,7 +462,12 @@ void LangPlugin::toPostNewClass(Loc& loc, TypeClass* tc, DValue* val)
     auto RD = dcxxInfo->mostDerivedCXXBase->RD;
 
     // HACK HACK UGLY but... just try to comment
-    CGF()->CurGD = *dcxxInfo->mostDerivedCXXBase->RD->method_begin();
+    for (auto MD: dcxxInfo->mostDerivedCXXBase->RD->methods()) {
+        if (!llvm::isa<clang::CXXConstructorDecl>(MD) && !llvm::isa<clang::CXXDestructorDecl>(MD)) {
+            CGF()->CurGD = MD;
+            break;
+        }
+    }
 
     // Initialize the vtable pointers for this class and all of its bases.
     clangCG::CodeGenFunction::VisitedVirtualBasesSetTy VBases;
