@@ -869,14 +869,18 @@ const clang::Decl *TypeMapper::GetRootForTypeQualified(clang::NamedDecl *D)
         if (ScopeDeclCheck(D, false))
             return D;
 
-        const clang::Decl *DI = D;
+        const clang::Decl *DI = D, *LastNamedDI = D;
         while(!isa<clang::TranslationUnitDecl>(DI))
         {
             if (ScopeDeclCheck.isDirectParent(DI))
-                return DI;
+                return LastNamedDI;
 
             DI = cast<clang::Decl>(
                     getDeclContextNonLinkSpec(DI));
+
+            if (auto Named = dyn_cast<clang::NamedDecl>(DI))
+                if (!Named->getDeclName().isEmpty())
+                    LastNamedDI = DI;
         }
 
 //         bool fullyQualify = false;
