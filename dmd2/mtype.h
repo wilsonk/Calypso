@@ -262,6 +262,7 @@ public:
     virtual LangPlugin *langPlugin();
     virtual unsigned short sizeType();
     virtual bool isTransitive() { return true; }
+    void copyDeco(); // some semantic() overrides do not return merge() e.g TypeFunction, both deco and equivDeco need to be set
 
     #define SIZE_INVALID (~(d_uns64)0)
     d_uns64 size();

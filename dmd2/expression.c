@@ -5840,7 +5840,7 @@ MATCH FuncExp::matchType(Type *to, Scope *sc, FuncExp **presult, int flag)
         tfy->isproperty = tfx->isproperty;
         tfy->isref      = tfx->isref;
         tfy->iswild     = tfx->iswild;
-        tfy->deco = tfy->merge()->deco;
+        tfy->copyDeco();
 
         tfx = tfy;
     }
@@ -5852,7 +5852,7 @@ MATCH FuncExp::matchType(Type *to, Scope *sc, FuncExp **presult, int flag)
     {
         // Allow conversion from implicit function pointer to delegate
         tx = new TypeDelegate(tfx);
-        tx->deco = tx->merge()->deco;
+        tx->copyDeco();
     }
     else
     {

@@ -343,7 +343,7 @@ void Type::init()
     terror = basic[Terror];
     tnull = basic[Tnull];
     tnull = new TypeNull();
-    tnull->deco = tnull->merge()->deco;
+    tnull->copyDeco();
 
     tvoidptr = tvoid->pointerTo();
     tstring = tchar->immutableOf()->arrayOf();
@@ -1266,7 +1266,7 @@ Type *Type::pointerTo()
         Type *t = new TypePointer(this);
         if (ty == Tfunction)
         {
-            t->deco = t->merge()->deco;
+            t->copyDeco();
             pto = t;
         }
         else
@@ -1607,6 +1607,15 @@ void Type::toDecoBuffer(OutBuffer *buf, int flag, bool forEquiv)
         MODtoDecoBuffer(buf, mod);
     }
     buf->writeByte(mangleChar[ty]);
+}
+
+void Type::copyDeco() // CALYPSO
+{
+    Type *tm = merge();
+    if (tm == this)
+        return;
+    deco = tm->deco;
+    equivDeco = tm->equivDeco;
 }
 
 /********************************
@@ -5114,7 +5123,7 @@ Type *TypePointer::semantic(Loc loc, Scope *sc)
 #if 0
     return merge();
 #else
-    deco = merge()->deco;
+    copyDeco();
     /* Don't return merge(), because arg identifiers and default args
      * can be different
      * even though the types match
@@ -5942,7 +5951,7 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
         return terror;
 
     if (tf->next)
-        tf->deco = tf->merge()->deco;
+        tf->copyDeco();
 
     /* Don't return merge(), because arg identifiers and default args
      * can be different
@@ -6384,7 +6393,7 @@ Type *TypeFunction::addStorageClass(StorageClass stc)
         if (stc & STCsafe)
             tf->trust = TRUSTsafe;
 
-        tf->deco = tf->merge()->deco;
+        tf->copyDeco();
         t = tf;
     }
     return t;
@@ -6473,7 +6482,7 @@ Type *TypeDelegate::semantic(Loc loc, Scope *sc)
      * can be different
      * even though the types match
      */
-    deco = merge()->deco;
+    copyDeco();
     return this;
 #endif
 }
@@ -9186,7 +9195,7 @@ Type *TypeTuple::semantic(Loc loc, Scope *sc)
     //printf("TypeTuple::semantic(this = %p)\n", this);
     //printf("TypeTuple::semantic() %p, %s\n", this, toChars());
     if (!deco)
-        deco = merge()->deco;
+        copyDeco();
 
     /* Don't return merge(), because a tuple with one type has the
      * same deco as that type.
