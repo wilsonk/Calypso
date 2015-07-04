@@ -322,8 +322,6 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
             (CRD && isDefined && !CRD->isPOD()))
         isPOD = false;
 
-    CXXScope.push(D);
-
     AggregateDeclaration *a;
     if (!anon)
     {
@@ -359,6 +357,8 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
 
         declMap[D] = a;
     }
+
+    CXXScope.push(D);
 
     // atm we're sortof mirroring parseAggregate()
     auto members = new Dsymbols;
