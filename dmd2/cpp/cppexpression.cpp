@@ -160,7 +160,11 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
 
         if (Kind != clang::CK_NoOp && Kind != clang::CK_ConstructorConversion &&
                 Kind != clang::CK_LValueToRValue)
+        {
             DestTy = Cast->getType();
+            assert(Cast->getSubExpr()->getType().getCanonicalType()
+                            != DestTy.getCanonicalType()); // we should be ignoring all casts that do not alter the type
+        }
 
         if (Kind == clang::CK_NullToPointer)
             e = new NullExp(loc);
@@ -541,31 +545,32 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
     {
         // When t is an unresolved TypeQualified we may want to emulate
         // implicitConvTo with the Clang types instead of the D ones
-        if (!Ty.isNull() && !DestTy.isNull()
-                && Ty->getAs<clang::RecordType>())
+        if (!Ty.isNull() && !DestTy.isNull())
         {
-            auto DestRecordTy = DestTy->getAs<clang::RecordType>();
-            if (DestTy->getAs<clang::ReferenceType>())
-                DestRecordTy = DestTy->getPointeeType()->getAs<clang::RecordType>();
+            if (auto DestRecordTy = DestTy->getAs<clang::RecordType>())
+            {
+                if (DestTy->getAs<clang::ReferenceType>())
+                    DestRecordTy = DestTy->getPointeeType()->getAs<clang::RecordType>();
 
-            if (!DestRecordTy)
-                goto Lcast;
+                if (!DestRecordTy)
+                    goto Lcast;
 
-            auto ExprRecord = Ty->castAs<clang::RecordType>()->getDecl();
-            auto ExprCXXRecord = dyn_cast<clang::CXXRecordDecl>(ExprRecord);
-            auto DestRecord = DestRecordTy->getDecl();
-            auto DestCXXRecord = dyn_cast<clang::CXXRecordDecl>(DestRecord);
+                auto ExprRecord = Ty->castAs<clang::RecordType>()->getDecl();
+                auto ExprCXXRecord = dyn_cast<clang::CXXRecordDecl>(ExprRecord);
+                auto DestRecord = DestRecordTy->getDecl();
+                auto DestCXXRecord = dyn_cast<clang::CXXRecordDecl>(DestRecord);
 
-            if (!DestRecord)
-                goto Lcast;
+                if (!DestRecord)
+                    goto Lcast;
 
-            if (DestRecord->getCanonicalDecl() == ExprRecord->getCanonicalDecl())
+                if (DestRecord->getCanonicalDecl() == ExprRecord->getCanonicalDecl())
+                    return e;
+
+                if (!DestCXXRecord || !ExprCXXRecord || !ExprCXXRecord->isDerivedFrom(DestCXXRecord))
+                    goto Lcast;
+
                 return e;
-
-            if (!DestCXXRecord || !ExprCXXRecord || !ExprCXXRecord->isDerivedFrom(DestCXXRecord))
-                goto Lcast;
-            
-            return e;
+            }
         }
 
         if (destType && destType->ty == Treference)
