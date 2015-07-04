@@ -1736,6 +1736,8 @@ const clang::Decl *TypeMapper::GetNonNestedContext(const clang::Decl *D)
 
     if (auto TagDC = dyn_cast<clang::TagDecl>(D->getDeclContext()))
         return GetNonNestedContext(TagDC);
+    if (auto FuncDC = dyn_cast<clang::FunctionDecl>(D->getDeclContext()))
+        return GetNonNestedContext(FuncDC);
 
     auto Tag = dyn_cast<clang::TagDecl>(D);
     if (Tag && getIdentifierOrNull(Tag))
