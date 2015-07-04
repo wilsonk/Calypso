@@ -571,6 +571,11 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     if (isa<clang::FunctionNoProtoType>(D->getType()))
         return nullptr; // functions without prototypes are afaik builtins, and since D needs a prototype they can't be mapped
 
+    // TODO: map explicit specializations properly (passing for now because the handling of SubstTemplateTypeParmType gets tricky,
+    // however calls are already routed to explicit specs by Sema even if not mapped to D explicit specs)
+    if (!instantiating && D->isFunctionTemplateSpecialization())
+        return nullptr;
+
     auto loc = fromLoc(D->getLocation());
 
     auto FPT = D->getType()->castAs<clang::FunctionProtoType>();

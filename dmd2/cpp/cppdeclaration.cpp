@@ -142,7 +142,8 @@ void FuncDeclaration::semantic(Scope *sc)
 
         auto Inst = cast<clang::FunctionDecl>(c_ti->Inst);
 
-        DeclMapper m(nullptr);
+        assert(isCPP(sc->module));
+        DeclMapper m(static_cast<cpp::Module*>(sc->module), true);
         m.addImplicitDecls = false;
 
         auto inst = static_cast<decltype(this)>(

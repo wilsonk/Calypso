@@ -123,8 +123,12 @@ const clang::FunctionDecl *getFD(::FuncDeclaration *f);
 
 class DeclMapper : public TypeMapper
 {
+protected:
+    bool instantiating;
+
 public:
-    DeclMapper(Module *mod) : TypeMapper(mod) {} // hmm why does putting into .cpp give me a link error?
+    DeclMapper(Module *mod, bool instantiating = false)
+        : TypeMapper(mod), instantiating(instantiating) {} // hmm why does putting into .cpp give me a link error?
 
     inline PROT toPROT(clang::AccessSpecifier AS);
 
