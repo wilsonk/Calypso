@@ -158,7 +158,8 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
     {
         auto Kind = Cast->getCastKind();
 
-        if (Kind != clang::CK_NoOp && Kind != clang::CK_ConstructorConversion)
+        if (Kind != clang::CK_NoOp && Kind != clang::CK_ConstructorConversion &&
+                Kind != clang::CK_LValueToRValue)
             DestTy = Cast->getType();
 
         if (Kind == clang::CK_NullToPointer)
