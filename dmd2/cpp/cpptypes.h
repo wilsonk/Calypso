@@ -144,7 +144,7 @@ protected:
 
     ::Import *BuildImplicitImport(const clang::Decl *D);
     ::Import *BuildImplicitImport(const clang::Decl *D, const clang::Module *Mod);
-    const clang::Decl *GetImplicitImportKeyForDecl(const clang::NamedDecl *D);
+    Module::RootKey GetImplicitImportKeyForDecl(const clang::NamedDecl *D);
     const clang::Decl *GetNonNestedContext(const clang::Decl *D);  // returns the "root" for qualified types
 
     Type *trySubstitute(const clang::Decl *D);

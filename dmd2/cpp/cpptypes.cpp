@@ -768,13 +768,16 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::Decl *D)
 
         if (LeftMostCheck(D))  // we'll need a fully qualified type
         {
-            // build a fake import
-            auto im = tm.AddImplicitImportForDecl(TopDecl, true);
-
             tqual = new TypeIdentifier(Loc(), Id::empty); // start with the module scope operator . to guarantee against collisions
-            for (size_t i = 1; i < im->packages->dim; i++)
-                addIdent(tqual, (*im->packages)[i]);
-            addIdent(tqual, im->id);
+
+            // build a fake import
+            if (auto im = tm.AddImplicitImportForDecl(TopDecl, true))
+            {
+                for (size_t i = 1; i < im->packages->dim; i++)
+                    addIdent(tqual, (*im->packages)[i]);
+                addIdent(tqual, im->id);
+            }
+            // if no Import was returned D is part of the module being mapped
 
             if (isa<clang::NamespaceDecl>(D) || isa<clang::TranslationUnitDecl>(D))
                 return tqual;
@@ -1623,29 +1626,17 @@ static clang::Module *GetClangModuleForDecl(const clang::Decl* D)
 // So we need to populate the beginning of our virtual module with imports for derived classes.
 ::Import *TypeMapper::AddImplicitImportForDecl(const clang::NamedDecl *D, bool fake)
 {
-    if (!fake)
-    {
-        if (!addImplicitDecls)
-            return nullptr;
+    if (!fake && !addImplicitDecls)
+        return nullptr;
+    assert(mod);
 
-        assert(mod);
-    }
+    auto Key = GetImplicitImportKeyForDecl(D);
 
-    Module::RootKey Key;
-    Key.first = GetImplicitImportKeyForDecl(D);
+    if (Key == mod->rootKey)
+        return nullptr; // do not import self
 
-    if (isa<clang::TranslationUnitDecl>(Key.first)
-                || isa<clang::NamespaceDecl>(Key.first))
-        Key.second = GetClangModuleForDecl(D); // see if there's a Clang module which contains the decl
-
-    if (!fake)
-    {
-        if (Key == mod->rootKey)
-            return nullptr; // do not import self
-
-        if (implicitImports[Key])
-            return nullptr; // already imported
-    }
+    if (!fake && implicitImports[Key])
+        return nullptr; // already imported
 
     ::Import *im;
     if (Key.second)
@@ -1662,14 +1653,18 @@ static clang::Module *GetClangModuleForDecl(const clang::Decl* D)
     return im;
 }
 
-const clang::Decl* TypeMapper::GetImplicitImportKeyForDecl(const clang::NamedDecl* D)
+Module::RootKey TypeMapper::GetImplicitImportKeyForDecl(const clang::NamedDecl* D)
 {
     auto TopMost = GetNonNestedContext(D);
 
     if (auto Spec = dyn_cast<clang::ClassTemplateSpecializationDecl>(TopMost))
         return GetImplicitImportKeyForDecl(Spec->getSpecializedTemplate());
 
-    return TopMost->getCanonicalDecl();
+    Module::RootKey Key;
+    Key.first = TopMost->getCanonicalDecl();
+    if (isa<clang::TranslationUnitDecl>(Key.first) || isa<clang::NamespaceDecl>(Key.first))
+        Key.second = GetClangModuleForDecl(D); // see if there's a Clang module which contains the decl
+    return Key;
 }
 
 // typedef class/struct/enum { ...anon record... } SymbolName
