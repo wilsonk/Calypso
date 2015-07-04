@@ -305,8 +305,8 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
 
     auto ti = tempinsts.top();
 
-    for (auto I = DG.begin(), E = DG.end(); I != E; ++I)
-        ti->Dependencies.push_back(*I);
+//     for (auto I = DG.begin(), E = DG.end(); I != E; ++I)
+//         ti->Dependencies.push_back(*I);
 
     return true;
 }
