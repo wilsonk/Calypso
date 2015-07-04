@@ -805,12 +805,9 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::Decl *D)
 
     if (auto ClassSpec = dyn_cast<clang::ClassTemplateSpecializationDecl>(D))
     {
-        if (!tm.isNonExplicitInjectedClassName(ClassSpec))
-        {
-            Spec = const_cast<clang::ClassTemplateSpecializationDecl*>(ClassSpec);
-            SpecTemp = ClassSpec->getSpecializedTemplate();
-            TempArgs = ClassSpec->getTemplateArgs().asArray();
-        }
+        Spec = const_cast<clang::ClassTemplateSpecializationDecl*>(ClassSpec);
+        SpecTemp = ClassSpec->getSpecializedTemplate();
+        TempArgs = ClassSpec->getTemplateArgs().asArray();
     }
     else if (auto Func = dyn_cast<clang::FunctionDecl>(D)) // functions will always be at the top
     {
@@ -860,14 +857,20 @@ const clang::Decl *TypeMapper::GetRootForTypeQualified(clang::NamedDecl *D)
             // TODO: check that this doesn't happen when called from TypeMapper would be more solid
         return nullptr;
 
+    bool topScopeDecl = true;
     while (!ScopeStack.empty())
     {
         auto ScopeDecl = ScopeStack.top();
         ScopeStack.pop();
         ScopeChecker ScopeDeclCheck(ScopeDecl);
 
-        if (ScopeDeclCheck(D, false))
-            return D;
+        if (topScopeDecl)
+            assert(!ScopeDeclCheck(D, false)); // in the following :
+                    //      class time_duration { public: uint seconds() { return 60; } }
+                    //      class seconds : time_duration { public: void foo(seconds *b) {} }
+                    // searching "seconds" in the derived class will return the function.
+                    // seconds needs to be replaced by « typeof(this) ».
+        topScopeDecl = false;
 
         const clang::Decl *DI = D, *LastNamedDI = D;
         while(!isa<clang::TranslationUnitDecl>(DI))
@@ -945,6 +948,9 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* D,
     if (!TempArgBegin)
         if (auto subst = tm.trySubstitute(D)) // HACK for correctTiargs
             return subst;
+
+    if (tm.isNonExplicitInjectedClassName(D))
+        return fromInjectedClassName();
 
     auto Root = tm.GetRootForTypeQualified(D);
     if (!Root)
