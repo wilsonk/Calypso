@@ -412,15 +412,19 @@ class InternalFunctionEmitter : public clang::RecursiveASTVisitor<InternalFuncti
     clangCG::CodeGenModule &CGM;
 
     llvm::DenseSet<const clang::FunctionDecl *> Emitted;
+
+    bool Emit(const clang::FunctionDecl *Callee);
 public:
     InternalFunctionEmitter(clang::ASTContext &Context,
                         clangCG::CodeGenModule &CGM) : Context(Context), CGM(CGM) {}
     bool VisitCallExpr(const clang::CallExpr *E);
+    bool VisitCXXConstructExpr(const clang::CXXConstructExpr *E);
+    bool VisitCXXNewExpr(const clang::CXXNewExpr *E);
+    bool VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E);
 };
 
-bool InternalFunctionEmitter::VisitCallExpr(const clang::CallExpr *E)
+bool InternalFunctionEmitter::Emit(const clang::FunctionDecl *Callee)
 {
-    auto Callee = E->getDirectCallee();
     const clang::FunctionDecl *Def;
 
     if (!Callee || !Callee->hasBody(Def))
@@ -443,6 +447,35 @@ bool InternalFunctionEmitter::VisitCallExpr(const clang::CallExpr *E)
 
     TraverseStmt(Def->getBody());
     return true;
+}
+
+bool InternalFunctionEmitter::VisitCallExpr(const clang::CallExpr *E)
+{
+    return Emit(E->getDirectCallee());
+}
+
+bool InternalFunctionEmitter::VisitCXXConstructExpr(const clang::CXXConstructExpr *E)
+{
+    return Emit(E->getConstructor());
+}
+
+bool InternalFunctionEmitter::VisitCXXNewExpr(const clang::CXXNewExpr *E)
+{
+    return Emit(E->getOperatorNew());
+}
+
+bool InternalFunctionEmitter::VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E)
+{
+    auto DestroyedType = E->getDestroyedType();
+    if (!DestroyedType.isNull()) {
+        if (const clang::RecordType *RT = DestroyedType->getAs<clang::RecordType>()) {
+            clang::CXXRecordDecl *RD = cast<clang::CXXRecordDecl>(RT->getDecl());
+            if (RD->hasDefinition())
+                Emit(RD->getDestructor());
+        }
+    }
+
+    return Emit(E->getOperatorDelete());
 }
 
 void LangPlugin::toDefineFunction(::FuncDeclaration* fdecl)

@@ -494,17 +494,21 @@ class FunctionReferencer : public clang::RecursiveASTVisitor<FunctionReferencer>
     clang::SourceLocation Loc;
 
     llvm::DenseSet<const clang::FunctionDecl *> Referenced;
+
+    bool Reference(const clang::FunctionDecl *Callee);
 public:
     FunctionReferencer(DeclMapper &mapper,
                         clang::Sema &S,
                         clang::SourceLocation Loc) : mapper(mapper), S(S), Loc(Loc) {}
     bool VisitCallExpr(const clang::CallExpr *E);
+    bool VisitCXXConstructExpr(const clang::CXXConstructExpr *E);
+    bool VisitCXXNewExpr(const clang::CXXNewExpr *E);
+    bool VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E);
 };
 
-bool FunctionReferencer::VisitCallExpr(const clang::CallExpr *E)
+bool FunctionReferencer::Reference(const clang::FunctionDecl *D)
 {
-    auto Callee = const_cast<clang::FunctionDecl*>(E->getDirectCallee());
-
+    auto Callee = const_cast<clang::FunctionDecl*>(D);
     if (!Callee || Referenced.count(Callee->getCanonicalDecl()))
         return true;
     Referenced.insert(Callee->getCanonicalDecl());
@@ -523,6 +527,35 @@ bool FunctionReferencer::VisitCallExpr(const clang::CallExpr *E)
 
     TraverseStmt(Def->getBody());
     return true;
+}
+
+bool FunctionReferencer::VisitCallExpr(const clang::CallExpr *E)
+{
+    return Reference(E->getDirectCallee());
+}
+
+bool FunctionReferencer::VisitCXXConstructExpr(const clang::CXXConstructExpr *E)
+{
+    return Reference(E->getConstructor());
+}
+
+bool FunctionReferencer::VisitCXXNewExpr(const clang::CXXNewExpr *E)
+{
+    return Reference(E->getOperatorNew());
+}
+
+bool FunctionReferencer::VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E)
+{
+    auto DestroyedType = E->getDestroyedType();
+    if (!DestroyedType.isNull()) {
+        if (const clang::RecordType *RT = DestroyedType->getAs<clang::RecordType>()) {
+            clang::CXXRecordDecl *RD = cast<clang::CXXRecordDecl>(RT->getDecl());
+            if (RD->hasDefinition())
+                Reference(RD->getDestructor());
+        }
+    }
+
+    return Reference(E->getOperatorDelete());
 }
 
 Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
@@ -570,13 +603,13 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
         auto D_ = const_cast<clang::FunctionDecl*>(D);
         D_->setTrivial(false);  // force its definition and Sema to resolve its exception spec
         S.MarkFunctionReferenced(clang::SourceLocation(), D_);
-
-        const clang::FunctionDecl *Def;
-        if (D->hasBody(Def))
-            FunctionReferencer(*this, S, clang::SourceLocation()).TraverseStmt(Def->getBody());
-
-        S.PerformPendingInstantiations();
     }
+
+    const clang::FunctionDecl *Def;
+    if (D->hasBody(Def))
+        FunctionReferencer(*this, S, clang::SourceLocation()).TraverseStmt(Def->getBody());
+
+    S.PerformPendingInstantiations();
 
     StorageClass stc = STCundefined;
     if (MD)
