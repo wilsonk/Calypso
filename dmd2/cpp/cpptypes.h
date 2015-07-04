@@ -135,7 +135,8 @@ protected:
     Identifier *getIdentifierForTemplateTypeParm(const clang::TemplateTypeParmType *T);
     Identifier *getIdentifierForTemplateTemplateParm(const clang::TemplateTemplateParmDecl *D);
 
-    bool isNonExplicitInjectedClassName(const clang::Decl *D); // misleading name? not InjectedClassNameType
+    bool isInjectedClassName(const clang::Decl *D); // misleading name? not InjectedClassNameType
+    bool isInjectedScopeName(const clang::Decl *D); // true if this is one of the CXXScope decls
     bool isRecursivelyInstantiated(const clang::TemplateName Name,
                     const clang::TemplateArgument *ArgBegin,
                     const clang::TemplateArgument *ArgEnd);

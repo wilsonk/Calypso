@@ -808,9 +808,12 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::Decl *D)
 
     if (auto ClassSpec = dyn_cast<clang::ClassTemplateSpecializationDecl>(D))
     {
-        Spec = const_cast<clang::ClassTemplateSpecializationDecl*>(ClassSpec);
-        SpecTemp = ClassSpec->getSpecializedTemplate();
-        TempArgs = ClassSpec->getTemplateArgs().asArray();
+        if (!tm.isInjectedScopeName(D))
+        {
+            Spec = const_cast<clang::ClassTemplateSpecializationDecl*>(ClassSpec);
+            SpecTemp = ClassSpec->getSpecializedTemplate();
+            TempArgs = ClassSpec->getTemplateArgs().asArray();
+        }
     }
     else if (auto Func = dyn_cast<clang::FunctionDecl>(D)) // functions will always be at the top
     {
@@ -860,20 +863,13 @@ const clang::Decl *TypeMapper::GetRootForTypeQualified(clang::NamedDecl *D)
             // TODO: check that this doesn't happen when called from TypeMapper would be more solid
         return nullptr;
 
-    bool topScopeDecl = true;
     while (!ScopeStack.empty())
     {
         auto ScopeDecl = ScopeStack.top();
         ScopeStack.pop();
         ScopeChecker ScopeDeclCheck(ScopeDecl);
 
-        if (topScopeDecl)
-            assert(!ScopeDeclCheck(D, false)); // in the following :
-                    //      class time_duration { public: uint seconds() { return 60; } }
-                    //      class seconds : time_duration { public: void foo(seconds *b) {} }
-                    // searching "seconds" in the derived class will return the function.
-                    // seconds needs to be replaced by « typeof(this) ».
-        topScopeDecl = false;
+        assert(!ScopeDeclCheck(D, false)); // should already be handled
 
         const clang::Decl *DI = D, *LastNamedDI = D;
         while(!isa<clang::TranslationUnitDecl>(DI))
@@ -952,8 +948,15 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* D,
         if (auto subst = tm.trySubstitute(D)) // HACK for correctTiargs
             return subst;
 
-    if (tm.isNonExplicitInjectedClassName(D))
-        return fromInjectedClassName();
+    if (tm.isInjectedClassName(D))
+        return fromInjectedClassName(); // in the following :
+                    //      class time_duration { public: uint seconds() { return 60; } }
+                    //      class seconds : time_duration { public: void foo(seconds *b) {} }
+                    // searching "seconds" in the derived class will return the function.
+                    // seconds needs to be replaced by « typeof(this) ».
+
+    if (tm.isInjectedScopeName(D))
+        return new TypeIdentifier(fromLoc(D->getLocation()), getIdentifier(D));
 
     auto Root = tm.GetRootForTypeQualified(D);
     if (!Root)
@@ -1252,7 +1255,7 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
                 return subst;
 
             auto RD = RT->getDecl();
-            if (tm.isNonExplicitInjectedClassName(RD))
+            if (tm.isInjectedClassName(RD))
                 return fromInjectedClassName();
         }
 
@@ -1380,7 +1383,8 @@ Type* TypeMapper::FromType::fromTypeSubstTemplateTypeParm(const clang::SubstTemp
 
 Type* TypeMapper::FromType::fromTypeInjectedClassName(const clang::InjectedClassNameType* T) // e.g in template <...> class A { A &next; } next has an injected class name type
 {
-    return fromInjectedClassName();
+    return typeQualifiedFor(T->getDecl());
+        // NOTE: this will return typeof(this) if we aren't in a nested class, but if we are the name of the record is (without template arguments)
 }
 
 TypeQualified *TypeMapper::FromType::fromNestedNameSpecifierImpl(const clang::NestedNameSpecifier *NNS)
@@ -1501,7 +1505,7 @@ Type* TypeMapper::FromType::fromTypePackExpansion(const clang::PackExpansionType
 
 // This is to check whether template arguments have to be omitted
 // There may be a more elegant way but for now that'll do
-bool TypeMapper::isNonExplicitInjectedClassName(const clang::Decl *D)
+bool TypeMapper::isInjectedClassName(const clang::Decl *D)
 {
     if(!CXXScope.empty())
     {
@@ -1510,6 +1514,23 @@ bool TypeMapper::isNonExplicitInjectedClassName(const clang::Decl *D)
 
         if (ScopeDeclCheck(D, false))
             return true;
+    }
+
+    return false;
+}
+
+bool TypeMapper::isInjectedScopeName(const clang::Decl *D)
+{
+    decltype(TypeMapper::CXXScope) ScopeStack(CXXScope);
+    while(!ScopeStack.empty())
+    {
+        auto ScopeDecl = ScopeStack.top();
+        ScopeChecker ScopeDeclCheck(ScopeDecl);
+
+        if (ScopeDeclCheck(D, false))
+            return true;
+
+        ScopeStack.pop();
     }
 
     return false;
