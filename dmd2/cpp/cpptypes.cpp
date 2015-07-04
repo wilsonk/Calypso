@@ -933,6 +933,11 @@ const clang::Decl *TypeMapper::GetRootForTypeQualified(clang::NamedDecl *D)
     return D->getTranslationUnitDecl();
 }
 
+static Type *fromInjectedClassName()
+{
+    return new TypeTypeof(Loc(), new ThisExp(Loc()));
+}
+
 Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* D,
     const clang::TemplateArgument *TempArgBegin,
     const clang::TemplateArgument *TempArgEnd)
@@ -1217,12 +1222,6 @@ TypeQualified *TypeMapper::FromType::fromTemplateName(const clang::TemplateName 
         return new TypeIdentifier(Loc(), tempIdent);
 }
 
-static Type *fromInjectedClassName(const clang::RecordDecl *RD)
-{
-    auto className = fromIdentifier(RD->getIdentifier());
-    return new TypeIdentifier(Loc(), className);
-}
-
 Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::TemplateSpecializationType* T)
 {
     auto tqual = fromTemplateName(T->getTemplateName(),
@@ -1245,7 +1244,7 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
 
             auto RD = RT->getDecl();
             if (tm.isNonExplicitInjectedClassName(RD))
-                return fromInjectedClassName(RD);
+                return fromInjectedClassName();
         }
 
         if (RT && !RT->isDependentType())
@@ -1372,7 +1371,7 @@ Type* TypeMapper::FromType::fromTypeSubstTemplateTypeParm(const clang::SubstTemp
 
 Type* TypeMapper::FromType::fromTypeInjectedClassName(const clang::InjectedClassNameType* T) // e.g in template <...> class A { A &next; } next has an injected class name type
 {
-    return fromInjectedClassName(T->getDecl());
+    return fromInjectedClassName();
 }
 
 TypeQualified *TypeMapper::FromType::fromNestedNameSpecifierImpl(const clang::NestedNameSpecifier *NNS)
@@ -1495,15 +1494,12 @@ Type* TypeMapper::FromType::fromTypePackExpansion(const clang::PackExpansionType
 // There may be a more elegant way but for now that'll do
 bool TypeMapper::isNonExplicitInjectedClassName(const clang::Decl *D)
 {
-    D = D->getCanonicalDecl();
-
-    decltype(TypeMapper::CXXScope) ScopeStack(CXXScope);
-    while(!ScopeStack.empty())
+    if(!CXXScope.empty())
     {
-        auto ScopeDecl = ScopeStack.top();
-        ScopeStack.pop();
+        auto ScopeDecl = CXXScope.top();
+        ScopeChecker ScopeDeclCheck(ScopeDecl);
 
-        if (D == ScopeDecl->getCanonicalDecl())
+        if (ScopeDeclCheck(D, false))
             return true;
     }
 
