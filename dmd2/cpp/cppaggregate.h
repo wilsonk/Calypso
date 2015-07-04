@@ -30,12 +30,13 @@ public:
     CALYPSO_LANGPLUGIN
 
     const clang::RecordDecl *RD;
+    bool layoutQueried = false;
 
     StructDeclaration(Loc loc, Identifier* id, const clang::RecordDecl* RD);
     StructDeclaration(const StructDeclaration&);
     Dsymbol *syntaxCopy(Dsymbol *s) override;
     void semantic(Scope *sc) override;
-//     unsigned size(Loc loc) override;
+    unsigned size(Loc loc) override;
 };
 
 // The rest, i.e anything involving inheritance, virtual functions.
@@ -68,6 +69,7 @@ public:
     inline FuncDeclaration *findMethod(const clang::CXXMethodDecl *MD);
 };
 
+template<typename AggTy> void buildAggLayout(AggTy *ad);
 const clang::RecordDecl *getRecordDecl(::AggregateDeclaration *ad);
 const clang::RecordDecl *getRecordDecl(::Type *t);
 

@@ -70,6 +70,7 @@ public:
     PROT protection;
     unsigned structsize;        // size of struct
     unsigned alignsize;         // size of struct for alignment purposes
+    structalign_t alignment;    // alignment applied outside of the struct/class value // CALYPSO
     VarDeclarations fields;     // VarDeclaration fields
     Sizeok sizeok;         // set when structsize contains valid data
     Dsymbol *deferred;          // any deferred semantic2() or semantic3() symbol
@@ -130,7 +131,6 @@ public:
 #endif
     
     // CALYPSO
-    virtual void buildLayout(); // determine the agg size and field offsets
     virtual bool byRef() { return false; }
     virtual Expression *defaultInit(Loc loc) { assert(false); return NULL; }
 
@@ -163,7 +163,6 @@ public:
     static FuncDeclaration *xerreq;      // object.xopEquals
     static FuncDeclaration *xerrcmp;     // object.xopCmp
 
-    structalign_t alignment;    // alignment applied outside of the struct
     StructPOD ispod;            // if struct is POD
 
     // For 64 bit Efl function call/return ABI
@@ -277,8 +276,6 @@ public:
     Semantic doAncestorsSemantic;       // Before searching symbol, whole ancestors should finish
                                         // calling semantic() at least once, due to fill symtab
                                         // and do addMember(). [== Semantic(Start,In,Done)]
-
-    structalign_t alignment;    // alignment applied outside of the class value // CALYPSO
 
     ClassDeclaration(Loc loc, Identifier *id, BaseClasses *baseclasses, bool inObject = false);
     virtual Dsymbol *syntaxCopy(Dsymbol *s);

@@ -167,6 +167,14 @@ void StructDeclaration::semantic(Scope *sc)
     ::StructDeclaration::semantic(sc);
 }
 
+unsigned int StructDeclaration::size(Loc loc)
+{
+    if (sizeok != SIZEOKdone)
+        buildAggLayout(this);
+
+    return structsize;
+}
+
 void ClassDeclaration::semantic(Scope *sc)
 {
     if (semanticRun >= PASSsemanticdone)
@@ -324,41 +332,7 @@ void ClassDeclaration::finalizeVtbl()
 
 void ClassDeclaration::buildLayout()
 {
-    if (layoutQueried)
-        return;
-
-    if (RD->isInvalidDecl())
-        return; // if it's a forward reference, consider the record empty
-
-    auto& Context = calypso.getASTContext();
-    auto& RL = Context.getASTRecordLayout(RD);
-    
-    alignment = alignsize = RL.getAlignment().getQuantity();
-    structsize = RL.getSize().getQuantity();
-    
-    for (size_t i = 0; i < members->dim; i++)
-    {
-        auto s = (*members)[i];
-        
-        auto vd = s->isVarDeclaration();
-        if (!vd)
-            continue;
-
-        assert(isCPP(vd));
-        
-        auto c_vd = static_cast<VarDeclaration*>(vd);
-        auto FD = dyn_cast<clang::FieldDecl>(c_vd->VD);
-        
-        if (!FD)
-            continue;
-        
-        auto fldIdx = FD->getFieldIndex();
-        c_vd->offset = RL.getFieldOffset(fldIdx) / 8;
-        
-        fields.push(c_vd);
-    }
-
-    layoutQueried = true;
+    buildAggLayout(this);
 }
 
 // NOTE: we need to adjust every "this" pointer when accessing fields from bases
@@ -419,6 +393,48 @@ Expression *LangPlugin::getRightThis(Loc loc, Scope *sc, ::AggregateDeclaration 
     dd->semantic(sc);
 
     return dd;
+}
+
+template <typename AggTy>
+ void buildAggLayout(AggTy *ad)
+{
+    assert(isCPP(ad));
+
+    if (ad->layoutQueried)
+        return;
+
+    if (ad->RD->isInvalidDecl())
+        return; // if it's a forward reference, consider the record empty
+
+    auto& Context = calypso.getASTContext();
+    auto& RL = Context.getASTRecordLayout(ad->RD);
+
+    ad->alignment = ad->alignsize = RL.getAlignment().getQuantity();
+    ad->structsize = RL.getSize().getQuantity();
+
+    for (size_t i = 0; i < ad->members->dim; i++)
+    {
+        auto s = (*ad->members)[i];
+
+        auto vd = s->isVarDeclaration();
+        if (!vd)
+            continue;
+
+        assert(isCPP(vd));
+
+        auto c_vd = static_cast<VarDeclaration*>(vd);
+        auto FD = dyn_cast<clang::FieldDecl>(c_vd->VD);
+
+        if (!FD)
+            continue;
+
+        auto fldIdx = FD->getFieldIndex();
+        c_vd->offset = RL.getFieldOffset(fldIdx) / 8;
+
+        ad->fields.push(c_vd);
+    }
+
+    ad->layoutQueried = true;
 }
 
 const clang::RecordDecl *getRecordDecl(::AggregateDeclaration *ad)
