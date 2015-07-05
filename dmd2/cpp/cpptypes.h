@@ -59,7 +59,7 @@ public:
     Dsymbols *substsyms = nullptr; // only for TempateInstance::correctTiargs (partial spec arg deduction)
 
     std::stack<const clang::Decl *> CXXScope;
-    void rebuildCXXScope(const clang::Decl *RightMost);
+    void rebuildScope(const clang::Decl *RightMost); // rebuild both CXXScope and TempParamScope
 
     // Clang -> DMD
     Type *fromType(const clang::QualType T);
@@ -131,7 +131,8 @@ protected:
     llvm::SmallDenseMap<Module::RootKey, Import*, 8> implicitImports;
     llvm::DenseMap<const clang::NamedDecl*, Dsymbol*> declMap;  // fast lookup of mirror decls
 
-    llvm::SmallVector<const clang::TemplateParameterList*, 4> templateParameters;
+    llvm::SmallVector<const clang::TemplateParameterList*, 4> TempParamScope;
+    void pushTempParamList(const clang::Decl *D);
     Identifier *getIdentifierForTemplateTypeParm(const clang::TemplateTypeParmType *T);
     Identifier *getIdentifierForTemplateTemplateParm(const clang::TemplateTemplateParmDecl *D);
 
@@ -152,6 +153,9 @@ protected:
 
     friend class cpp::TypeQualifiedBuilder;
 };
+
+const clang::ClassTemplateDecl *getDefinition(const clang::ClassTemplateDecl *D);
+const clang::ClassTemplateSpecializationDecl *getDefinition(const clang::ClassTemplateSpecializationDecl *D);
 
 bool isNonPODRecord(const clang::QualType T);
 bool isNonSupportedType(clang::QualType T);

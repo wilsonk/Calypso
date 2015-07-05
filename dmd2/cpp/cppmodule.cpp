@@ -715,25 +715,6 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     return oneSymbol(fd);
 }
 
-// NOTE: doesn't return null if the template isn't defined. What we really want is some sort of canonical declaration to refer to for template parameters.
-static const clang::ClassTemplateDecl *getDefinition(const clang::ClassTemplateDecl *D)
-{
-    for (auto RI: D->redecls()) // find the definition if any
-    {
-        auto I = cast<clang::ClassTemplateDecl>(RI);
-        if (I->isThisDeclarationADefinition())
-            return I;
-    }
-
-    // This is more heuristical than anything else.. I'm not sure yet why templates inside
-    // specializations (e.g std::allocator::rebind) do not get defined.
-    if (auto MemberTemp = const_cast<clang::ClassTemplateDecl*>(D)->getInstantiatedFromMemberTemplate())
-        if (auto MemberDef = getDefinition(MemberTemp))
-            return MemberDef;
-
-    return D->getCanonicalDecl();
-}
-
 bool isTemplateParameterPack(const clang::NamedDecl *Param)
 {
     if (auto NTTPD = dyn_cast<clang::NonTypeTemplateParmDecl>(Param))
@@ -770,7 +751,7 @@ Dsymbols *DeclMapper::VisitRedeclarableTemplateDecl(const clang::RedeclarableTem
     auto tpl = !op ? new TemplateParameters : initTempParamsForOO(loc, op);
     auto TPL = Def->getTemplateParameters();
 
-    templateParameters.push_back(TPL);
+    TempParamScope.push_back(TPL);
 
     // FIXME: C++ templates may have multiple parameter packs, which isn't supported by D
     // Since this is a rare occurence ignore them for now
@@ -799,7 +780,7 @@ Dsymbols *DeclMapper::VisitRedeclarableTemplateDecl(const clang::RedeclarableTem
     auto decldefs = new Dsymbols;
     decldefs->append(s);
 
-    templateParameters.pop_back();
+    TempParamScope.pop_back();
 
     auto a = new TemplateDeclaration(loc, id, tpl, decldefs, D);
     return oneSymbol(a);
@@ -956,29 +937,15 @@ Dsymbol *DeclMapper::VisitInstancedClassTemplate(const clang::ClassTemplateSpeci
                                                  unsigned flags)
 {
     assert(!isa<clang::ClassTemplatePartialSpecializationDecl>(D));
-    auto CT = getDefinition(D->getSpecializedTemplate());
 
-    rebuildCXXScope(cast<clang::Decl>(D->getDeclContext()));
+    rebuildScope(cast<clang::Decl>(D->getDeclContext()));
 
-    templateParameters.push_back(CT->getTemplateParameters());
+    pushTempParamList(D);
     auto a = VisitRecordDecl(D, flags);
-    templateParameters.pop_back();
+    TempParamScope.pop_back();
 
     assert(a->dim);
     return (*a)[0];
-}
-
-static const clang::ClassTemplateSpecializationDecl *getDefinition(const clang::ClassTemplateSpecializationDecl *D)
-{
-    if (auto Definition = D->getDefinition())
-        return cast<clang::ClassTemplateSpecializationDecl>(Definition);
-
-    if (auto Partial = dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(D))
-        if (auto MemberInst = const_cast<clang::ClassTemplatePartialSpecializationDecl*>(Partial)->getInstantiatedFromMember()) // not the same method name..
-            if (auto MemberDef = getDefinition(MemberInst))
-                return MemberDef;
-
-    return D;
 }
 
 // Explicit specializations only
@@ -1009,7 +976,7 @@ Dsymbols *DeclMapper::VisitClassTemplateSpecializationDecl(const clang::ClassTem
         TPL = Partial->getTemplateParameters(); // SEMI-HACK #1 because we alter the tiargs to match the partial spec params
         AI = nullptr; // SEMI-HACK #2 because partial spec args won't matter during semantic
     }
-    templateParameters.push_back(TPL);
+    TempParamScope.push_back(TPL);
 
     for (auto PI = TPL->begin(), PE = TPL->end();
         PI != PE; PI++)
@@ -1026,7 +993,7 @@ Dsymbols *DeclMapper::VisitClassTemplateSpecializationDecl(const clang::ClassTem
     auto ad = VisitRecordDecl(D);
     decldefs->append(ad);
 
-    templateParameters.pop_back();
+    TempParamScope.pop_back();
 
     a = new TemplateDeclaration(loc, id, tpl, decldefs, D);
     return oneSymbol(a);

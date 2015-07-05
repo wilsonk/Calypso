@@ -1283,7 +1283,7 @@ Identifier *TypeMapper::getIdentifierForTemplateTypeParm(const clang::TemplateTy
         return fromIdentifier(Id);
     else
     {
-        auto ParamList = templateParameters[T->getDepth()];
+        auto ParamList = TempParamScope[T->getDepth()];
 
         if (T->getIndex() >= ParamList->size()) // this happens when the latter parameters are unnamed and have a default argument
             goto LgenId;
@@ -1334,27 +1334,26 @@ Type* TypeMapper::FromType::fromTypeSubstTemplateTypeParm(const clang::SubstTemp
     // NOTE: it's necessary to "revert" resolved symbol names of C++ template instantiations by Sema to the parameter name because D severes the link between the template instance scope and its members, and the only links that remain are the AliasDeclarations created by TemplateInstance::declareParameters
 
     // One exception is when the type managed to escape the template declaration, e.g with decltype(). In this fairly rare case T has to be desugared.
-//     bool isEscaped = true;
-//
-//     auto ParmDecl = T->getReplacedParameter()->getDecl();
-//     auto Temp = cast<clang::Decl>(ParmDecl->getDeclContext());
-//
-//     decltype(CXXScope) ScopeStack(tm.CXXScope);
-//     while (!ScopeStack.empty())
-//     {
-//         auto ScopeDecl = ScopeStack.top();
-//         ScopeStack.pop();
-//         ScopeChecker ScopeDeclEquals(ScopeDecl);
-//
-//         if (ScopeDeclEquals.extended(Temp))
-//         {
-//             isEscaped = false;
-//             break;
-//         }
-//     }
-//
-//     if (isEscaped)
-//     {
+    bool isEscaped = true;
+
+    auto ParmDecl = T->getReplacedParameter()->getDecl()->getCanonicalDecl();
+
+    for (auto I = tm.TempParamScope.rbegin(), E = tm.TempParamScope.rend();
+                I != E; I++)
+    {
+        for (auto& Param: (*I)->asArray())
+        {
+            if (Param->getCanonicalDecl() == ParmDecl)
+            {
+                isEscaped = false;
+                goto Lbreak;
+            }
+        }
+    }
+
+Lbreak:
+    if (isEscaped)
+    {
 //         // If the substitued argument comes from decltype(some function template call), then the fragile link that makes perfect C++ template mapping possible (type sugar) is broken.
 //         // Clang has lost the template instance at this point, so first we get it back from the decltype expr.
 //         if (auto CE = llvm::dyn_cast_or_null<clang::CallExpr>(TypeOfExpr))
@@ -1374,9 +1373,9 @@ Type* TypeMapper::FromType::fromTypeSubstTemplateTypeParm(const clang::SubstTemp
 //                     // NOTE: Sugar can't be preserved because Clang could have call arg with typedef types where the typedef decl isn't usable to get back the template arg sugar, e.g template<T> void Func(T *a); decltype(Func(someTypedef));
 //                     // Another possible solution would be to make a deduction listener that records the deduction actions to apply them on the call arg types, but it's much more complex.
 //                 }
-//
-//         return fromType(T->getReplacementType());
-//     }
+
+        return fromType(T->getReplacementType());
+    }
 
     return fromTypeTemplateTypeParm(T->getReplacedParameter());
 }
@@ -1837,19 +1836,39 @@ static Identifier *BuildImplicitImportInternal(const clang::DeclContext *DC,
     return new cpp::Import(loc, sPackages, sModule, nullptr, 1);
 }
 
-void TypeMapper::rebuildCXXScope(const clang::Decl *RightMost)
+void TypeMapper::pushTempParamList(const clang::Decl *D)
 {
-    assert(CXXScope.empty());
+    const clang::TemplateParameterList *TPL = nullptr;
 
-    // Recreate the scope stack, esp. important for nested template instances
+    if (auto ClassTemp = dyn_cast<clang::ClassTemplateDecl>(D))
+        TPL = getDefinition(ClassTemp)->getTemplateParameters();
+    else if (auto Partial = dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(D))
+        TPL = cast<clang::ClassTemplatePartialSpecializationDecl>(
+                        getDefinition(Partial))->getTemplateParameters();
+
+    if (auto Spec = dyn_cast<clang::ClassTemplateSpecializationDecl>(D))
+        if (!Spec->isExplicitSpecialization())
+            pushTempParamList(getTemplateSpecializedDecl(Spec));
+
+    if (TPL)
+        TempParamScope.push_back(TPL);
+}
+
+
+void TypeMapper::rebuildScope(const clang::Decl *RightMost)
+{
+    assert(CXXScope.empty() && TempParamScope.empty());
+
+    // Recreate the scope, esp. important for nested template instances
     std::function<void(const clang::Decl *)> build =
                     [&] (const clang::Decl *D)
     {
         if (isa<clang::TranslationUnitDecl>(D))
             return;
 
-        auto Parent = cast<clang::Decl>(D->getDeclContext());
-        build(Parent);
+        build(cast<clang::Decl>(D->getDeclContext()));
+
+        pushTempParamList(D);
 
         if (isa<clang::CXXRecordDecl>(D))
             CXXScope.push(D);
@@ -1942,6 +1961,38 @@ clang::QualType TypeMapper::toType(Loc loc, Type* t, Scope *sc, StorageClass stc
 TypeMapper::TypeMapper(cpp::Module* mod)
     : mod(mod)
 {
+}
+
+// NOTE: doesn't return null if the template isn't defined. What we really want is some sort of canonical declaration to refer to for template parameters.
+const clang::ClassTemplateDecl *getDefinition(const clang::ClassTemplateDecl *D)
+{
+    for (auto RI: D->redecls()) // find the definition if any
+    {
+        auto I = cast<clang::ClassTemplateDecl>(RI);
+        if (I->isThisDeclarationADefinition())
+            return I;
+    }
+
+    // This is more heuristical than anything else.. I'm not sure yet why templates inside
+    // specializations (e.g std::allocator::rebind) do not get defined.
+    if (auto MemberTemp = const_cast<clang::ClassTemplateDecl*>(D)->getInstantiatedFromMemberTemplate())
+        if (auto MemberDef = getDefinition(MemberTemp))
+            return MemberDef;
+
+    return D->getCanonicalDecl();
+}
+
+const clang::ClassTemplateSpecializationDecl *getDefinition(const clang::ClassTemplateSpecializationDecl *D)
+{
+    if (auto Definition = D->getDefinition())
+        return cast<clang::ClassTemplateSpecializationDecl>(Definition);
+
+    if (auto Partial = dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(D))
+        if (auto MemberInst = const_cast<clang::ClassTemplatePartialSpecializationDecl*>(Partial)->getInstantiatedFromMember()) // not the same method name..
+            if (auto MemberDef = getDefinition(MemberInst))
+                return MemberDef;
+
+    return D;
 }
 
 const clang::DeclContext *getDeclContextNonLinkSpec(const clang::Decl *D)
