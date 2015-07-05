@@ -1649,11 +1649,10 @@ static clang::Module *GetClangModuleForDecl(const clang::Decl* D)
 {
     if (!fake && !addImplicitDecls)
         return nullptr;
-    assert(mod);
 
     auto Key = GetImplicitImportKeyForDecl(D);
 
-    if (Key == mod->rootKey)
+    if (mod && Key == mod->rootKey)
         return nullptr; // do not import self
 
     if (!fake && implicitImports[Key])
