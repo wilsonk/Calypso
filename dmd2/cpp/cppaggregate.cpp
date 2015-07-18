@@ -389,8 +389,7 @@ Expression *LangPlugin::getRightThis(Loc loc, Scope *sc, ::AggregateDeclaration 
 
     StorageClass stc = STCsafe | STCnothrow | STCpure | STCnogc;
     DtorDeclaration *dd = new DtorDeclaration(Loc(), stc,
-                                              Lexer::idPool("__fieldDtor"), CDD);
-    ad->dtors.shift(dd);
+                                              Lexer::idPool("__aggrDtor"), CDD);
     ad->members->push(dd);
     dd->semantic(sc);
 

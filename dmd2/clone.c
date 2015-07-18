@@ -980,12 +980,8 @@ FuncDeclaration *buildDtor(AggregateDeclaration *ad, Scope *sc)
 {
     // CALYPSO
     if (auto lp = ad->langPlugin())
-    {
-        auto dtor = lp->buildDtor(ad, sc);
-
-        if (dtor)
+        if (auto dtor = lp->buildDtor(ad, sc))
             return dtor;
-    }
 
     //printf("AggregateDeclaration::buildDtor() %s\n", ad->toChars());
     StorageClass stc = STCsafe | STCnothrow | STCpure | STCnogc;

@@ -238,7 +238,7 @@ Identifier *fromDeclarationName(const clang::DeclarationName N,
         case clang::DeclarationName::CXXConstructorName:
             return Id::ctor;
         case clang::DeclarationName::CXXDestructorName:
-            return Id::dtor;
+            return Id::dtor; // NOTE: Id::dtor is the user-provided destructor code, "aggrDtor" the "true" destructor
         case clang::DeclarationName::CXXOperatorName:
         {
             assert(op && "Operator name and op isn't set");
