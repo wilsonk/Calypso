@@ -1843,13 +1843,26 @@ void TypeMapper::pushTempParamList(const clang::Decl *D)
     else if (auto Partial = dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(D))
         TPL = cast<clang::ClassTemplatePartialSpecializationDecl>(
                         getDefinition(Partial))->getTemplateParameters();
-
-    if (auto Spec = dyn_cast<clang::ClassTemplateSpecializationDecl>(D))
-        if (!Spec->isExplicitSpecialization())
-            pushTempParamList(getTemplateSpecializedDecl(Spec));
+    else if (auto FuncTemp = dyn_cast<clang::FunctionTemplateDecl>(D))
+        TPL = FuncTemp->getTemplateParameters();
 
     if (TPL)
+    {
         TempParamScope.push_back(TPL);
+        return;
+    }
+
+    if (auto ClassSpec = dyn_cast<clang::ClassTemplateSpecializationDecl>(D))
+    {
+        if (!ClassSpec->isExplicitSpecialization())
+            pushTempParamList(getTemplateSpecializedDecl(ClassSpec));
+    }
+    else if (auto FuncSpec = dyn_cast<clang::FunctionDecl>(D))
+    {
+        if (FuncSpec->isFunctionTemplateSpecialization() &&
+                FuncSpec->getTemplateSpecializationKind() != clang::TSK_ImplicitInstantiation)
+            pushTempParamList(FuncSpec->getPrimaryTemplate());
+    }
 }
 
 
@@ -1868,7 +1881,7 @@ void TypeMapper::rebuildScope(const clang::Decl *RightMost)
 
         pushTempParamList(D);
 
-        if (isa<clang::CXXRecordDecl>(D))
+        if (isa<clang::CXXRecordDecl>(D) || isa<clang::FunctionDecl>(D))
             CXXScope.push(D);
     };
 
