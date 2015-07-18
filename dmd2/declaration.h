@@ -239,7 +239,7 @@ public:
     AliasDeclaration(Loc loc, Identifier *ident, Type *type);
     AliasDeclaration(Loc loc, Identifier *ident, Dsymbol *s);
     virtual Dsymbol *syntaxCopy(Dsymbol *);
-    void semantic(Scope *sc);
+    virtual void semantic(Scope *sc); // CALYPSO
     bool overloadInsert(Dsymbol *s);
     const char *kind();
     Type *getType();
@@ -665,7 +665,7 @@ public:
     virtual Dsymbol *syntaxCopy(Dsymbol *);
     virtual void semantic(Scope *sc); // CALYPSO
     void semantic2(Scope *sc);
-    void semantic3(Scope *sc);
+    virtual void semantic3(Scope *sc); // CALYPSO
     bool functionSemantic();
     bool functionSemantic3();
     // called from semantic3
