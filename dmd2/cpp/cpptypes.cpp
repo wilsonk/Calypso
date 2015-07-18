@@ -768,7 +768,10 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::Decl *D)
 
         if (LeftMostCheck(D))  // we'll need a fully qualified type
         {
-            tqual = new TypeIdentifier(Loc(), Id::empty); // start with the module scope operator . to guarantee against collisions
+            if (from.tm.useIdEmpty)
+                tqual = new TypeIdentifier(Loc(), Id::empty); // start with the module scope operator . to guarantee against collisions
+            else
+                tqual = nullptr;
 
             // build a fake import
             if (auto im = tm.AddImplicitImportForDecl(TopDecl, true))
@@ -932,19 +935,14 @@ const clang::Decl *TypeMapper::GetRootForTypeQualified(clang::NamedDecl *D)
     return D->getTranslationUnitDecl();
 }
 
-static Type *fromInjectedClassName()
+static TypeQualified *fromInjectedClassName()
 {
     return new TypeTypeof(Loc(), new ThisExp(Loc()));
 }
 
-Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* D,
-    const clang::TemplateArgument *TempArgBegin,
-    const clang::TemplateArgument *TempArgEnd)
+TypeQualified *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl *D,
+                        const clang::TemplateArgument *ArgBegin, const clang::TemplateArgument *ArgEnd)
 {
-    if (!TempArgBegin)
-        if (auto subst = tm.trySubstitute(D)) // HACK for correctTiargs
-            return subst;
-
     if (tm.isInjectedClassName(D))
         return fromInjectedClassName(); // in the following :
                     //      class time_duration { public: uint seconds() { return 60; } }
@@ -960,7 +958,17 @@ Type *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl* D,
         return nullptr; // FIXME struct {} Val;
 
     tm.AddImplicitImportForDecl(D);
-    return TypeQualifiedBuilder(*this, Root, D, TempArgBegin, TempArgEnd).get(D);
+    return TypeQualifiedBuilder(*this, Root, D, ArgBegin, ArgEnd).get(D);
+}
+
+Type *TypeMapper::FromType::typeSubstOrQualifiedFor(clang::NamedDecl *D,
+                const clang::TemplateArgument *ArgBegin, const clang::TemplateArgument *ArgEnd)
+{
+    if (!ArgBegin)
+        if (auto subst = tm.trySubstitute(D)) // HACK for correctTiargs
+            return subst;
+
+    return typeQualifiedFor(D, ArgBegin, ArgEnd);
 }
 
 Type *TypeMapper::trySubstitute(const clang::Decl *D)
@@ -1001,17 +1009,17 @@ Type* TypeMapper::FromType::fromTypeTypedef(const clang::TypedefType* T)
                 getDeclContextNamedOrTU(Typedef)->isTranslationUnit())  // temporary HACK to avoid importing "_" just because of typedefs (eg size_t)
         return fromType(Typedef->getUnderlyingType());
 
-    return typeQualifiedFor(Typedef);
+    return typeSubstOrQualifiedFor(Typedef);
 }
 
 Type* TypeMapper::FromType::fromTypeEnum(const clang::EnumType* T)
 {
-    return typeQualifiedFor(T->getDecl());
+    return typeSubstOrQualifiedFor(T->getDecl());
 }
 
 Type *TypeMapper::FromType::fromTypeRecord(const clang::RecordType *T)
 {
-    return typeQualifiedFor(T->getDecl());
+    return typeSubstOrQualifiedFor(T->getDecl());
 }
 
 Type *TypeMapper::FromType::fromTypeElaborated(const clang::ElaboratedType *T)
@@ -1188,8 +1196,7 @@ TypeQualified *TypeMapper::FromType::fromTemplateName(const clang::TemplateName 
     switch (Name.getKind())
     {
         case clang::TemplateName::Template:
-            return (TypeQualified *) typeQualifiedFor(Name.getAsTemplateDecl(),
-                ArgBegin, ArgEnd);
+            return typeQualifiedFor(Name.getAsTemplateDecl(), ArgBegin, ArgEnd);
 
         case clang::TemplateName::QualifiedTemplate:
         {
@@ -1200,8 +1207,7 @@ TypeQualified *TypeMapper::FromType::fromTemplateName(const clang::TemplateName 
                     NNS->getKind() == clang::NestedNameSpecifier::TypeSpecWithTemplate)
                 tqual = fromNestedNameSpecifier(NNS);
 
-            return static_cast<TypeQualified *>(FromType(tm, tqual).typeQualifiedFor(Name.getAsTemplateDecl(),
-                ArgBegin, ArgEnd)); // FIXME the cast is temporary, typeQualifiedFor should return TypeQualified
+            return FromType(tm, tqual).typeQualifiedFor(Name.getAsTemplateDecl(), ArgBegin, ArgEnd);
         }
 
         case clang::TemplateName::SubstTemplateTemplateParm:
@@ -1379,7 +1385,7 @@ Lbreak:
 
 Type* TypeMapper::FromType::fromTypeInjectedClassName(const clang::InjectedClassNameType* T) // e.g in template <...> class A { A &next; } next has an injected class name type
 {
-    return typeQualifiedFor(T->getDecl());
+    return typeSubstOrQualifiedFor(T->getDecl());
         // NOTE: this will return typeof(this) if we aren't in a nested class, but if we are the name of the record is (without template arguments)
 }
 

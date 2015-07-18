@@ -2,10 +2,13 @@
 
 #include "cpp/calypso.h"
 #include "cpp/cppdeclaration.h"
+#include "cpp/cppexpression.h"
 #include "cpp/cpptemplate.h"
+#include "aggregate.h"
 #include "scope.h"
 
 #include "clang/AST/Decl.h"
+#include "clang/AST/RecursiveASTVisitor.h"
 
 namespace cpp
 {
@@ -217,6 +220,145 @@ void FuncDeclaration::semantic(Scope *sc)
     }
 
     ::FuncDeclaration::semantic(sc);
+}
+
+// Cheat and use the C++ "global scope", we can do it safely in specific cases
+Scope *globalScope(::Module *m)
+{
+    auto sc = Scope::createGlobal(m);
+    sc = sc->pop();
+    sc = sc->push(cpp::Module::rootPackage);
+    return sc;
+}
+
+namespace {
+// Run semantic() on referenced functions and record decls to instantiate templates and have them codegen'd
+class Referencer : public clang::RecursiveASTVisitor<Referencer>
+{
+    TypeMapper mapper;
+    Scope *sc;
+    Loc loc;
+
+    bool Reference(const clang::NamedDecl *D);
+    bool Reference(const clang::Type *T);
+public:
+    Referencer(Scope *sc, Loc loc, const clang::Decl *ScopeDecl)
+                : sc(sc), loc(loc)
+    {
+        mapper.addImplicitDecls = false;
+        mapper.useIdEmpty = false;
+    }
+
+    bool VisitCallExpr(const clang::CallExpr *E);
+    bool VisitCXXConstructExpr(const clang::CXXConstructExpr *E);
+    bool VisitCXXNewExpr(const clang::CXXNewExpr *E);
+    bool VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E);
+};
+
+bool Referencer::Reference(const clang::NamedDecl *D)
+{
+    if (D->isInvalidDecl())
+        return true;
+
+    if (auto FD = dyn_cast<clang::FunctionDecl>(D))
+    {
+        // all FIXME except implicit and builtin decls
+        if (FD->getBuiltinID() ||
+                FD->isOverloadedOperator() ||
+                D->getIdentifierNamespace() & clang::Decl::IDNS_NonMemberOperator ||
+                isa<clang::CXXConversionDecl>(D))
+            return true;
+        if (FD->isOverloadedOperator() && FD->isImplicit())
+            return true;
+        if (isa<clang::CXXDestructorDecl>(D) && FD->isImplicit())
+            return true;
+    }
+
+    auto im = mapper.AddImplicitImportForDecl(D, true);
+    im->isstatic = true;
+    im->semantic(sc);
+    im->semantic2(sc);
+    Module::addDeferredSemantic3(im->mod);
+    delete im;
+
+    auto tqual = TypeMapper::FromType(mapper).typeQualifiedFor(
+                const_cast<clang::NamedDecl*>(D));
+    assert(tqual); // temporaire
+
+    auto te = new TypeExp(loc, tqual);
+    te->semantic(sc);
+
+    return true;
+}
+
+bool Referencer::Reference(const clang::Type *T)
+{
+    if (auto RT = T->getAs<clang::RecordType>())
+        if (!RT->isUnionType())
+            Reference(RT->getDecl());
+
+    return true;
+}
+
+bool Referencer::VisitCallExpr(const clang::CallExpr *E)
+{
+    if (auto Callee = E->getDirectCallee())
+        return Reference(Callee);
+    return true;
+}
+
+bool Referencer::VisitCXXConstructExpr(const clang::CXXConstructExpr *E)
+{
+    auto ConstructedType = E->getType();
+    if (!ConstructedType.isNull())
+        Reference(ConstructedType.getTypePtr());
+    return true;
+}
+
+bool Referencer::VisitCXXNewExpr(const clang::CXXNewExpr *E)
+{
+    return Reference(E->getOperatorNew());
+}
+
+bool Referencer::VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E)
+{
+    auto DestroyedType = E->getDestroyedType();
+    if (!DestroyedType.isNull())
+        Reference(DestroyedType.getTypePtr());
+
+    return Reference(E->getOperatorDelete());
+}
+}
+
+void FuncDeclaration::semantic3reference(::FuncDeclaration *fd, Scope *sc)
+{
+    if (fd->semanticRun >= PASSsemantic3)
+        return;
+    fd->semanticRun = PASSsemantic3;
+    fd->semantic3Errors = false;
+
+    auto FD = getFD(fd);
+
+    const clang::FunctionDecl *Def;
+    if (!FD->isInvalidDecl() && FD->hasBody(Def))
+        Referencer(globalScope(sc->instantiatingModule()), fd->loc, FD).TraverseStmt(Def->getBody());
+
+    fd->semanticRun = PASSsemantic3done;
+}
+
+void FuncDeclaration::semantic3(Scope *sc)
+{
+    semantic3reference(this, sc);
+}
+
+void CtorDeclaration::semantic3(Scope *sc)
+{
+    cpp::FuncDeclaration::semantic3reference(this, sc);
+}
+
+void DtorDeclaration::semantic3(Scope *sc)
+{
+    cpp::FuncDeclaration::semantic3reference(this, sc);
 }
 
 const clang::FunctionDecl *getFD(::FuncDeclaration *f)

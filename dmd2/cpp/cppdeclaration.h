@@ -52,8 +52,11 @@ public:
     FuncDeclaration(const FuncDeclaration&);
     Dsymbol *syntaxCopy(Dsymbol *s) override;
     void semantic(Scope *sc) override;
+    void semantic3(Scope *sc) override;
     bool allowFinalOverride() override { return true; }
     FuncDeclaration *overloadCppMatch(const clang::FunctionDecl* FD);
+
+    static void semantic3reference(::FuncDeclaration *fd, Scope *sc);
 };
 
 class CtorDeclaration : public ::CtorDeclaration
@@ -67,6 +70,7 @@ public:
                     Type* type, const clang::CXXConstructorDecl *CCD);
     CtorDeclaration(const CtorDeclaration&);
     Dsymbol *syntaxCopy(Dsymbol *s) override;
+    void semantic3(Scope *sc) override;
 };
 
 class DtorDeclaration : public ::DtorDeclaration
@@ -80,6 +84,7 @@ public:
                     Identifier *id, const clang::CXXDestructorDecl *CDD);
     DtorDeclaration(const DtorDeclaration&);
     Dsymbol *syntaxCopy(Dsymbol *s) override;
+    void semantic3(Scope *sc) override;
     bool allowFinalOverride() override { return true; }
 };
 
@@ -170,6 +175,8 @@ public:
 
     static Identifier *getIdentifierForTemplateNonTypeParm(const clang::NonTypeTemplateParmDecl *NTTPD);
 };
+
+Scope *globalScope(::Module *m);
 
 }
 

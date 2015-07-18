@@ -620,7 +620,7 @@ Expression* ExprMapper::fromExpressionDeclRef(Loc loc, clang::NamedDecl *D,
     if (NNS)
         prefix = TypeMapper::FromType(tymap).fromNestedNameSpecifier(NNS);
 
-    auto tqual = static_cast<TypeQualified*>(TypeMapper::FromType(tymap, prefix).typeQualifiedFor(D));
+    auto tqual = TypeMapper::FromType(tymap, prefix).typeQualifiedFor(D);
     assert(tqual && "DeclRefExpr decl without a DeclarationName");
 
     // TODO: Build a proper expression from the type (mostly for reflection and to mimic parse.c, since TypeExp seems to work too)

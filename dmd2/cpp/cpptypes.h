@@ -57,6 +57,7 @@ public:
 
     bool addImplicitDecls = true;
     Dsymbols *substsyms = nullptr; // only for TempateInstance::correctTiargs (partial spec arg deduction)
+    bool useIdEmpty = true; // disabled only for « C++ global scope search »
 
     std::stack<const clang::Decl *> CXXScope;
     void rebuildScope(const clang::Decl *RightMost); // rebuild both CXXScope and TempParamScope
@@ -107,7 +108,10 @@ public:
                     const clang::TemplateArgument *ArgEnd = nullptr);  // returns a template or a template instance
                 // if it's a template it's not actually a type but a symbol, but that's how parsing TemplateAliasParameter works anyway
 
-        Type *typeQualifiedFor(clang::NamedDecl* D,
+        TypeQualified *typeQualifiedFor(clang::NamedDecl* D,
+                            const clang::TemplateArgument* ArgBegin = nullptr,
+                            const clang::TemplateArgument* ArgEnd = nullptr);
+        Type *typeSubstOrQualifiedFor(clang::NamedDecl* D,
                             const clang::TemplateArgument* ArgBegin = nullptr,
                             const clang::TemplateArgument* ArgEnd = nullptr);
 

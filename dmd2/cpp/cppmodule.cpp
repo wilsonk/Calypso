@@ -487,6 +487,7 @@ static bool RequireCompleteType(clang::SourceLocation Loc, clang::QualType T)
     return S.RequireCompleteType(Loc, T, Diagnoser);
 }
 
+namespace {
 class FunctionReferencer : public clang::RecursiveASTVisitor<FunctionReferencer>
 {
     DeclMapper &mapper;
@@ -496,6 +497,7 @@ class FunctionReferencer : public clang::RecursiveASTVisitor<FunctionReferencer>
     llvm::DenseSet<const clang::FunctionDecl *> Referenced;
 
     bool Reference(const clang::FunctionDecl *Callee);
+    bool ReferenceRecord(const clang::RecordType *RT);
 public:
     FunctionReferencer(DeclMapper &mapper,
                         clang::Sema &S,
@@ -509,7 +511,7 @@ public:
 bool FunctionReferencer::Reference(const clang::FunctionDecl *D)
 {
     auto Callee = const_cast<clang::FunctionDecl*>(D);
-    if (!Callee || Referenced.count(Callee->getCanonicalDecl()))
+    if (!Callee || Callee->getBuiltinID() || Referenced.count(Callee->getCanonicalDecl()))
         return true;
     Referenced.insert(Callee->getCanonicalDecl());
 
@@ -529,6 +531,27 @@ bool FunctionReferencer::Reference(const clang::FunctionDecl *D)
     return true;
 }
 
+bool FunctionReferencer::ReferenceRecord(const clang::RecordType *RT)
+{
+    auto RD = cast<clang::CXXRecordDecl>(RT->getDecl());
+    if (!RD->hasDefinition())
+        return true;
+
+    mapper.AddImplicitImportForDecl(RD);
+
+    if (!RD->isDependentType())
+    {
+        if (!RD->isPOD())
+        {
+            auto Ctor = S.LookupDefaultConstructor(
+                            const_cast<clang::CXXRecordDecl *>(RD));
+            Reference(Ctor);
+        }
+        Reference(RD->getDestructor());
+    }
+    return true;
+}
+
 bool FunctionReferencer::VisitCallExpr(const clang::CallExpr *E)
 {
     return Reference(E->getDirectCallee());
@@ -536,6 +559,12 @@ bool FunctionReferencer::VisitCallExpr(const clang::CallExpr *E)
 
 bool FunctionReferencer::VisitCXXConstructExpr(const clang::CXXConstructExpr *E)
 {
+    auto ConstructedType = E->getType();
+    if (!ConstructedType.isNull()) {
+        if (const clang::RecordType *RT = ConstructedType->getAs<clang::RecordType>())
+            ReferenceRecord(RT);
+    }
+
     return Reference(E->getConstructor());
 }
 
@@ -548,14 +577,12 @@ bool FunctionReferencer::VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E)
 {
     auto DestroyedType = E->getDestroyedType();
     if (!DestroyedType.isNull()) {
-        if (const clang::RecordType *RT = DestroyedType->getAs<clang::RecordType>()) {
-            clang::CXXRecordDecl *RD = cast<clang::CXXRecordDecl>(RT->getDecl());
-            if (RD->hasDefinition())
-                Reference(RD->getDestructor());
-        }
+        if (const clang::RecordType *RT = DestroyedType->getAs<clang::RecordType>())
+            ReferenceRecord(RT);
     }
 
     return Reference(E->getOperatorDelete());
+}
 }
 
 Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
@@ -644,7 +671,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     }
     else if (auto DD = dyn_cast<clang::CXXDestructorDecl>(D))
     {
-         // Destructors are a special case, Clang can only emit a destructor if it's not trivial.
+        // Destructors are a special case, Clang can only emit a destructor if it's not trivial.
         // The dtor is checked and added by buildDtor during the semantic pass.
         if (DD->isImplicit())
             return nullptr;
