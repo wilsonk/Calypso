@@ -435,9 +435,11 @@ public:
                 // If the function returns a struct or a static array, and the return
                 // value is a pointer to a struct or a static array, load from it
                 // before returning.
-                int ty = f->type->next->toBasetype()->ty;
+                Type *t = f->type->next->toBasetype();
+                int ty = t->ty;
                 if (v->getType() != irs->topfunc()->getReturnType() &&
                     (ty == Tstruct
+                     || isClassValue(t) // CALYPSO
                      || ty == Tsarray
                      ) && isaPointer(v->getType()))
                 {
