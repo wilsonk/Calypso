@@ -682,23 +682,17 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
             // Add the opUnary/opBinary/... template declaration
             auto tpl = initTempParamsForOO(loc, op);
 
-            auto tf_fwd = static_cast<TypeFunction*>(tf->syntaxCopy());
-            auto f_fwd = new ::FuncDeclaration(loc, loc, opIdent, STCfinal, tf_fwd);
+            auto a_fwd = new OverloadAliasDeclaration(loc, opIdent,
+                                        new TypeIdentifier(loc, fullIdent), tf);
 
-            // Build the body of the forwarding function
-            auto callargs = new Expressions;
-            callargs->reserve(tf_fwd->parameters->dim);
-            for (auto *p: *tf_fwd->parameters)
-                callargs->push(new IdentifierExp(loc, p->ident));
-
-            Expression *e = new IdentifierExp(loc, fullIdent);
-            e = new CallExp(loc, e, callargs);
-
-            f_fwd->fbody = new ReturnStatement(loc, e);
+            // NOTE: the previous approach of making a small forwarding function calling fd had one important
+            // issue as well in that LDC and the ABIs would need to know how to define function types
+            // taking and returning class values. Simpler and safer to let Clang handle those.
+            // Adding these specific overload aliases seemed like the cleanest way.
 
             // Enclose the forwarding function within the template declaration
             auto decldefs = new Dsymbols;
-            decldefs->push(f_fwd);
+            decldefs->push(a_fwd);
 
             auto tempdecl = new ::TemplateDeclaration(loc, opIdent, tpl, nullptr, decldefs);
             a->push(tempdecl);
