@@ -40,6 +40,7 @@ TemplateDeclaration::TemplateDeclaration(const TemplateDeclaration &o)
 IMPLEMENT_syntaxCopy(TemplateDeclaration, TempOrSpec)
 
 // HACK-ish unfortunately.. but arg deduction isn't trivial. Can't think of a simpler way.
+// TODO: remove this, use cppdeclaration.cpp Referencer approach instead w/ the global scope
 struct CppSymCollector
 {
     Dsymbols *substsyms;
@@ -50,6 +51,10 @@ struct CppSymCollector
     {
         if (isCPP(s))
             substsyms->push(s);
+
+        if (auto ti = s->parent->isTemplateInstance())
+            if (isCPP(ti))
+                collect(ti->tiargs);
     }
 
     void collect(Dsymbol *s)
@@ -97,23 +102,26 @@ struct CppSymCollector
     {
         // TODO DotIdExp ...
     }
+
+    void collect(Objects *tiargs)
+    {
+        for (auto o: *tiargs)
+        {
+            Type *ta = isType(o);
+            Expression *ea = isExpression(o);
+            Dsymbol *sa = isDsymbol(o);
+
+            if (ta) collect(ta);
+            else if (ea) collect(ea);
+            else { assert(sa); collect(sa); }
+        }
+    }
 };
 
 static Dsymbols *collectSymbols(Objects *tiargs)
 {
     auto substsyms = new Dsymbols;
-    CppSymCollector collector(substsyms);
-
-    for (auto o: *tiargs)
-    {
-        Type *ta = isType(o);
-        Expression *ea = isExpression(o);
-        Dsymbol *sa = isDsymbol(o);
-
-        if (ta) collector.collect(ta);
-        else if (ea) collector.collect(ea);
-        else { assert(sa); collector.collect(sa); }
-    }
+    CppSymCollector(substsyms).collect(tiargs);
 
     return substsyms;
 }
