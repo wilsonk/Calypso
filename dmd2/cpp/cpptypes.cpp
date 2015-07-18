@@ -1625,7 +1625,8 @@ static clang::Module *GetClangModuleForDecl(const clang::Decl* D)
     if (!MMap)
         return nullptr;
 
-    auto DLoc = SrcMgr.getFileLoc(D->getLocation());
+    auto Loc = SrcMgr.getSpellingLoc(D->getLocStart());
+    auto DLoc = SrcMgr.getFileLoc(Loc);
     if (!DLoc.isFileID())
         return nullptr;
 
