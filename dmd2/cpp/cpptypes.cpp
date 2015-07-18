@@ -849,13 +849,10 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::Decl *D)
 
 const clang::Decl *TypeMapper::GetRootForTypeQualified(clang::NamedDecl *D)
 {
-    clang::DeclarationName Name;
+    clang::DeclarationName Name = D->getDeclName();
     decltype(CXXScope) ScopeStack(CXXScope);
 
-    if (D->getIdentifier() ||
-            D->getDeclName().getNameKind() == clang::DeclarationName::CXXOperatorName)
-        Name =  D->getDeclName();
-    else if (auto Tag = llvm::dyn_cast<clang::TagDecl>(D))
+    if (auto Tag = llvm::dyn_cast<clang::TagDecl>(D))
         if (auto Typedef = Tag->getTypedefNameForAnonDecl())
             Name = Typedef->getDeclName();
 
