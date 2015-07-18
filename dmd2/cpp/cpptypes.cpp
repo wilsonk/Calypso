@@ -1625,6 +1625,7 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
 
 static clang::Module *GetClangModuleForDecl(const clang::Decl* D)
 {
+#ifdef USE_CLANG_MODULES
     auto& SrcMgr = calypso.getASTUnit()->getSourceManager();
     auto MMap = calypso.pch.MMap;
 
@@ -1644,6 +1645,9 @@ static clang::Module *GetClangModuleForDecl(const clang::Decl* D)
         return nullptr;
 
     return KH.getModule();
+#else
+    return nullptr;
+#endif
 }
 
 // In D if a class is inheriting from another module's class, then its own module has to import the base class' module.

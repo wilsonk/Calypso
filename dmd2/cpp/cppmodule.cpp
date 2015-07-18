@@ -1149,6 +1149,7 @@ bool isOverloadedOperatorWithTagOperand(const clang::Decl *D,
 static clang::Module *tryFindClangModule(Loc loc, Identifiers *packages, Identifier *id,
                                          Package *&p, size_t i)
 {
+#ifdef USE_CLANG_MODULES
     auto MMap = calypso.pch.MMap;
 
     if (!MMap)
@@ -1177,6 +1178,9 @@ static clang::Module *tryFindClangModule(Loc loc, Identifiers *packages, Identif
 
     p = pkg;
     return M;
+#else
+    return nullptr;
+#endif
 }
 
 static inline bool isTopLevelInNamespaceModule (const clang::Decl *D)
@@ -1220,10 +1224,12 @@ static void mapNamespace(DeclMapper &mapper,
             continue;  // only map declarations that are semantically within the DeclContext
 
         auto DLoc = SrcMgr.getFileLoc((*D)->getLocation());
+#ifdef USE_CLANG_MODULES
         if (!forClangModule && DLoc.isValid() && DLoc.isFileID()
                 && MMap->findModuleForHeader(
                     SrcMgr.getFileEntryForID(SrcMgr.getFileID(DLoc))))
             continue;  // skip decls which are parts of a Clang module
+#endif
 
         if (auto LinkSpec = dyn_cast<clang::LinkageSpecDecl>(*D))
         {

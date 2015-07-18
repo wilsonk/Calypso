@@ -20,6 +20,8 @@
 #include "clang/Frontend/CodeGenOptions.h"
 #include "clang/lib/CodeGen/CodeGenModule.h"
 
+// #define USE_CLANG_MODULES
+
 class Identifier;
 
 namespace clang
