@@ -333,6 +333,7 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
     TypeMapper tymap;
     ExprMapper expmap(tymap);
     tymap.addImplicitDecls = false;
+    tymap.useIdEmpty = false;
 
     auto Temp = getPrimaryTemplate();
 
@@ -370,7 +371,10 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
             if (!isExpression(tiargs[i]))
                 continue;
 
-            tiargs[i] = TypeMapper::FromType(tymap).fromTemplateArgument(Arg, *Param);
+            auto e = isExpression(
+                    TypeMapper::FromType(tymap).fromTemplateArgument(Arg, *Param));
+            assert(e);
+            tiargs[i] = e->semantic(globalScope(sc->instantiatingModule()));
         }
     }
 
@@ -592,9 +596,6 @@ bool TemplateInstance::completeInst(bool mayFail)
         CTSD->getSpecializedTemplate()->getTemplatedDecl()->hasDefinition()) // unused forward template specialization decls will exist but as empty aggregates
     {
         auto Ty = Context.getRecordType(CTSD);
-
-        // if the definition of the class template specialization wasn't present in the PCH
-        // there's a chance the code wasn't emitted in the C++ libraries, so we do it ourselves.
 
         if (S.RequireCompleteType(CTSD->getLocation(), Ty, 0))
         {
