@@ -163,46 +163,10 @@ static Identifier *getOperatorIdentifier(const clang::FunctionDecl *FD,
                     wrapInTemp = false;
                     break;
                 case clang::OO_Equal:
-                    // D doesn't allow overloading of identity assignment, and since it might still be fundamental
-                    // for some types (e.g std::map), map it to another method.
                     // NOTE: C++ assignment operators can't be non-members.
-                {
-                    bool isIdentityAssign = false;
-
-                    if (!MD)
-                        ;
-                    else if (auto RHSLValue = dyn_cast<clang::LValueReferenceType>(
-                                    MD->getParamDecl(0)->getType().getDesugaredType(Context).getTypePtr()))
-                    {
-                        auto LHSType = Context.getTypeDeclType(MD->getParent());
-                        auto RHSType = RHSLValue->getPointeeType().withoutLocalFastQualifiers();
-
-                        if (LHSType.getCanonicalType() == RHSType.getCanonicalType())
-                            isIdentityAssign = true;
-
-                        // If RHS is a template specialization with dependent args there's a chance one specialization
-                        // of the templated overloaded operator ends up being the identity assignment
-                        auto LHSTempSpec = dyn_cast<clang::ClassTemplateSpecializationDecl>(MD->getParent());
-                        auto RHSTempSpecTy = RHSType->getAs<clang::TemplateSpecializationType>();
-
-                        if (LHSTempSpec && RHSTempSpecTy)
-                        {
-                            auto LHSTemp = LHSTempSpec->getSpecializedTemplate();
-                            auto RHSTemp = RHSTempSpecTy->getTemplateName().getAsTemplateDecl();
-
-                            if (RHSTemp && LHSTemp->getCanonicalDecl() == RHSTemp->getCanonicalDecl())
-                                isIdentityAssign = true;
-                        }
-                    }
-
-                    if (isIdentityAssign)
-                        opIdent = Lexer::idPool("__opAssign");
-                    else
-                        opIdent = Id::assign;
-
+                    opIdent = Id::assign;
                     wrapInTemp = false;
                     break;
-                }
                 case clang::OO_PlusEqual:
                 case clang::OO_MinusEqual:
                 case clang::OO_StarEqual:
