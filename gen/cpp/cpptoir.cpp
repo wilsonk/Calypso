@@ -564,13 +564,13 @@ void LangPlugin::toDefaultInitVarDeclaration(::VarDeclaration* vd)
 
 void LangPlugin::toDefineTemplateInstance(::TemplateInstance *inst)
 {
-    auto c_ti = static_cast<cpp::TemplateInstance *>(inst);
-
-    if (auto CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(c_ti->Inst))
-        CGM->UpdateCompletedType(CTSD);
-
-    for (auto D: c_ti->Dependencies)
-        CGM->EmitTopLevelDecl(D);
+//     auto c_ti = static_cast<cpp::TemplateInstance *>(inst);
+//
+//     if (auto CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(c_ti->Inst))
+//         CGM->UpdateCompletedType(CTSD);
+//
+//     for (auto D: c_ti->Dependencies)
+//         CGM->EmitTopLevelDecl(D);
 }
 
 }
