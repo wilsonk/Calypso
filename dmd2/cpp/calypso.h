@@ -37,6 +37,7 @@ namespace cpp
 class ClassDeclaration;
 class BuiltinTypes;
 class TemplateInstance;
+class DeclReferencer;
 
 namespace reclang { class ASTUnit; class ModuleMap; }
 using reclang::ASTUnit;
@@ -149,6 +150,7 @@ public:
     PCH pch;
 
     BuiltinTypes &builtinTypes;
+    DeclReferencer &declReferencer;
 
     struct GenModSet : public llvm::StringSet<> // already compiled modules
     {

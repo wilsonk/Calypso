@@ -8,7 +8,6 @@
 #include "scope.h"
 
 #include "clang/AST/Decl.h"
-#include "clang/AST/RecursiveASTVisitor.h"
 
 namespace cpp
 {
@@ -16,6 +15,8 @@ namespace cpp
 using llvm::isa;
 using llvm::cast;
 using llvm::dyn_cast;
+
+DeclReferencer declReferencer;
 
 VarDeclaration::VarDeclaration(Loc loc, Identifier *id,
                                const clang::ValueDecl *VD, Type *t, Initializer *init)
@@ -231,31 +232,14 @@ Scope *globalScope(::Module *m)
     return sc;
 }
 
-namespace {
-// Run semantic() on referenced functions and record decls to instantiate templates and have them codegen'd
-class Referencer : public clang::RecursiveASTVisitor<Referencer>
+void DeclReferencer::Traverse(Loc loc, Scope *sc, clang::Stmt *Body)
 {
-    TypeMapper mapper;
-    Scope *sc;
-    Loc loc;
+    this->loc = loc;
+    this->sc = sc;
+    TraverseStmt(Body);
+}
 
-    bool Reference(const clang::NamedDecl *D);
-    bool Reference(const clang::Type *T);
-public:
-    Referencer(Scope *sc, Loc loc, const clang::Decl *ScopeDecl)
-                : sc(sc), loc(loc)
-    {
-        mapper.addImplicitDecls = false;
-        mapper.useIdEmpty = false;
-    }
-
-    bool VisitCallExpr(const clang::CallExpr *E);
-    bool VisitCXXConstructExpr(const clang::CXXConstructExpr *E);
-    bool VisitCXXNewExpr(const clang::CXXNewExpr *E);
-    bool VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E);
-};
-
-bool Referencer::Reference(const clang::NamedDecl *D)
+bool DeclReferencer::Reference(const clang::NamedDecl *D)
 {
     if (D->isInvalidDecl())
         return true;
@@ -278,12 +262,15 @@ bool Referencer::Reference(const clang::NamedDecl *D)
                 // This may get fixed by 3.7.
     }
 
+    if (Referenced.count(D->getCanonicalDecl()))
+        return true;
+    Referenced.insert(D->getCanonicalDecl());
+
     auto im = mapper.AddImplicitImportForDecl(D, true);
     im->isstatic = true;
     im->semantic(sc);
     im->semantic2(sc);
     Module::addDeferredSemantic3(im->mod);
-    delete im;
 
     auto tqual = TypeMapper::FromType(mapper).typeQualifiedFor(
                 const_cast<clang::NamedDecl*>(D));
@@ -292,10 +279,16 @@ bool Referencer::Reference(const clang::NamedDecl *D)
     auto te = new TypeExp(loc, tqual);
     te->semantic(sc);
 
+    // Memory usage can skyrocket when using a large library
+    if (im->packages) delete im->packages;
+    delete im;
+    delete te;
+    delete tqual;
+
     return true;
 }
 
-bool Referencer::Reference(const clang::Type *T)
+bool DeclReferencer::Reference(const clang::Type *T)
 {
     if (auto RT = T->getAs<clang::RecordType>())
         if (!RT->isUnionType())
@@ -304,14 +297,14 @@ bool Referencer::Reference(const clang::Type *T)
     return true;
 }
 
-bool Referencer::VisitCallExpr(const clang::CallExpr *E)
+bool DeclReferencer::VisitCallExpr(const clang::CallExpr *E)
 {
     if (auto Callee = E->getDirectCallee())
         return Reference(Callee);
     return true;
 }
 
-bool Referencer::VisitCXXConstructExpr(const clang::CXXConstructExpr *E)
+bool DeclReferencer::VisitCXXConstructExpr(const clang::CXXConstructExpr *E)
 {
     auto ConstructedType = E->getType();
     if (!ConstructedType.isNull())
@@ -319,19 +312,18 @@ bool Referencer::VisitCXXConstructExpr(const clang::CXXConstructExpr *E)
     return true;
 }
 
-bool Referencer::VisitCXXNewExpr(const clang::CXXNewExpr *E)
+bool DeclReferencer::VisitCXXNewExpr(const clang::CXXNewExpr *E)
 {
     return Reference(E->getOperatorNew());
 }
 
-bool Referencer::VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E)
+bool DeclReferencer::VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E)
 {
     auto DestroyedType = E->getDestroyedType();
     if (!DestroyedType.isNull())
         Reference(DestroyedType.getTypePtr());
 
     return Reference(E->getOperatorDelete());
-}
 }
 
 void FuncDeclaration::semantic3reference(::FuncDeclaration *fd, Scope *sc)
@@ -345,7 +337,7 @@ void FuncDeclaration::semantic3reference(::FuncDeclaration *fd, Scope *sc)
 
     const clang::FunctionDecl *Def;
     if (!FD->isInvalidDecl() && FD->hasBody(Def))
-        Referencer(globalScope(sc->instantiatingModule()), fd->loc, FD).TraverseStmt(Def->getBody());
+        declReferencer.Traverse(fd->loc, globalScope(sc->instantiatingModule()), Def->getBody());
 
     fd->semanticRun = PASSsemantic3done;
 }

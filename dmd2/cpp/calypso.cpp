@@ -3,6 +3,7 @@
 #include "cpp/astunit.h"
 #include "cpp/modulemap.h"
 #include "cpp/calypso.h"
+#include "cpp/cppdeclaration.h"
 #include "cpp/cppimport.h"
 #include "cpp/cppmodule.h"
 #include "cpp/cppaggregate.h"
@@ -639,7 +640,8 @@ int LangPlugin::doesHandleModmap(const utf8_t* lang)
 }
 
 LangPlugin::LangPlugin()
-    : builtinTypes(cpp::builtinTypes)
+    : builtinTypes(cpp::builtinTypes),
+      declReferencer(cpp::declReferencer)
 {
 }
 

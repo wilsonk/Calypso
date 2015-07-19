@@ -15,6 +15,8 @@
 
 #include "../declaration.h"
 
+#include "clang/AST/RecursiveASTVisitor.h"
+
 namespace clang
 {
 class ValueDecl;
@@ -176,6 +178,33 @@ public:
     static Identifier *getIdentifierForTemplateNonTypeParm(const clang::NonTypeTemplateParmDecl *NTTPD);
 };
 
+// Run semantic() on referenced functions and record decls to instantiate templates and have them codegen'd
+class DeclReferencer : public clang::RecursiveASTVisitor<DeclReferencer>
+{
+    TypeMapper mapper;
+    Loc loc;
+    Scope *sc = nullptr;
+
+    llvm::DenseSet<const clang::Decl *> Referenced;
+
+    bool Reference(const clang::NamedDecl *D);
+    bool Reference(const clang::Type *T);
+public:
+    DeclReferencer()
+    {
+        mapper.addImplicitDecls = false;
+        mapper.useIdEmpty = false;
+    }
+
+    void Traverse(Loc loc, Scope *sc, clang::Stmt *Body);
+
+    bool VisitCallExpr(const clang::CallExpr *E);
+    bool VisitCXXConstructExpr(const clang::CXXConstructExpr *E);
+    bool VisitCXXNewExpr(const clang::CXXNewExpr *E);
+    bool VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E);
+};
+
+extern DeclReferencer declReferencer;
 Scope *globalScope(::Module *m);
 
 }
