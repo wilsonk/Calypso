@@ -282,7 +282,6 @@ Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
 
 Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags)
 {
-    auto& Context = calypso.pch.AST->getASTContext();
     auto& S = calypso.pch.AST->getSema();
     auto Canon = D->getCanonicalDecl();
 
@@ -377,7 +376,7 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
             members->append(field);
     }
 
-    if (CRD && /* TEMPORARY HACK */ !D->isUnion())
+    if (CRD && !D->isUnion())
     {
         if (!isPOD && !CRD->isDependentType())
             // Clang declares and defines the implicit default constructor lazily, so do it here
