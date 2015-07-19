@@ -163,43 +163,45 @@ Expression* ExprMapper::fromBinExp(const clang::BinaryOperator* E)
 Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType DestTy,
                                             bool interpret)  // TODO implement interpret properly
 {
+    auto& Context = calypso.pch.AST->getASTContext();
     auto loc = fromLoc(E->getLocStart());
 
     Expression *e = nullptr;
     Type *t = nullptr;
     clang::QualType Ty;
 
+    Type *destType = nullptr;
+    if (!DestTy.isNull())
+        destType = tymap.fromType(DestTy);
+
     if (auto Cast = dyn_cast<clang::CastExpr>(E))
     {
+        clang::QualType CastDestTy;
         auto Kind = Cast->getCastKind();
 
         if (Kind != clang::CK_NoOp && Kind != clang::CK_ConstructorConversion &&
                 Kind != clang::CK_LValueToRValue)
         {
-            DestTy = Cast->getType();
+            CastDestTy = Cast->getType();
             assert(Cast->getSubExpr()->getType().getCanonicalType()
-                            != DestTy.getCanonicalType()); // we should be ignoring all casts that do not alter the type
+                            != CastDestTy.getCanonicalType()); // we should be ignoring all casts that do not alter the type
         }
 
         if (Kind == clang::CK_NullToPointer)
             e = new NullExp(loc);
         else
-            return fromExpression(Cast->getSubExpr(), DestTy);
+            e = fromExpression(Cast->getSubExpr(), CastDestTy);
     }
 
-    Type *destType = nullptr;
-    if (!DestTy.isNull())
-        destType = tymap.fromType(DestTy);
-
-    if (auto PE = dyn_cast<clang::ParenExpr>(E))
-        return fromExpression(PE->getSubExpr());
+    else if (auto PE = dyn_cast<clang::ParenExpr>(E))
+        e = fromExpression(PE->getSubExpr());
     else if (auto CDA = dyn_cast<clang::CXXDefaultArgExpr>(E))
-        return fromExpression(CDA->getExpr());
+        e = fromExpression(CDA->getExpr());
 
-    if (auto UO = dyn_cast<clang::UnaryOperator>(E))
-        return fromUnaExp(UO);
+    else if (auto UO = dyn_cast<clang::UnaryOperator>(E))
+        e = fromUnaExp(UO);
     else if (auto BO = dyn_cast<clang::BinaryOperator>(E))
-        return fromBinExp(BO);
+        e = fromBinExp(BO);
     else if (auto CO = dyn_cast<clang::ConditionalOperator>(E))
     {
         auto econd = fromExpression(CO->getCond());
@@ -209,10 +211,10 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
         if (!econd || !e1 || !e2)
             return nullptr;
         
-        return new CondExp(loc, econd, e1, e2);
+        e = new CondExp(loc, econd, e1, e2);
     }
 
-    if (auto IL = dyn_cast<clang::IntegerLiteral>(E))
+    else if (auto IL = dyn_cast<clang::IntegerLiteral>(E))
     {
         auto Val = IL->getValue();
 
@@ -301,24 +303,24 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
         return new NullExp(loc);
     }
 
-    if (auto TT = dyn_cast<clang::TypeTraitExpr>(E))
+    else if (auto TT = dyn_cast<clang::TypeTraitExpr>(E))
     {
         if (!TT->isValueDependent())
-            return new IntegerExp(loc, TT->getValue() ? 1 : 0, Type::tbool);
+            e = new IntegerExp(loc, TT->getValue() ? 1 : 0, Type::tbool);
         else
             return new NullExp(loc);  // TODO replace by D traits
     }
     else if (auto SOP = dyn_cast<clang::SizeOfPackExpr>(E))
     {
         if (!SOP->isValueDependent())
-            return new IntegerExp(loc, SOP->getPackLength(), Type::tuns64);
+            e = new IntegerExp(loc, SOP->getPackLength(), Type::tuns64);
         else
             return new NullExp(loc);  // TODO replace by D traits
     }
     else if (auto NE = dyn_cast<clang::CXXNoexceptExpr>(E))
     {
         if (!NE->isValueDependent())
-            return new IntegerExp(loc, NE->getValue() ? 1 : 0, Type::tbool);
+            e = new IntegerExp(loc, NE->getValue() ? 1 : 0, Type::tbool);
         else
             return new NullExp(loc);
     }
@@ -330,37 +332,37 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
         switch (UEOTT->getKind())
         {
             case clang::UETT_SizeOf:
-                return new DotIdExp(loc, e1, Id::__sizeof);
+                e = new DotIdExp(loc, e1, Id::__sizeof);
+                break;
             case clang::UETT_AlignOf:
-                return new DotIdExp(loc, e1, Id::__xalignof);
+                e = new DotIdExp(loc, e1, Id::__xalignof);
+                break;
             default:
                 assert(false && "Unsupported");
         }
     }
 
-    if (auto DR = dyn_cast<clang::DeclRefExpr>(E))
+    else if (auto DR = dyn_cast<clang::DeclRefExpr>(E))
     {
         Ty = DR->getType();
         t = tymap.fromType(Ty);
 
         e = fromExpressionDeclRef(loc, const_cast<clang::ValueDecl*>(DR->getDecl()),
                         DR->getQualifier());
-
-        if (!e)
-            return nullptr; // FIXME overloaded operators
+        // FIXME overloaded operators
     }
 
-    if (auto PE = dyn_cast<clang::PackExpansionExpr>(E))
+    else if (auto PE = dyn_cast<clang::PackExpansionExpr>(E))
     {
-        return fromExpression(PE->getPattern());
+        e = fromExpression(PE->getPattern());
     }
     else if (auto SNTTP = dyn_cast<clang::SubstNonTypeTemplateParmExpr>(E))
     {
         if (!interpret || SNTTP->isValueDependent())
-            return fromExpressionNonTypeTemplateParm(loc,
+            e = fromExpressionNonTypeTemplateParm(loc,
                                 SNTTP->getParameter());
         else
-            return fromExpression(SNTTP->getReplacement());
+            e = fromExpression(SNTTP->getReplacement());
     }
     else if (auto CDSM = dyn_cast<clang::CXXDependentScopeMemberExpr>(E))
     {
@@ -391,8 +393,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
                 e1 = dotIdentOrInst(loc, e1, id);
         }
 
-        e1 = dotIdentOrInst(loc, e1, member);
-        return e1;
+        e = dotIdentOrInst(loc, e1, member);
     }
     else if (auto DSDR = dyn_cast<clang::DependentScopeDeclRefExpr>(E))
     {
@@ -423,16 +424,16 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
         if (e1)
         {
             if (tempinst)
-                return new DotTemplateInstanceExp(loc, e1, tempinst);
+                e = new DotTemplateInstanceExp(loc, e1, tempinst);
             else
-                return new DotIdExp(loc, e1, ident);
+                e = new DotIdExp(loc, e1, ident);
         }
         else
         {
             if (tempinst)
-                return new TypeExp(loc, new TypeInstance(loc, tempinst));
+                e = new TypeExp(loc, new TypeInstance(loc, tempinst));
             else
-                return new IdentifierExp(loc, ident);
+                e = new IdentifierExp(loc, ident);
         }
     }
     else if (auto C = dyn_cast<clang::CallExpr>(E))
@@ -457,15 +458,15 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
         }
         else
         {
-            auto e = fromExpression(C->getCallee());
-            if (!e)
+            auto callee = fromExpression(C->getCallee());
+            if (!callee)
                 return nullptr; // FIXME temporary hack skipping overloaded operators
 
             auto args = new Expressions;
             for (auto Arg: C->arguments())
                 args->push(fromExpression(Arg));
 
-            e = new CallExp(loc, e, args);
+            e = new CallExp(loc, callee, args);
         }
     }
     else if (auto UL = dyn_cast<clang::UnresolvedLookupExpr>(E))
@@ -485,10 +486,10 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
 
             auto tempinst = new ::TemplateInstance(loc, id);
             tempinst->tiargs = fromASTTemplateArgumentListInfo(ExplicitTempArgs, tymap);
-            return new ScopeExp(loc, tempinst);
+            e = new ScopeExp(loc, tempinst);
         }
         else
-            return new IdentifierExp(loc, id);
+            e = new IdentifierExp(loc, id);
     }
     else if (isa<clang::CXXScalarValueInitExpr>(E))
     {
@@ -537,20 +538,22 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
     }
     else if (auto CBT = dyn_cast<clang::CXXBindTemporaryExpr>(E))
     {
-        return fromExpression(CBT->getSubExpr());
+        e = fromExpression(CBT->getSubExpr());
     }
     else if (auto CCE = dyn_cast<clang::CXXConstructExpr>(E))
     {
         if (CCE->isElidable())
-            return fromExpression(CCE->getArg(0));
+            e = fromExpression(CCE->getArg(0));
+        else
+        {
+            t = tymap.fromType(E->getType().withoutLocalFastQualifiers());
 
-        t = tymap.fromType(E->getType().withoutLocalFastQualifiers());
+            auto args = new Expressions;
+            for (auto Arg: CCE->arguments())
+                args->push(fromExpression(Arg));
 
-        auto args = new Expressions;
-        for (auto Arg: CCE->arguments())
-            args->push(fromExpression(Arg));
-
-        e = new CallExp(loc, new TypeExp(loc, t), args);
+            e = new CallExp(loc, new TypeExp(loc, t), args);
+        }
     }
     else if (auto CNE = dyn_cast<clang::CXXNewExpr>(E))
     {
@@ -569,58 +572,70 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
         e = new NewExp(loc, nullptr, nullptr, t, args);
     }
 
-
-    if (isa<clang::InitListExpr>(E)) // TODO
+    else if (isa<clang::InitListExpr>(E)) // TODO
         return new NullExp(loc);
 
-    if (isa<clang::CXXUnresolvedConstructExpr>(E)
+    else if (isa<clang::CXXUnresolvedConstructExpr>(E)
         || isa<clang::CXXPseudoDestructorExpr>(E))
         return new NullExp(loc) /* nullptr */;
 
-    if (e)
+    else
+        llvm::llvm_unreachable_internal("Unhandled C++ expression");
+
+    if (!e)
+        return nullptr;
+
+    // When t is an unresolved TypeQualified we may want to emulate
+    // implicitConvTo with the Clang types instead of the D ones
+    if (!Ty.isNull() && !DestTy.isNull())
     {
-        // When t is an unresolved TypeQualified we may want to emulate
-        // implicitConvTo with the Clang types instead of the D ones
-        if (!Ty.isNull() && !DestTy.isNull())
+        if (auto DestRecordTy = DestTy->getAs<clang::RecordType>())
         {
-            if (auto DestRecordTy = DestTy->getAs<clang::RecordType>())
-            {
-                if (DestTy->getAs<clang::ReferenceType>())
-                    DestRecordTy = DestTy->getPointeeType()->getAs<clang::RecordType>();
+            if (DestTy->getAs<clang::ReferenceType>())
+                DestRecordTy = DestTy->getPointeeType()->getAs<clang::RecordType>();
 
-                if (!DestRecordTy)
-                    goto Lcast;
+            if (!DestRecordTy)
+                goto Lcast;
 
-                auto ExprRecord = Ty->castAs<clang::RecordType>()->getDecl();
-                auto ExprCXXRecord = dyn_cast<clang::CXXRecordDecl>(ExprRecord);
-                auto DestRecord = DestRecordTy->getDecl();
-                auto DestCXXRecord = dyn_cast<clang::CXXRecordDecl>(DestRecord);
+            auto ExprRecord = Ty->castAs<clang::RecordType>()->getDecl();
+            auto ExprCXXRecord = dyn_cast<clang::CXXRecordDecl>(ExprRecord);
+            auto DestRecord = DestRecordTy->getDecl();
+            auto DestCXXRecord = dyn_cast<clang::CXXRecordDecl>(DestRecord);
 
-                if (!DestRecord)
-                    goto Lcast;
+            if (!DestRecord)
+                goto Lcast;
 
-                if (DestRecord->getCanonicalDecl() == ExprRecord->getCanonicalDecl())
-                    return e;
-
-                if (!DestCXXRecord || !ExprCXXRecord || !ExprCXXRecord->isDerivedFrom(DestCXXRecord))
-                    goto Lcast;
-
+            if (DestRecord->getCanonicalDecl() == ExprRecord->getCanonicalDecl())
                 return e;
-            }
-        }
 
-        if (destType && destType->ty == Treference)
-            destType = destType->nextOf();
+            if (!DestCXXRecord || !ExprCXXRecord || !ExprCXXRecord->isDerivedFrom(DestCXXRecord))
+                goto Lcast;
 
-        if (!t || !destType ||
-                t->implicitConvTo(destType) >= MATCHconst)
             return e;
-
-    Lcast:
-        return new CastExp(loc, e, destType);
+        }
     }
 
-    llvm::llvm_unreachable_internal("Unhandled C++ expression");
+    if (destType && destType->ty == Treference)
+        destType = destType->nextOf();
+
+    // D won't be as lenient as C++ is towards signed constants overflowing into negative values,
+    // so even if Type::implicitConvTo matches we should still check the evaluated expression
+    // (see _ISwgraph in wctype.h for an example of this special case)
+    if (!E->isInstantiationDependent() && !DestTy.isNull() &&
+                destType->isintegral() && !destType->isunsigned())
+    {
+        llvm::APSInt V;
+        if (E->EvaluateAsInt(V, Context))
+            if (V.isUnsigned() && V.getActiveBits() == Context.getIntWidth(DestTy))
+                goto Lcast;
+    }
+
+    if (!t || !destType ||
+            t->implicitConvTo(destType) >= MATCHconst)
+        return e;
+
+Lcast:
+    return new CastExp(loc, e, destType);
 }
 
 Type *getAPIntDType(const llvm::APInt &i)
