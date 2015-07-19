@@ -984,12 +984,22 @@ Dsymbol *DeclMapper::VisitInstancedClassTemplate(const clang::ClassTemplateSpeci
 {
     assert(!isa<clang::ClassTemplatePartialSpecializationDecl>(D));
 
+    instantiating = true; // FIXME redundant with the DeclMapper ctor
     rebuildScope(cast<clang::Decl>(D->getDeclContext()));
-
     pushTempParamList(D);
-    auto a = VisitRecordDecl(D, flags);
-    TempParamScope.pop_back();
 
+    auto a = VisitRecordDecl(D, flags);
+    assert(a->dim);
+    return (*a)[0];
+}
+
+Dsymbol *DeclMapper::VisitInstancedFunctionTemplate(const clang::FunctionDecl *D)
+{
+    instantiating = true;
+    rebuildScope(cast<clang::Decl>(D->getDeclContext()));
+    pushTempParamList(D);
+
+    auto a = VisitFunctionDecl(D);
     assert(a->dim);
     return (*a)[0];
 }

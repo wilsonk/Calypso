@@ -1867,11 +1867,10 @@ void TypeMapper::pushTempParamList(const clang::Decl *D)
         if (!ClassSpec->isExplicitSpecialization())
             pushTempParamList(getTemplateSpecializedDecl(ClassSpec));
     }
-    else if (auto FuncSpec = dyn_cast<clang::FunctionDecl>(D))
+    else if (auto Func = dyn_cast<clang::FunctionDecl>(D))
     {
-        if (FuncSpec->isFunctionTemplateSpecialization() &&
-                FuncSpec->getTemplateSpecializationKind() != clang::TSK_ImplicitInstantiation)
-            pushTempParamList(FuncSpec->getPrimaryTemplate());
+        if (auto PrimTemp = Func->getPrimaryTemplate())
+            pushTempParamList(PrimTemp);
     }
 }
 

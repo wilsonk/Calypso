@@ -214,7 +214,7 @@ void FuncDeclaration::semantic(Scope *sc)
         m.addImplicitDecls = false;
 
         auto inst = static_cast<decltype(this)>(
-                (*m.VisitFunctionDecl(Inst))[0]->isFuncDeclaration());
+                m.VisitInstancedFunctionTemplate(Inst))->isFuncDeclaration();
         assert(inst);
 
         inst->syntaxCopy(this);
