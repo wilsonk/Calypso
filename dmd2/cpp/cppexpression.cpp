@@ -77,15 +77,17 @@ Expression *ExprMapper::fixIntegerExp(IntegerExp *e, clang::QualType T)
     llvm_unreachable("Couldn't find the corresponding enum constant");
 }
 
-Expression* ExprMapper::fromUnaExp(const clang::UnaryOperator *E)
+Expression *ExprMapper::fromUnaExp(clang::SourceLocation Loc,
+                                   const clang::UnaryOperator::Opcode Op,
+                                   const clang::Expr *SubExpr)
 {
-    auto loc = fromLoc(E->getLocStart());
-    auto sub = fromExpression(E->getSubExpr());
+    auto loc = fromLoc(Loc);
+    auto sub = fromExpression(SubExpr);
 
     if (!sub)
         return nullptr;
 
-    switch (E->getOpcode())
+    switch (Op)
     {
         case clang::UO_Plus: return sub;
         case clang::UO_Minus: return new NegExp(loc, sub);
@@ -98,16 +100,23 @@ Expression* ExprMapper::fromUnaExp(const clang::UnaryOperator *E)
     llvm::llvm_unreachable_internal("Unhandled C++ unary operation exp");
 }
 
-Expression* ExprMapper::fromBinExp(const clang::BinaryOperator* E)
+Expression* ExprMapper::fromUnaExp(const clang::UnaryOperator *E)
 {
-    auto loc = fromLoc(E->getLocStart());
-    auto lhs = fromExpression(E->getLHS());
-    auto rhs = fromExpression(E->getRHS());
+    return fromUnaExp(E->getLocStart(), E->getOpcode(), E->getSubExpr());
+}
+
+Expression *ExprMapper::fromBinExp(clang::SourceLocation Loc,
+                                const clang::BinaryOperator::Opcode Op,
+                                const clang::Expr *LHS, const clang::Expr *RHS)
+{
+    auto loc = fromLoc(Loc);
+    auto lhs = fromExpression(LHS);
+    auto rhs = fromExpression(RHS);
 
     if (!lhs || !rhs)
         return nullptr;
 
-    switch (E->getOpcode())
+    switch (Op)
     {
         case clang::BO_Add: return new AddExp(loc, lhs, rhs);
         case clang::BO_Sub: return new MinExp(loc, lhs, rhs);
@@ -143,6 +152,12 @@ Expression* ExprMapper::fromBinExp(const clang::BinaryOperator* E)
     }
 
     llvm::llvm_unreachable_internal("Unhandled C++ binary operation exp");
+}
+
+Expression* ExprMapper::fromBinExp(const clang::BinaryOperator* E)
+{
+    return fromBinExp(E->getLocStart(), E->getOpcode(),
+                    E->getLHS(), E->getRHS());
 }
 
 Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType DestTy,
@@ -422,15 +437,36 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
     }
     else if (auto C = dyn_cast<clang::CallExpr>(E))
     {
-        auto e = fromExpression(C->getCallee());
-        if (!e)
-            return nullptr; // FIXME temporary hack skipping overloaded operators
+        auto OC = dyn_cast<clang::CXXOperatorCallExpr>(E);
+        if (OC && E->isInstantiationDependent()) // in dependent contexts operator calls aren't resolved yet to UnaryOperator and BinaryOperator
+        {
+            auto OO = OC->getOperator();
+            if (C->getNumArgs() == 2 && OO >= clang::OO_Plus && OO <= clang::OO_Arrow &&
+                    OO != clang::OO_PlusPlus && OO != clang::OO_MinusMinus)
+            {
+                auto Op = clang::BinaryOperator::getOverloadedOpcode(OO);
+                auto LHS = C->getArg(0), RHS = C->getArg(1);
+                e = fromBinExp(E->getLocStart(), Op, LHS, RHS);
+            }
+            else if (C->getNumArgs() == 1 && OO < clang::OO_Call)
+            {
+                auto Op = clang::UnaryOperator::getOverloadedOpcode(OO, false); // WARNING: how to determine whether prefix or postfix?
+                auto Sub = C->getArg(0);
+                e = fromUnaExp(E->getLocStart(), Op, Sub);
+            }
+        }
+        else
+        {
+            auto e = fromExpression(C->getCallee());
+            if (!e)
+                return nullptr; // FIXME temporary hack skipping overloaded operators
 
-        auto args = new Expressions;
-        for (auto Arg: C->arguments())
-            args->push(fromExpression(Arg));
+            auto args = new Expressions;
+            for (auto Arg: C->arguments())
+                args->push(fromExpression(Arg));
 
-        return new CallExp(loc, e, args);
+            e = new CallExp(loc, e, args);
+        }
     }
     else if (auto UL = dyn_cast<clang::UnresolvedLookupExpr>(E))
     {

@@ -53,6 +53,10 @@ public:
 protected:
     TypeMapper &tymap;
 
+    Expression* fromUnaExp(clang::SourceLocation Loc, const clang::UnaryOperator::Opcode Op,
+                           const clang::Expr *SubExpr);
+    Expression* fromBinExp(clang::SourceLocation Loc, const clang::BinaryOperator::Opcode Op,
+                           const clang::Expr *LHS, const clang::Expr *RHS);
     Expression* fromUnaExp(const clang::UnaryOperator *E);
     Expression* fromBinExp(const clang::BinaryOperator* E);
 };
