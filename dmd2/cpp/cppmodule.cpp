@@ -597,9 +597,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     if (isa<clang::FunctionNoProtoType>(D->getType()))
         return nullptr; // functions without prototypes are afaik builtins, and since D needs a prototype they can't be mapped
 
-    // TODO: map explicit specializations properly (passing for now because the handling of SubstTemplateTypeParmType gets tricky,
-    // however calls are already routed to explicit specs by Sema even if not mapped to D explicit specs)
-    if (!instantiating && D->isFunctionTemplateSpecialization())
+    if (!instantiating && D->isTemplateInstantiation())
         return nullptr;
 
     auto loc = fromLoc(D->getLocation());
@@ -663,7 +661,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     }
     tf->addSTC(stc);
     
-    ::FuncDeclaration *fd = nullptr;
+    ::FuncDeclaration *fd;
     if (auto CD = dyn_cast<clang::CXXConstructorDecl>(D))
     {
         fd = new CtorDeclaration(loc, stc, tf, CD);
@@ -730,6 +728,34 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     {
         auto id = fromIdentifier(D->getIdentifier());
         fd = new FuncDeclaration(loc, id, stc, tf, D);
+    }
+
+    if (D->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization &&
+            D->getPrimaryTemplate()) // weird, but the explicit instantiation of basic_istream<char>::getline is considered an explicit specialization
+    {
+        auto tpl = new TemplateParameters;
+
+        auto FT = D->getPrimaryTemplate();
+        auto TPL = FT->getTemplateParameters();
+        auto AI = D->getTemplateSpecializationArgs()->asArray().begin();
+
+        TempParamScope.push_back(TPL);
+        for (auto PI = TPL->begin(), PE = TPL->end();
+            PI != PE; PI++)
+        {
+            auto tp = VisitTemplateParameter(*PI, AI);
+            if (!tp)
+                return nullptr;
+            tpl->push(tp);
+
+            if (AI) AI++;
+        }
+        TempParamScope.pop_back();
+
+        auto decldefs = new Dsymbols;
+        decldefs->push(fd);
+        auto td = new TemplateDeclaration(loc, fd->ident, tpl, decldefs, D);
+        return oneSymbol(td);
     }
 
     return oneSymbol(fd);
