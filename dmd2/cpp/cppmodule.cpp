@@ -1047,6 +1047,8 @@ Dsymbols *DeclMapper::VisitEnumDecl(const clang::EnumDecl* D)
 
     for (auto ECD: D->enumerators())
     {
+        auto memberLoc = fromLoc(ECD->getLocation());
+
         if (!e->members)
             e->members = new Dsymbols;
 
@@ -1054,9 +1056,12 @@ Dsymbols *DeclMapper::VisitEnumDecl(const clang::EnumDecl* D)
         Expression *value = nullptr;
 
         if (auto InitE = ECD->getInitExpr())
+        {
             value = ExprMapper(*this).fromExpression(InitE);
+            value = new CastExp(memberLoc, value, memtype); // SEMI-HACK (?) because the type returned by 1LU << ... will be ulong and we may need an int (see wctype.h)
+        }
 
-        auto em = new EnumMember(loc, ident, value, nullptr);
+        auto em = new EnumMember(memberLoc, ident, value, nullptr);
         e->members->push(em);
     }
 
