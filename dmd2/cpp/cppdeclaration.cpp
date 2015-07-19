@@ -232,11 +232,11 @@ Scope *globalScope(::Module *m)
     return sc;
 }
 
-void DeclReferencer::Traverse(Loc loc, Scope *sc, clang::Stmt *Body)
+void DeclReferencer::Traverse(Loc loc, Scope *sc, clang::Stmt *S)
 {
     this->loc = loc;
     this->sc = sc;
-    TraverseStmt(Body);
+    TraverseStmt(S);
 }
 
 bool DeclReferencer::Reference(const clang::NamedDecl *D)
@@ -337,7 +337,14 @@ void FuncDeclaration::semantic3reference(::FuncDeclaration *fd, Scope *sc)
 
     const clang::FunctionDecl *Def;
     if (!FD->isInvalidDecl() && FD->hasBody(Def))
-        declReferencer.Traverse(fd->loc, globalScope(sc->instantiatingModule()), Def->getBody());
+    {
+        auto globalSc = globalScope(sc->instantiatingModule());
+        declReferencer.Traverse(fd->loc, globalSc, Def->getBody());
+
+        if (auto Ctor = dyn_cast<clang::CXXConstructorDecl>(FD))
+            for (auto& Init: Ctor->inits())
+                declReferencer.Traverse(fd->loc, globalSc, Init->getInit());
+    }
 
     fd->semanticRun = PASSsemantic3done;
 }

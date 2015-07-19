@@ -197,7 +197,7 @@ public:
         mapper.useIdEmpty = false;
     }
 
-    void Traverse(Loc loc, Scope *sc, clang::Stmt *Body);
+    void Traverse(Loc loc, Scope *sc, clang::Stmt *S);
 
     bool VisitCallExpr(const clang::CallExpr *E);
     bool VisitCXXConstructExpr(const clang::CXXConstructExpr *E);
