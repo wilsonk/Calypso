@@ -64,6 +64,8 @@ public:
 
     // Clang -> DMD
     Type *fromType(const clang::QualType T);
+    Objects *fromTemplateArguments(const clang::TemplateArgumentList *List,
+                const clang::TemplateParameterList *ParamList = nullptr);
 
     class FromType // type-specific state
     {

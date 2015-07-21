@@ -542,6 +542,14 @@ Objects* TypeMapper::FromType::fromTemplateArguments(const clang::TemplateArgume
     return tiargs;
 }
 
+Objects *TypeMapper::fromTemplateArguments(const clang::TemplateArgumentList *List,
+                                           const clang::TemplateParameterList *ParamList)
+{
+    auto Array = List->asArray();
+    auto First = Array.begin(), End = Array.end();
+    return FromType(*this).fromTemplateArguments(First, End, ParamList);
+}
+
 class ScopeChecker // determines if a C++ decl is "scopingly" equivalent to another's
 {
 public:
@@ -835,7 +843,8 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::Decl *D)
         // and that's okay (+ avoids argument deduction).
     }
 
-    if (auto Temp = dyn_cast<clang::TemplateDecl>(D))
+    auto Temp = dyn_cast<clang::TemplateDecl>(D);
+    if (Temp && TopTempArgBegin)
     {
         pushInst(tqual, o, Temp, TopTempArgBegin, TopTempArgEnd);
         TopTempArgBegin = TopTempArgEnd = nullptr;  // e.g there could be multiple TypeAliasTemplateDecl in the same qualified type

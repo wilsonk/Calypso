@@ -547,6 +547,11 @@ TemplateInstance::TemplateInstance(Loc loc, Identifier* temp_id)
 {
 }
 
+TemplateInstance::TemplateInstance(Loc loc, ::TemplateDeclaration *tempdecl, Objects *tiargs)
+    : ::TemplateInstance(loc, tempdecl, tiargs)
+{
+}
+
 TemplateInstance::TemplateInstance(const TemplateInstance& o)
     : TemplateInstance(o.loc, o.name)
 {

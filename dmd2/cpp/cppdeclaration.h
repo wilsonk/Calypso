@@ -188,7 +188,7 @@ class DeclReferencer : public clang::RecursiveASTVisitor<DeclReferencer>
 
     llvm::DenseSet<const clang::Decl *> Referenced;
 
-    bool Reference(const clang::NamedDecl *D);
+    bool Reference(const clang::NamedDecl *D, const clang::CallExpr *Call = nullptr);
     bool Reference(const clang::Type *T);
 public:
     DeclReferencer()

@@ -239,7 +239,7 @@ void DeclReferencer::Traverse(Loc loc, Scope *sc, clang::Stmt *S)
     TraverseStmt(S);
 }
 
-bool DeclReferencer::Reference(const clang::NamedDecl *D)
+bool DeclReferencer::Reference(const clang::NamedDecl *D, const clang::CallExpr *Call)
 {
     if (D->isInvalidDecl())
         return true;
@@ -272,12 +272,65 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D)
     im->semantic2(sc);
     Module::addDeferredSemantic3(im->mod);
 
+    auto Func = dyn_cast<clang::FunctionDecl>(D);
+    if (Call && Func->getPrimaryTemplate())
+        D = Func->getPrimaryTemplate()->getCanonicalDecl();
+
     auto tqual = TypeMapper::FromType(mapper).typeQualifiedFor(
                 const_cast<clang::NamedDecl*>(D));
-    assert(tqual); // temporaire
 
     auto te = new TypeExp(loc, tqual);
-    te->semantic(sc);
+    auto e = te->semantic(sc);
+
+    if (Call && Func->getPrimaryTemplate())
+    {
+        assert(e->op == TOKvar || e->op == TOKtemplate);
+        Dsymbol *s;
+        if (e->op == TOKvar)
+            s = static_cast<SymbolExp*>(e)->var;
+        else
+            s = static_cast<TemplateExp*>(e)->td;
+
+        // if it's a non-template function there's nothing to do, it will be semantic'd along with its declcontext
+        // if it's a template spec we must instantiate the right overload
+        struct DEquals
+        {
+            const clang::Decl* D;
+            Dsymbol *s = nullptr; // return value
+
+            static int fp(void *param, Dsymbol *s)
+            {
+                if (!isCPP(s))
+                    return 0;
+                auto fd = s->isFuncDeclaration();
+                auto td = static_cast<cpp::TemplateDeclaration*>(
+                                            s->isTemplateDeclaration());
+                DEquals *p = (DEquals *)param;
+
+                decltype(D) s_D = fd ? getFD(fd) : td->TempOrSpec;
+
+                if (p->D == s_D->getCanonicalDecl())
+                {
+                    p->s = s;
+                    return 1;
+                }
+
+                return 0;
+            }
+        };
+        DEquals p;
+        p.D = D;
+        overloadApply(s, &p, &DEquals::fp);
+        assert(p.s && p.s->isTemplateDeclaration());
+
+        auto td = p.s->isTemplateDeclaration();
+        auto tiargs = mapper.fromTemplateArguments(Func->getTemplateSpecializationArgs());
+        auto tempinst = new cpp::TemplateInstance(loc, td, tiargs);
+        tempinst->Inst = const_cast<clang::FunctionDecl*>(Func);
+        tempinst->semantictiargsdone = false; // NOTE: the "havetempdecl" ctor of Templateinstance set semantictiargsdone to true...
+                                                            // Time was lost finding this out for the second or third time.
+        tempinst->semantic(sc);
+    }
 
     // Memory usage can skyrocket when using a large library
     if (im->packages) delete im->packages;
@@ -300,7 +353,7 @@ bool DeclReferencer::Reference(const clang::Type *T)
 bool DeclReferencer::VisitCallExpr(const clang::CallExpr *E)
 {
     if (auto Callee = E->getDirectCallee())
-        return Reference(Callee);
+        return Reference(Callee, E);
     return true;
 }
 

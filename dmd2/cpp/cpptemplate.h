@@ -50,6 +50,7 @@ public:
     Objects *origTiargs = nullptr; // needed for deco mangling
 
     TemplateInstance(Loc loc, Identifier *temp_id);
+    TemplateInstance(Loc loc, ::TemplateDeclaration *tempdecl, Objects *tiargs);
     TemplateInstance(const TemplateInstance&);
     Dsymbol *syntaxCopy(Dsymbol *) override;
     Identifier *getIdent() override;
