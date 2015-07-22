@@ -446,8 +446,7 @@ bool InternalFunctionEmitter::Emit(const clang::FunctionDecl *Callee)
 
     auto resolved = ResolvedFunc::get(CGM, Callee);
 
-    auto Linkage = Context.GetGVALinkageForFunction(Callee);
-    if ((Linkage != clang::GVA_Internal && Linkage != clang::GVA_DiscardableODR) || Emitted.count(Def))
+    if (Callee->hasExternalFormalLinkage() || Emitted.count(Def))
         return true;
 
     Emitted.insert(Def);
