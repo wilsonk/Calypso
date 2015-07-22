@@ -417,11 +417,21 @@ class InternalFunctionEmitter : public clang::RecursiveASTVisitor<InternalFuncti
 public:
     InternalFunctionEmitter(clang::ASTContext &Context,
                         clangCG::CodeGenModule &CGM) : Context(Context), CGM(CGM) {}
+    void Traverse(const clang::FunctionDecl *Def);
+
     bool VisitCallExpr(const clang::CallExpr *E);
     bool VisitCXXConstructExpr(const clang::CXXConstructExpr *E);
     bool VisitCXXNewExpr(const clang::CXXNewExpr *E);
     bool VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E);
 };
+
+void InternalFunctionEmitter::Traverse(const clang::FunctionDecl *Def)
+{
+    TraverseStmt(Def->getBody());
+    if (auto Ctor = dyn_cast<clang::CXXConstructorDecl>(Def))
+        for (auto& Init: Ctor->inits())
+            TraverseStmt(Init->getInit());
+}
 
 bool InternalFunctionEmitter::Emit(const clang::FunctionDecl *Callee)
 {
@@ -445,7 +455,7 @@ bool InternalFunctionEmitter::Emit(const clang::FunctionDecl *Callee)
     if (resolved.Func->isDeclaration())
         CGM.EmitTopLevelDecl(const_cast<clang::FunctionDecl*>(Def));
 
-    TraverseStmt(Def->getBody());
+    Traverse(Def);
     return true;
 }
 
@@ -490,7 +500,7 @@ void LangPlugin::toDefineFunction(::FuncDeclaration* fdecl)
         CGM->EmitTopLevelDecl(const_cast<clang::FunctionDecl*>(Def)); // TODO remove const_cast
 
         // Emit inline functions this function depends upon
-        InternalFunctionEmitter(Context, *CGM).TraverseStmt(Def->getBody());
+        InternalFunctionEmitter(Context, *CGM).Traverse(Def);
     }
 }
 
