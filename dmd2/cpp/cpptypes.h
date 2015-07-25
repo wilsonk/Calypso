@@ -50,6 +50,12 @@ protected:
     Type *toInt(clang::TargetInfo::IntType intTy);
 };
 
+// Tweaks for special cases
+struct TypeQualifiedBuilderOptions
+{
+    bool overOpSkipSpecArg = false; // if true skip "-" in opBinary!"-"
+};
+
 class TypeMapper
 {
 public:
@@ -112,7 +118,8 @@ public:
 
         TypeQualified *typeQualifiedFor(clang::NamedDecl* D,
                             const clang::TemplateArgument* ArgBegin = nullptr,
-                            const clang::TemplateArgument* ArgEnd = nullptr);
+                            const clang::TemplateArgument* ArgEnd = nullptr,
+                            TypeQualifiedBuilderOptions* options = nullptr);
         Type *typeSubstOrQualifiedFor(clang::NamedDecl* D,
                             const clang::TemplateArgument* ArgBegin = nullptr,
                             const clang::TemplateArgument* ArgEnd = nullptr);

@@ -1133,8 +1133,8 @@ static clang::DeclContext::lookup_const_result lookup(const clang::DeclContext *
     return DC->lookup(clang::DeclarationName(&II));
 }
 
-bool isOverloadedOperatorWithTagOperand(const clang::Decl *D,
-                                const clang::NamedDecl *SpecificTag = nullptr)
+const clang::NamedDecl *isOverloadedOperatorWithTagOperand(const clang::Decl *D,
+                                const clang::NamedDecl *SpecificTag)
 {
     auto& Context = calypso.getASTContext();
 
@@ -1143,11 +1143,14 @@ bool isOverloadedOperatorWithTagOperand(const clang::Decl *D,
         Func = FuncTemp->getTemplatedDecl();
 
     if (!Func || !Func->isOverloadedOperator())
-        return false;
+        return nullptr;
+
+    if (Func->isFunctionTemplateSpecialization())
+        Func = Func->getPrimaryTemplate()->getTemplatedDecl();
 
     assert(Func->getNumParams() > 0);
     if (Func->getNumParams() > 2)
-        return false; // [] and () cannot be non-member (FIXME: not entirely sure about (), couldn't find the source)
+        return nullptr; // [] and () cannot be non-member (FIXME: not entirely sure about (), couldn't find the source)
 
     const clang::NamedDecl *OpTyDecl = nullptr;
 
@@ -1177,13 +1180,11 @@ bool isOverloadedOperatorWithTagOperand(const clang::Decl *D,
             }
     }
 
-    if (!OpTyDecl)
-        return false; // neither LHS nor RHS has a tag type
+    if (OpTyDecl && // either LHS or RHS has a tag type
+          (!SpecificTag || OpTyDecl->getCanonicalDecl() == SpecificTag->getCanonicalDecl())) // if we're looking for a specific type, compare it
+        return OpTyDecl; 
 
-    if (!SpecificTag)
-        return true; // we're not looking for a specific type
-
-    return OpTyDecl->getCanonicalDecl() == SpecificTag->getCanonicalDecl();
+    return nullptr;
 }
 
 static clang::Module *tryFindClangModule(Loc loc, Identifiers *packages, Identifier *id,

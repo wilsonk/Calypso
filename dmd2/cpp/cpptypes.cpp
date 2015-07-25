@@ -645,6 +645,8 @@ public:
     TypeMapper::FromType &from;
     TypeMapper &tm;
 
+    TypeQualifiedBuilderOptions options;
+
     ScopeChecker RootEquals;
     const clang::NamedDecl *TopDecl;
     const clang::TemplateArgument *TopTempArgBegin,
@@ -664,14 +666,21 @@ public:
                 const clang::TemplateArgument *ArgEnd,
                 clang::NamedDecl *Spec = nullptr);
 
+    RootObject *getIdentOrTempinst(const clang::Decl *D);
+
     TypeQualifiedBuilder(TypeMapper::FromType &from, const clang::Decl* Root,
         const clang::NamedDecl *TopDecl = nullptr,
         const clang::TemplateArgument *TempArgBegin = nullptr,
-        const clang::TemplateArgument *TempArgEnd = nullptr)
+        const clang::TemplateArgument *TempArgEnd = nullptr,
+        TypeQualifiedBuilderOptions *options = nullptr)
         : from(from), tm(from.tm), RootEquals(Root),
           TopDecl(TopDecl),
           TopTempArgBegin(TempArgBegin),
-          TopTempArgEnd(TempArgEnd) {}
+          TopTempArgEnd(TempArgEnd)
+    {
+        if (options)
+            this->options = *options;
+    }
 
     TypeQualified *get(const clang::Decl *D);
 };
@@ -738,7 +747,7 @@ void TypeQualifiedBuilder::pushInst(TypeQualified *&tqual,
     addInst(tqual, tempinst);
 }
 
-RootObject *getIdentOrTempinst(const clang::Decl *D)
+RootObject *TypeQualifiedBuilder::getIdentOrTempinst(const clang::Decl *D)
 {
     auto Named = dyn_cast<clang::NamedDecl>(D);
     if (!Named)
@@ -749,7 +758,7 @@ RootObject *getIdentOrTempinst(const clang::Decl *D)
     if (!ident)
         return nullptr;
 
-    if (op)
+    if (op && !options.overOpSkipSpecArg)
     {
         auto loc = fromLoc(D->getLocation());
         auto tempinst = new cpp::TemplateInstance(loc, ident);
@@ -950,7 +959,8 @@ static TypeQualified *fromInjectedClassName()
 }
 
 TypeQualified *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl *D,
-                        const clang::TemplateArgument *ArgBegin, const clang::TemplateArgument *ArgEnd)
+                        const clang::TemplateArgument *ArgBegin, const clang::TemplateArgument *ArgEnd,
+                        TypeQualifiedBuilderOptions* options)
 {
     if (tm.isInjectedClassName(D))
         return fromInjectedClassName(); // in the following :
@@ -967,7 +977,7 @@ TypeQualified *TypeMapper::FromType::typeQualifiedFor(clang::NamedDecl *D,
         return nullptr; // FIXME struct {} Val;
 
     tm.AddImplicitImportForDecl(D);
-    return TypeQualifiedBuilder(*this, Root, D, ArgBegin, ArgEnd).get(D);
+    return TypeQualifiedBuilder(*this, Root, D, ArgBegin, ArgEnd, options).get(D);
 }
 
 Type *TypeMapper::FromType::typeSubstOrQualifiedFor(clang::NamedDecl *D,
@@ -1691,6 +1701,10 @@ static clang::Module *GetClangModuleForDecl(const clang::Decl* D)
 
 Module::RootKey TypeMapper::GetImplicitImportKeyForDecl(const clang::NamedDecl* D)
 {
+    if (D->getIdentifierNamespace() & clang::Decl::IDNS_NonMemberOperator)
+        if (auto Tag = isOverloadedOperatorWithTagOperand(D)) // non-member operators are part of the record module
+            return GetImplicitImportKeyForDecl(Tag);
+
     auto TopMost = GetNonNestedContext(D);
 
     if (auto Spec = dyn_cast<clang::ClassTemplateSpecializationDecl>(TopMost))
