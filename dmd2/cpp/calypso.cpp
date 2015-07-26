@@ -152,8 +152,11 @@ static Identifier *getOperatorIdentifier(const clang::FunctionDecl *FD,
                     opIdent = Id::opBinary;
                     break;
                 case clang::OO_EqualEqual:
+                    opIdent = Id::eq;
+                    wrapInTemp = false;
+                    break;
                 case clang::OO_ExclaimEqual:
-                    opIdent = fullOperatorMapIdent(Id::eq, FD);
+                    opIdent = Lexer::idPool("opEqualsNot"); // TODO?
                     wrapInTemp = false;
                     break;
                 case clang::OO_Less:
