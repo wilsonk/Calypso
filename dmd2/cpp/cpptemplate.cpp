@@ -266,6 +266,14 @@ MATCH TemplateDeclaration::matchWithInstance(Scope *sc, ::TemplateInstance *ti,
         auto tdtypes = TypeMapper::FromType(tymap).fromTemplateArguments(InstArgs.begin(), InstArgs.end(),
                         Temp->getTemplateParameters());
 
+        const char *op = nullptr;
+        getIdentifier(TempOrSpec, &op);
+        if (op)
+        {
+            auto se = new StringExp(loc, const_cast<char*>(op));
+            tdtypes->shift(se->semantic(sc));
+        }
+
         assert(tdtypes->dim == dedtypes->dim);
         for (unsigned i = 0; i < tdtypes->dim; i++)
             (*dedtypes)[i] = (*tdtypes)[i];
