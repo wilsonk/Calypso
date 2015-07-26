@@ -288,6 +288,7 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
     if (D->isImplicit() && !(flags & MapImplicit))
         return nullptr;
 
+    auto decldefs = new Dsymbols;
     auto loc = fromLoc(D->getLocation());
 
     if (!D->isCompleteDefinition() && D->getDefinition())
@@ -423,11 +424,28 @@ Ldeclaration:
     CXXScope.pop();
 
     if (anon)
-        return oneSymbol(new AnonDeclaration(loc, anon == 2, members));
+        decldefs->push(new AnonDeclaration(loc, anon == 2, members));
+    else
+    {
+        a->members = members;
+        decldefs->push(a);
+    }
 
-    a->members = members;
+    // Sometimes friend declarations are the only existing declarations, so map them to the parent context
+    // see friend QString::operator==(const QString &s1, const QString &s2);
+    // NOTE: should be after because ClassDeclaration::semantic() expects decldefs[0] to be the record
+    typedef clang::DeclContext::specific_decl_iterator<clang::FriendDecl> Friend_iterator;
+    for (Friend_iterator I(D->decls_begin()), E(D->decls_end());
+                I != E; I++)
+    {
+        auto Decl = (*I)->getFriendDecl();
+        if (!Decl || !Decl->isOutOfLine())
+            continue;
+        if (auto s = VisitDecl(Decl))
+            decldefs->append(s);
+    }
 
-    return oneSymbol(a);
+    return decldefs;
 }
 
 Dsymbols *DeclMapper::VisitTypedefNameDecl(const clang::TypedefNameDecl* D)
