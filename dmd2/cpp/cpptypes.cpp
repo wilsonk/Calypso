@@ -1701,18 +1701,23 @@ static clang::Module *GetClangModuleForDecl(const clang::Decl* D)
 
 Module::RootKey TypeMapper::GetImplicitImportKeyForDecl(const clang::NamedDecl* D)
 {
-    if (D->getIdentifierNamespace() & clang::Decl::IDNS_NonMemberOperator)
+    auto TopMost = GetNonNestedContext(D);
+    bool IsNamespaceOrTU = isa<clang::TranslationUnitDecl>(TopMost) ||
+                    isa<clang::NamespaceDecl>(TopMost);
+
+    auto Func = dyn_cast<clang::FunctionDecl>(D);
+    if (auto FuncTemp = dyn_cast<clang::FunctionTemplateDecl>(D))
+        Func = FuncTemp->getTemplatedDecl();
+    if (IsNamespaceOrTU && Func && Func->isOverloadedOperator())
         if (auto Tag = isOverloadedOperatorWithTagOperand(D)) // non-member operators are part of the record module
             return GetImplicitImportKeyForDecl(Tag);
-
-    auto TopMost = GetNonNestedContext(D);
 
     if (auto Spec = dyn_cast<clang::ClassTemplateSpecializationDecl>(TopMost))
         return GetImplicitImportKeyForDecl(Spec->getSpecializedTemplate());
 
     Module::RootKey Key;
     Key.first = TopMost->getCanonicalDecl();
-    if (isa<clang::TranslationUnitDecl>(Key.first) || isa<clang::NamespaceDecl>(Key.first))
+    if (IsNamespaceOrTU)
         Key.second = GetClangModuleForDecl(D); // see if there's a Clang module which contains the decl
     return Key;
 }
