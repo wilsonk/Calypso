@@ -266,11 +266,16 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, const clang::CallExpr 
         return true;
     Referenced.insert(D->getCanonicalDecl());
 
+    // Although we try to add all the needed imports during importAll(), sometimes we miss a module so ensure it gets loaded
     auto im = mapper.AddImplicitImportForDecl(D, true);
     im->isstatic = true;
-    im->semantic(sc);
-    im->semantic2(sc);
-    Module::addDeferredSemantic3(im->mod);
+    auto dst = Package::resolve(im->packages, NULL, &im->pkg);
+    if (!dst->lookup(im->id))
+    {
+        im->semantic(sc);
+        im->semantic2(sc);
+        Module::addDeferredSemantic3(im->mod);
+    }
 
     auto Func = dyn_cast<clang::FunctionDecl>(D);
     if (Call && Func->getPrimaryTemplate())
