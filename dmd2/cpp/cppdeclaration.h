@@ -55,6 +55,7 @@ public:
     Dsymbol *syntaxCopy(Dsymbol *s) override;
     void semantic(Scope *sc) override;
     void semantic3(Scope *sc) override;
+    bool functionSemantic3() override { return true; }
     bool allowFinalOverride() override { return true; }
     FuncDeclaration *overloadCppMatch(const clang::FunctionDecl* FD);
 
@@ -73,6 +74,7 @@ public:
     CtorDeclaration(const CtorDeclaration&);
     Dsymbol *syntaxCopy(Dsymbol *s) override;
     void semantic3(Scope *sc) override;
+    bool functionSemantic3() override { return true; }
 };
 
 class DtorDeclaration : public ::DtorDeclaration
@@ -87,6 +89,7 @@ public:
     DtorDeclaration(const DtorDeclaration&);
     Dsymbol *syntaxCopy(Dsymbol *s) override;
     void semantic3(Scope *sc) override;
+    bool functionSemantic3() override { return true; }
     bool allowFinalOverride() override { return true; }
 };
 

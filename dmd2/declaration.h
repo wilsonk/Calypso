@@ -667,7 +667,7 @@ public:
     void semantic2(Scope *sc);
     virtual void semantic3(Scope *sc); // CALYPSO
     bool functionSemantic();
-    bool functionSemantic3();
+    virtual bool functionSemantic3(); // CALYPSO
     // called from semantic3
     VarDeclaration *declareThis(Scope *sc, AggregateDeclaration *ad);
     bool equals(RootObject *o);
