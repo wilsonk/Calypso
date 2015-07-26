@@ -248,13 +248,9 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, const clang::CallExpr 
     {
         // all FIXME except implicit and builtin decls
         if (FD->getBuiltinID() ||
-                FD->isOverloadedOperator() ||
-                D->getIdentifierNamespace() & clang::Decl::IDNS_NonMemberOperator ||
                 isa<clang::CXXConversionDecl>(D))
             return true;
-        if (FD->isOverloadedOperator() && FD->isImplicit())
-            return true;
-        if (isa<clang::CXXDestructorDecl>(D) && FD->isImplicit())
+        if ((FD->isOverloadedOperator() || isa<clang::CXXDestructorDecl>(D)) && FD->isImplicit())
             return true;
         if (FD->isExternC())
             return true; // FIXME: Clang 3.6 doesn't always map decls to the right source file,
@@ -282,7 +278,8 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, const clang::CallExpr 
         D = Func->getPrimaryTemplate()->getCanonicalDecl();
 
     auto tqual = TypeMapper::FromType(mapper).typeQualifiedFor(
-                const_cast<clang::NamedDecl*>(D));
+                const_cast<clang::NamedDecl*>(D), nullptr, nullptr,
+                &tqualOptions);
 
     auto te = new TypeExp(loc, tqual);
     auto e = te->semantic(sc);
@@ -330,6 +327,11 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, const clang::CallExpr 
 
         auto td = p.s->isTemplateDeclaration();
         auto tiargs = mapper.fromTemplateArguments(Func->getTemplateSpecializationArgs());
+        assert(tiargs);
+        const char *op = nullptr;
+        getIdentifier(Func, &op);
+        if (op)
+            tiargs->shift(new StringExp(loc, const_cast<char*>(op)));
         auto tempinst = new cpp::TemplateInstance(loc, td, tiargs);
         tempinst->Inst = const_cast<clang::FunctionDecl*>(Func);
         tempinst->semantictiargsdone = false; // NOTE: the "havetempdecl" ctor of Templateinstance set semantictiargsdone to true...
