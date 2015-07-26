@@ -1877,7 +1877,7 @@ void TypeMapper::pushTempParamList(const clang::Decl *D)
         TPL = cast<clang::ClassTemplatePartialSpecializationDecl>(
                         getDefinition(Partial))->getTemplateParameters();
     else if (auto FuncTemp = dyn_cast<clang::FunctionTemplateDecl>(D))
-        TPL = FuncTemp->getTemplateParameters();
+        TPL = getDefinition(FuncTemp)->getTemplateParameters();
 
     if (TPL)
     {
@@ -2007,22 +2007,33 @@ TypeMapper::TypeMapper(cpp::Module* mod)
 }
 
 // NOTE: doesn't return null if the template isn't defined. What we really want is some sort of canonical declaration to refer to for template parameters.
-const clang::ClassTemplateDecl *getDefinition(const clang::ClassTemplateDecl *D)
+template <typename RedeclTempDecl>
+ const RedeclTempDecl *getRTDDefinition(const RedeclTempDecl *D)
 {
     for (auto RI: D->redecls()) // find the definition if any
     {
-        auto I = cast<clang::ClassTemplateDecl>(RI);
+        auto I = cast<RedeclTempDecl>(RI);
         if (I->isThisDeclarationADefinition())
             return I;
     }
 
     // This is more heuristical than anything else.. I'm not sure yet why templates inside
     // specializations (e.g std::allocator::rebind) do not get defined.
-    if (auto MemberTemp = const_cast<clang::ClassTemplateDecl*>(D)->getInstantiatedFromMemberTemplate())
+    if (auto MemberTemp = const_cast<RedeclTempDecl*>(D)->getInstantiatedFromMemberTemplate())
         if (auto MemberDef = getDefinition(MemberTemp))
             return MemberDef;
 
     return D->getCanonicalDecl();
+}
+
+const clang::ClassTemplateDecl *getDefinition(const clang::ClassTemplateDecl *D)
+{
+    return getRTDDefinition(D);
+}
+
+const clang::FunctionTemplateDecl *getDefinition(const clang::FunctionTemplateDecl *D)
+{
+    return getRTDDefinition(D);
 }
 
 const clang::ClassTemplateSpecializationDecl *getDefinition(const clang::ClassTemplateSpecializationDecl *D)

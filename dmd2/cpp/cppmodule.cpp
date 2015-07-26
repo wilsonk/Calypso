@@ -793,6 +793,8 @@ Dsymbols *DeclMapper::VisitRedeclarableTemplateDecl(const clang::RedeclarableTem
     auto Def = D;
     if (auto CTD = dyn_cast<clang::ClassTemplateDecl>(D))
         Def = getDefinition(CTD);
+    else if (auto FTD = dyn_cast<clang::FunctionTemplateDecl>(D))
+        Def = getDefinition(FTD);
 
     auto tpl = !op ? new TemplateParameters : initTempParamsForOO(loc, op);
     auto TPL = Def->getTemplateParameters();
