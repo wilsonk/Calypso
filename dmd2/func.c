@@ -363,7 +363,16 @@ Dsymbol *FuncDeclaration::syntaxCopy(Dsymbol *s)
 
     //printf("FuncDeclaration::syntaxCopy('%s')\n", toChars());
     if (s)
+    {
         f = (FuncDeclaration *)s;
+        // CALYPSO syntaxCopy is horribly inconsistent..
+        f->loc = loc;
+        f->endloc = endloc;
+        f->ident = ident;
+        f->storage_class = storage_class;
+        if (type)
+            f->type = type->syntaxCopy();
+    }
     else
         f = new FuncDeclaration(loc, endloc, ident, storage_class, type->syntaxCopy());
     f->outId = outId;
