@@ -2133,6 +2133,12 @@ const clang::DeclContext *getDeclContextNamedOrTU(const clang::Decl *D)
     return DC;
 }
 
+// Helper function for GDB
+const clang::Decl *getParent(const clang::Decl *D)
+{
+    return cast<clang::Decl>(D->getDeclContext());
+}
+
 const clang::NamedDecl *getTemplateSpecializedDecl(const clang::ClassTemplateSpecializationDecl *Spec)
 {
     if (Spec->isExplicitSpecialization())
