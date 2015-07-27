@@ -137,7 +137,7 @@ llvm::Type *LangPlugin::toType(::Type *t)
 
     auto RD = getRecordDecl(t);
 
-    if (!RD->getDefinition())
+    if (RD->isInvalidDecl() || !RD->getDefinition())
         return nullptr;
     else
         return CGM->getTypes().ConvertTypeForMem(
@@ -163,7 +163,7 @@ static llvm::Constant *buildAggrNullConstant(::AggregateDeclaration *decl,
 
     auto RD = getRecordDecl(decl);
 
-    if (!RD->getDefinition())
+    if (RD->isInvalidDecl() || !RD->getDefinition())
         return nullptr;
 
     auto DestType = Context.getRecordType(RD).withConst();
