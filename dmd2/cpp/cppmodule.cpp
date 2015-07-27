@@ -940,8 +940,7 @@ TemplateParameter *DeclMapper::VisitTemplateParameter(const clang::NamedDecl *Pa
     else if (auto TTPD =
             dyn_cast<clang::TemplateTypeParmDecl>(Param))
     {
-        id = getIdentifierForTemplateTypeParm(
-                cast<clang::TemplateTypeParmType>(TTPD->getTypeForDecl()));
+        id = getIdentifierForTemplateTypeParm(TTPD);
 
         if (TTPD->isParameterPack())
         {
@@ -1068,11 +1067,15 @@ Dsymbols *DeclMapper::VisitClassTemplateSpecializationDecl(const clang::ClassTem
         if (AI) AI++;
     }
 
+    if (!Partial)
+        TempParamScope.pop_back(); // the depth of template parameters does not consider explicit specs to be in the TempParamScope
+
     auto decldefs = new Dsymbols;
     auto ad = VisitRecordDecl(D);
     decldefs->append(ad);
 
-    TempParamScope.pop_back();
+    if (Partial)
+        TempParamScope.pop_back();
 
     a = new TemplateDeclaration(loc, id, tpl, decldefs, D);
     return oneSymbol(a);

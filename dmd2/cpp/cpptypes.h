@@ -94,7 +94,7 @@ public:
         Type *fromTypeRecord(const clang::RecordType *T);
         Type *fromTypeElaborated(const clang::ElaboratedType *T);
         Type *fromTypeTemplateSpecialization(const clang::TemplateSpecializationType *T);
-        Type *fromTypeTemplateTypeParm(const clang::TemplateTypeParmType *T);
+        Type *fromTypeTemplateTypeParm(const clang::TemplateTypeParmType *T, const clang::TemplateTypeParmDecl *OrigDecl = nullptr);
         Type *fromTypeSubstTemplateTypeParm(const clang::SubstTemplateTypeParmType *T);
         Type *fromTypeInjectedClassName(const clang::InjectedClassNameType *T);
         Type *fromTypeDependentName(const clang::DependentNameType *T);
@@ -127,6 +127,8 @@ public:
         template<typename _Type>
          Type *fromTypeOfExpr(const _Type *T);
 
+        const clang::TemplateTypeParmDecl *getOriginalTempTypeParmDecl(const clang::TemplateTypeParmType *T);
+
     private:
         Type *fromType(const clang::QualType T);  // private alias
 
@@ -146,7 +148,7 @@ protected:
 
     llvm::SmallVector<const clang::TemplateParameterList*, 4> TempParamScope;
     void pushTempParamList(const clang::Decl *D);
-    Identifier *getIdentifierForTemplateTypeParm(const clang::TemplateTypeParmType *T);
+    Identifier *getIdentifierForTemplateTypeParm(const clang::TemplateTypeParmDecl *D);
     Identifier *getIdentifierForTemplateTemplateParm(const clang::TemplateTemplateParmDecl *D);
 
     bool isInjectedClassName(const clang::Decl *D); // misleading name? not InjectedClassNameType

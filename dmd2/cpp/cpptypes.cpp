@@ -554,12 +554,15 @@ class ScopeChecker // determines if a C++ decl is "scopingly" equivalent to anot
 {
 public:
     const clang::Decl *Scope, *Pattern = nullptr;
+    bool MemberTemplate; // go back to the member template
 
     const clang::Decl *getScope(const clang::Decl *D)
     {
         auto Result = D;
-        if (auto Temp = dyn_cast<clang::ClassTemplateDecl>(D))
-            Result = Temp->getTemplatedDecl();
+        if (auto ClassTemp = dyn_cast<clang::ClassTemplateDecl>(D))
+            Result = ClassTemp->getTemplatedDecl();
+        else if (auto FuncTemp = dyn_cast<clang::FunctionTemplateDecl>(D))
+            Result = FuncTemp->getTemplatedDecl();
         return Result->getCanonicalDecl();
     }
 
@@ -567,31 +570,61 @@ public:
     {
         const clang::Decl *Result = nullptr;
 
-        auto Spec = dyn_cast<clang::ClassTemplateSpecializationDecl>(D);
-        if (Spec && !Spec->isExplicitSpecialization())
+        auto ClassSpec = dyn_cast<clang::ClassTemplateSpecializationDecl>(D);
+        auto Func = dyn_cast<clang::FunctionDecl>(D);
+        if (ClassSpec && !ClassSpec->isExplicitSpecialization())
         {
-            auto Temp = getTemplateSpecializedDecl(Spec);
+            auto Temp = getTemplateSpecializedDecl(ClassSpec);
             if (auto ClassTemp = dyn_cast<clang::ClassTemplateDecl>(Temp))
                 Result = ClassTemp->getTemplatedDecl();
             else
                 Result = cast<clang::ClassTemplatePartialSpecializationDecl>(Temp);
         }
+        else if (Func && Func->getPrimaryTemplate() &&
+                    Func->getTemplateSpecializationKind() != clang::TSK_ExplicitSpecialization)
+            Result = Func->getPrimaryTemplate()->getTemplatedDecl();
 
         if (Result)
             return Result->getCanonicalDecl();
         else
             return nullptr;
     }
+    
+    const clang::Decl *toMemberTemplate(const clang::Decl *D)
+    {
+        const clang::RedeclarableTemplateDecl *Temp = nullptr;
+        
+        if (auto Class = dyn_cast<clang::CXXRecordDecl>(D))
+            Temp = Class->getDescribedClassTemplate();
+        else if (auto Func = dyn_cast<clang::FunctionDecl>(D))
+            Temp = Func->getDescribedFunctionTemplate();
+        
+        if (Temp)
+            if (auto MemberTemp = Temp->getInstantiatedFromMemberTemplate())
+                return MemberTemp->getTemplatedDecl();
+            
+          return D;
+    }
 
-    ScopeChecker(const clang::Decl *D)
+    ScopeChecker(const clang::Decl *D, bool MemberTemplate = false)
+            : MemberTemplate(MemberTemplate)
     {
         Scope = getScope(D);
         Pattern = getPattern(D);
+        
+        if (MemberTemplate)
+        {
+            Scope = toMemberTemplate(Scope);
+            if (Pattern)
+                Pattern = toMemberTemplate(Pattern);
+        }
     }
 
     bool operator()(const clang::Decl *D, bool checkBases = true)
     {
         auto CanonScope = getScope(D);
+        if (MemberTemplate)
+            CanonScope = toMemberTemplate(CanonScope);
         if (CanonScope == Scope ||
                 (Pattern && CanonScope == Pattern))
             return true;
@@ -1299,31 +1332,18 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
     return tqual;
 }
 
-Identifier *TypeMapper::getIdentifierForTemplateTypeParm(const clang::TemplateTypeParmType *T)
+Identifier *TypeMapper::getIdentifierForTemplateTypeParm(const clang::TemplateTypeParmDecl *D)
 {
-    if (auto Id = T->getIdentifier())
+    if (auto Id = D->getIdentifier())
         return fromIdentifier(Id);
-    else
-    {
-        auto ParamList = TempParamScope[T->getDepth()];
 
-        if (T->getIndex() >= ParamList->size()) // this happens when the latter parameters are unnamed and have a default argument
-            goto LgenId;
-
-        auto Param = ParamList->getParam(T->getIndex());
-
-        // Most of the time the identifier does exist in the TemplateTypeParmDecl
-        if (auto Id = Param->getIdentifier())
-            return fromIdentifier(Id);
-    }
-
-LgenId:
-    // This should only ever happen in template param decl mapping
+    // NOTE: Most of the time the identifier does exist in the TemplateTypeParmDecl even if TemplateTypeParmType::getIdentifier() returns null
+    // Parameter without identifier should only ever happen in template param decl mapping
     ::warning(Loc(), "Generating identifier for anonymous C++ type template parameter");
 
     std::string str;
     llvm::raw_string_ostream OS(str);
-    OS << "type_parameter_" << T->getDepth() << '_' << T->getIndex();
+    OS << "type_parameter_" << D->getDepth() << '_' << D->getIndex();
 
     return Lexer::idPool(OS.str().c_str());
 }
@@ -1345,9 +1365,61 @@ Identifier *TypeMapper::getIdentifierForTemplateTemplateParm(const clang::Templa
     return Lexer::idPool(OS.str().c_str());
 }
 
-Type* TypeMapper::FromType::fromTypeTemplateTypeParm(const clang::TemplateTypeParmType* T)
+unsigned getTemplateParmIndex(const clang::NamedDecl *ParmDecl)
 {
-    auto ident = tm.getIdentifierForTemplateTypeParm(T);
+    if (auto TTPD = dyn_cast<clang::TemplateTypeParmDecl>(ParmDecl))
+        return TTPD->getIndex();
+    else if (auto NTTPD = dyn_cast<clang::NonTypeTemplateParmDecl>(ParmDecl))
+        return NTTPD->getIndex();
+    else if (auto TTempPD = dyn_cast<clang::TemplateTemplateParmDecl>(ParmDecl))
+        return TTempPD->getIndex();
+    else
+        assert(false && "Unrecognized template parameter decl");
+}
+
+unsigned getTemplateParmDepth(const clang::NamedDecl *ParmDecl)
+{
+    if (auto TTPD = dyn_cast<clang::TemplateTypeParmDecl>(ParmDecl))
+        return TTPD->getDepth();
+    else if (auto NTTPD = dyn_cast<clang::NonTypeTemplateParmDecl>(ParmDecl))
+        return NTTPD->getDepth();
+    else if (auto TTempPD = dyn_cast<clang::TemplateTemplateParmDecl>(ParmDecl))
+        return TTempPD->getDepth();
+    else
+        assert(false && "Unrecognized template parameter decl");
+}
+
+const clang::TemplateTypeParmDecl *TypeMapper::FromType::getOriginalTempTypeParmDecl(const clang::TemplateTypeParmType *T)
+{
+    auto ParmDecl = T->getDecl();
+    auto ParmCtx = cast<clang::Decl>(ParmDecl->getDeclContext())->getCanonicalDecl();
+
+    for (auto I = tm.TempParamScope.rbegin(), E = tm.TempParamScope.rend();
+                I != E; I++)
+    {
+        for (auto& ScopeParam: (*I)->asArray())
+        {
+            auto ScopeParamCtx = cast<clang::Decl>(ScopeParam->getDeclContext())->getCanonicalDecl();
+            if (ScopeChecker(ParmCtx, true)(ScopeParamCtx) &&
+                        getTemplateParmIndex(ParmDecl) == getTemplateParmIndex(ScopeParam))
+                return cast<clang::TemplateTypeParmDecl>(ScopeParam);
+        }
+    }
+
+    return nullptr;
+}
+
+Type* TypeMapper::FromType::fromTypeTemplateTypeParm(const clang::TemplateTypeParmType* T,
+                        const clang::TemplateTypeParmDecl *OrigDecl)
+{
+    if (!OrigDecl)
+        OrigDecl = getOriginalTempTypeParmDecl(T);
+
+    if(!OrigDecl)
+        assert(T->isDependentType());
+
+    auto D = OrigDecl ? OrigDecl : T->getDecl();
+    auto ident = tm.getIdentifierForTemplateTypeParm(D);
     return new TypeIdentifier(Loc(), ident);
 }
 
@@ -1356,25 +1428,9 @@ Type* TypeMapper::FromType::fromTypeSubstTemplateTypeParm(const clang::SubstTemp
     // NOTE: it's necessary to "revert" resolved symbol names of C++ template instantiations by Sema to the parameter name because D severes the link between the template instance scope and its members, and the only links that remain are the AliasDeclarations created by TemplateInstance::declareParameters
 
     // One exception is when the type managed to escape the template declaration, e.g with decltype(). In this fairly rare case T has to be desugared.
-    bool isEscaped = true;
+    auto OrigParm = getOriginalTempTypeParmDecl(T->getReplacedParameter());
 
-    auto ParmDecl = T->getReplacedParameter()->getDecl()->getCanonicalDecl();
-
-    for (auto I = tm.TempParamScope.rbegin(), E = tm.TempParamScope.rend();
-                I != E; I++)
-    {
-        for (auto& Param: (*I)->asArray())
-        {
-            if (Param->getCanonicalDecl() == ParmDecl)
-            {
-                isEscaped = false;
-                goto Lbreak;
-            }
-        }
-    }
-
-Lbreak:
-    if (isEscaped)
+    if (!OrigParm)
     {
 //         // If the substitued argument comes from decltype(some function template call), then the fragile link that makes perfect C++ template mapping possible (type sugar) is broken.
 //         // Clang has lost the template instance at this point, so first we get it back from the decltype expr.
@@ -1399,7 +1455,7 @@ Lbreak:
         return fromType(T->getReplacementType());
     }
 
-    return fromTypeTemplateTypeParm(T->getReplacedParameter());
+    return fromTypeTemplateTypeParm(T->getReplacedParameter(), OrigParm);
 }
 
 Type* TypeMapper::FromType::fromTypeInjectedClassName(const clang::InjectedClassNameType* T) // e.g in template <...> class A { A &next; } next has an injected class name type
@@ -1902,7 +1958,8 @@ void TypeMapper::pushTempParamList(const clang::Decl *D)
     }
 }
 
-
+// NOTE: unlike Sema::getTemplateInstantiationArgs in D we need to take all the template parameters,
+// not just the ones needed to instantiate the template in C++
 void TypeMapper::rebuildScope(const clang::Decl *RightMost)
 {
     assert(CXXScope.empty() && TempParamScope.empty());
