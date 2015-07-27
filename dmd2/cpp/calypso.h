@@ -53,8 +53,8 @@ Identifier *getIdentifierOrNull(const clang::NamedDecl *D, const char **op = nul
 Identifier *getExtendedIdentifier(const clang::NamedDecl *D); // will return the name of the non-templated method for operators, same than getIdentifier() for other Decls
 RootObject *getIdentOrTempinst(Loc loc, const clang::DeclarationName N);
 
-const clang::NamedDecl *isOverloadedOperatorWithTagOperand(const clang::Decl *D,
-                                const clang::NamedDecl *SpecificTag = nullptr);
+const clang::TagDecl *isOverloadedOperatorWithTagOperand(const clang::Decl *D,
+                                                           const clang::NamedDecl *SpecificTag = nullptr);
 
 Loc fromLoc(clang::SourceLocation L);
 

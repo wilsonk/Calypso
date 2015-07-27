@@ -638,7 +638,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
             if (RequireCompleteType(D->getLocation(), Param))
                 return nullptr;
     }
-    
+
     auto tf = FromType(*this).fromTypeFunction(FPT, D);
     if (!tf)
     {
@@ -1159,7 +1159,7 @@ static clang::DeclContext::lookup_const_result lookup(const clang::DeclContext *
     return DC->lookup(clang::DeclarationName(&II));
 }
 
-const clang::NamedDecl *isOverloadedOperatorWithTagOperand(const clang::Decl *D,
+const clang::TagDecl *isOverloadedOperatorWithTagOperand(const clang::Decl *D,
                                 const clang::NamedDecl *SpecificTag)
 {
     auto& Context = calypso.getASTContext();
@@ -1178,26 +1178,28 @@ const clang::NamedDecl *isOverloadedOperatorWithTagOperand(const clang::Decl *D,
     if (Func->getNumParams() > 2)
         return nullptr; // [] and () cannot be non-member (FIXME: not entirely sure about (), couldn't find the source)
 
-    const clang::NamedDecl *OpTyDecl = nullptr;
+    if (auto ClassTemp = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(SpecificTag))
+        SpecificTag = ClassTemp->getTemplatedDecl();
+
+    const clang::TagDecl *OpTyDecl = nullptr;
 
     for (unsigned I = 0; I < Func->getNumParams(); I++)
     {
         auto ParamTy = Func->getParamDecl(I)->getType().getNonReferenceType()
                                 .getDesugaredType(Context).getCanonicalType();
-        auto Ty = ParamTy.getTypePtr();
 
-        if (auto TagTy = dyn_cast<clang::TagType>(Ty))
+        if (auto TagTy = ParamTy->getAs<clang::TagType>())
         {
             OpTyDecl = TagTy->getDecl();
             break;
         }
 
-        if (auto TempSpec = dyn_cast<clang::TemplateSpecializationType>(Ty))
+        if (auto TempSpec = ParamTy->getAs<clang::TemplateSpecializationType>())
             if (auto Temp = TempSpec->getTemplateName().getAsTemplateDecl())
             {
-                if (isa<clang::ClassTemplateDecl>(Temp))
+                if (auto ClassTemp = dyn_cast<clang::ClassTemplateDecl>(Temp))
                 {
-                    OpTyDecl = Temp;
+                    OpTyDecl = ClassTemp->getTemplatedDecl();
                     break;
                 }
 
@@ -1583,7 +1585,7 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
 
             for (auto OverOp: Operators)
                 if (isOverloadedOperatorWithTagOperand(OverOp, D))
-                    if (auto s = mapper.VisitDecl(OverOp))
+                    if (auto s = mapper.VisitDecl(OverOp->getCanonicalDecl()))
                         m->members->append(s);
         }
 
