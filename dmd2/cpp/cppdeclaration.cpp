@@ -273,6 +273,8 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, const clang::CallExpr 
         Module::addDeferredSemantic3(im->mod);
     }
 
+    ReferenceTemplateArguments(D);
+
     auto Func = dyn_cast<clang::FunctionDecl>(D);
     if (Call && Func->getPrimaryTemplate())
         D = Func->getPrimaryTemplate()->getCanonicalDecl();
@@ -280,6 +282,8 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, const clang::CallExpr 
     auto tqual = TypeMapper::FromType(mapper).typeQualifiedFor(
                 const_cast<clang::NamedDecl*>(D), nullptr, nullptr,
                 &tqualOptions);
+    if (!tqual)
+        return true;
 
     auto te = new TypeExp(loc, tqual);
     auto e = te->semantic(sc);
@@ -350,11 +354,48 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, const clang::CallExpr 
 
 bool DeclReferencer::Reference(const clang::Type *T)
 {
-    if (auto RT = T->getAs<clang::RecordType>())
-        if (!RT->isUnionType())
-            Reference(RT->getDecl());
+    if (auto TT = T->getAs<clang::TagType>())
+        if (!TT->isUnionType())
+            Reference(TT->getDecl());
 
     return true;
+}
+
+bool DeclReferencer::Reference(const clang::Expr *E)
+{
+    if (auto DR = dyn_cast<clang::DeclRefExpr>(E))
+        Reference(DR->getDecl());
+
+    return true;
+}
+
+void DeclReferencer::ReferenceTemplateArguments(const clang::NamedDecl *D)
+{
+    const clang::TemplateArgumentList *InstArgs = nullptr;
+
+    if (auto Func = dyn_cast<clang::FunctionDecl>(D))
+        InstArgs = Func->getTemplateSpecializationArgs();
+
+    if (!InstArgs)
+        return;
+
+    for (auto& Arg: InstArgs->asArray())
+    {
+        switch (Arg.getKind())
+        {
+            case clang::TemplateArgument::Expression:
+                Reference(Arg.getAsExpr());
+                break;
+            case clang::TemplateArgument::Type:
+                Reference(Arg.getAsType().getTypePtr());
+                break;
+            case clang::TemplateArgument::Template:
+                // TODO
+                break;
+            default:
+                break;
+        }
+    }
 }
 
 bool DeclReferencer::VisitCallExpr(const clang::CallExpr *E)
