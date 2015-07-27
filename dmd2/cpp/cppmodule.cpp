@@ -441,6 +441,9 @@ Ldeclaration:
         auto Decl = (*I)->getFriendDecl();
         if (!Decl || !Decl->isOutOfLine())
             continue;
+        if (auto Func = dyn_cast<clang::FunctionDecl>(Decl)) // HACK FIXME: map them as template decls using the tpl from the record
+            if (Func->getTemplatedKind() == clang::FunctionDecl::TK_DependentFunctionTemplateSpecialization)
+                continue;
         if (auto s = VisitDecl(Decl))
             decldefs->append(s);
     }
