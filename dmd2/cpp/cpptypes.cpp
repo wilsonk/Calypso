@@ -1757,6 +1757,10 @@ static clang::Module *GetClangModuleForDecl(const clang::Decl* D)
 
 Module::RootKey TypeMapper::GetImplicitImportKeyForDecl(const clang::NamedDecl* D)
 {
+    if (D->getFriendObjectKind() != clang::Decl::FOK_None && D->isOutOfLine())
+        return GetImplicitImportKeyForDecl(  // friend declarations which aren't redeclared in the semantic declctx are part of the record module
+                cast<clang::NamedDecl>(D->getLexicalDeclContext()));
+
     auto TopMost = GetNonNestedContext(D);
     bool IsNamespaceOrTU = isa<clang::TranslationUnitDecl>(TopMost) ||
                     isa<clang::NamespaceDecl>(TopMost);
