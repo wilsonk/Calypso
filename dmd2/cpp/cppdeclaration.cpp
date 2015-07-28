@@ -279,6 +279,18 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, const clang::CallExpr 
     if (Call && Func->getPrimaryTemplate())
         D = Func->getPrimaryTemplate()->getCanonicalDecl();
 
+    // HACK FIXME
+    if (Func && Func->isOutOfLine() &&
+            Func->getFriendObjectKind() != clang::Decl::FOK_None)
+    {
+        auto Pattern = Func;
+        if (auto MemberFunc = Func->getInstantiatedFromMemberFunction())
+            Pattern = MemberFunc;
+
+        if (Pattern->isDependentContext())
+            return true;
+    }
+
     auto tqual = TypeMapper::FromType(mapper).typeQualifiedFor(
                 const_cast<clang::NamedDecl*>(D), nullptr, nullptr,
                 &tqualOptions);

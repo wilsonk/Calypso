@@ -435,17 +435,20 @@ Ldeclaration:
     // see friend QString::operator==(const QString &s1, const QString &s2);
     // NOTE: should be after because ClassDeclaration::semantic() expects decldefs[0] to be the record
     typedef clang::DeclContext::specific_decl_iterator<clang::FriendDecl> Friend_iterator;
-    for (Friend_iterator I(D->decls_begin()), E(D->decls_end());
-                I != E; I++)
+    if (!instantiating) // if we're in an implicit instantiation, no need to remap the out-of-line specializations which have their own template mapped with the class template
     {
-        auto Decl = (*I)->getFriendDecl();
-        if (!Decl || !Decl->isOutOfLine())
-            continue;
-        if (auto Func = dyn_cast<clang::FunctionDecl>(Decl)) // HACK FIXME: map them as template decls using the tpl from the record
-            if (Func->getTemplatedKind() == clang::FunctionDecl::TK_DependentFunctionTemplateSpecialization)
+        for (Friend_iterator I(D->decls_begin()), E(D->decls_end());
+                    I != E; I++)
+        {
+            auto Decl = (*I)->getFriendDecl();
+            if (!Decl || !Decl->isOutOfLine())
                 continue;
-        if (auto s = VisitDecl(Decl))
-            decldefs->append(s);
+            if (auto Func = dyn_cast<clang::FunctionDecl>(Decl)) // HACK FIXME: map them as template decls using the tpl from the record
+                if (Func->isDependentContext())
+                    continue;
+            if (auto s = VisitDecl(Decl))
+                decldefs->append(s);
+        }
     }
 
     return decldefs;
