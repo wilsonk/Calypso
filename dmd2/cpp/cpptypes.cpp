@@ -1762,6 +1762,8 @@ static clang::Module *GetClangModuleForDecl(const clang::Decl* D)
 
 Module::RootKey TypeMapper::GetImplicitImportKeyForDecl(const clang::NamedDecl* D)
 {
+    D = cast<clang::NamedDecl>(D->getCanonicalDecl());
+
     if (D->getFriendObjectKind() != clang::Decl::FOK_None && D->isOutOfLine() &&
             isa<clang::FunctionDecl>(D))
         return GetImplicitImportKeyForDecl(  // friend declarations which aren't redeclared in the semantic declctx are part of the record module
