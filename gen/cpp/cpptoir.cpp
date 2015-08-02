@@ -557,7 +557,14 @@ void LangPlugin::toDeclareVariable(::VarDeclaration* vd)
 
 void LangPlugin::toDefineVariable(::VarDeclaration* vd)
 {
-    // FIXME: initialize static variables from template instantiations
+    auto c_vd = static_cast<cpp::VarDeclaration*>(vd);
+    auto VD = dyn_cast<clang::VarDecl>(c_vd->VD);
+
+    if (!VD)
+        return;
+
+    if (VD->hasGlobalStorage() && !VD->hasExternalStorage())
+        CGM->EmitTopLevelDecl(const_cast<clang::VarDecl*>(VD));
 }
 
 void LangPlugin::toDefaultInitVarDeclaration(::VarDeclaration* vd)
