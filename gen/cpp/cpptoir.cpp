@@ -108,10 +108,15 @@ struct ResolvedFunc
 
         auto MD = dyn_cast<const clang::CXXMethodDecl>(FD);
 
+        clangCG::StructorType structorType = clangCG::StructorType::Complete;
+        // Most of the time we only need the complete ***structor, but for abstract classes there simply isn't one
+        if (MD && MD->getParent()->isAbstract())
+            structorType = clangCG::StructorType::Base;
+
         if (MD)
         {
             if (isa<const clang::CXXConstructorDecl>(FD) || isa<const clang::CXXDestructorDecl>(FD))
-                FInfo = &CGM.getTypes().arrangeCXXStructorDeclaration(MD, clangCG::StructorType::Complete);
+                FInfo = &CGM.getTypes().arrangeCXXStructorDeclaration(MD, structorType);
             else
                 FInfo = &CGM.getTypes().arrangeCXXMethodDeclaration(MD);
 
@@ -122,7 +127,7 @@ struct ResolvedFunc
 
         llvm::Constant *GV;
         if (isa<const clang::CXXConstructorDecl>(FD) || isa<const clang::CXXDestructorDecl>(FD))
-            GV = CGM.getAddrOfCXXStructor(MD, clangCG::StructorType::Complete, FInfo, result.Ty);
+            GV = CGM.getAddrOfCXXStructor(MD, structorType, FInfo, result.Ty);
         else
             GV = CGM.GetAddrOfFunction(FD, result.Ty);
         result.Func = cast<llvm::Function>(GV);
