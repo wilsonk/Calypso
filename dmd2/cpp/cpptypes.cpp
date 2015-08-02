@@ -1714,6 +1714,11 @@ static clang::Module *GetClangModuleForDecl(const clang::Decl* D)
 
     auto FID = SrcMgr.getFileID(DLoc);
     auto Header = SrcMgr.getFileEntryForID(FID);
+    if (!Header)
+    {
+        assert(D->isImplicit()); // maybe too narrow..
+        return nullptr;
+    }
 
     auto KH = MMap->findModuleForHeader(Header);
     if (!KH)
