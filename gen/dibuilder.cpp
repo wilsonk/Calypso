@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "gen/dibuilder.h"
+
 #include "gen/functions.h"
 #include "gen/irstate.h"
 #include "gen/llvmhelpers.h"
@@ -52,8 +53,8 @@ Module *ldc::DIBuilder::getDefinedModule(Dsymbol *s)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ldc::DIBuilder::DIBuilder(IRState *const IR, llvm::Module &M)
-    : IR(IR), DBuilder(M)
+ldc::DIBuilder::DIBuilder(IRState *const IR)
+    : IR(IR), DBuilder(IR->module), CUNode(0)
 {
 }
 
@@ -655,13 +656,16 @@ void ldc::DIBuilder::EmitCompileUnit(Module *m)
     Logger::println("D to dwarf compile_unit");
     LOG_SCOPE;
 
+    assert(!CUNode &&
+           "Already created compile unit for this DIBuilder instance");
+
     // prepare srcpath
     llvm::SmallString<128> srcpath(m->srcfile->name->toChars());
     llvm::sys::fs::make_absolute(srcpath);
 
 #if LDC_LLVM_VER >= 304
     // Metadata without a correct version will be stripped by UpgradeDebugInfo.
-    gIR->module->addModuleFlag(llvm::Module::Warning, "Debug Info Version", llvm::DEBUG_METADATA_VERSION);
+    IR->module.addModuleFlag(llvm::Module::Warning, "Debug Info Version", llvm::DEBUG_METADATA_VERSION);
 
     CUNode =
 #endif
@@ -709,7 +713,7 @@ ldc::DISubprogram ldc::DIBuilder::EmitSubProgram(FuncDeclaration *fd)
         fd->loc.linnum, // line no
         DIFnType, // type
         fd->protection == PROTprivate, // is local to unit
-        IR->dmodule == getDefinedModule(fd), // isdefinition
+        true, // isdefinition
         fd->loc.linnum, // FIXME: scope line
         DIFlags::FlagPrototyped, // Flags
         isOptimizationEnabled(), // isOptimized
@@ -829,7 +833,18 @@ void ldc::DIBuilder::EmitBlockEnd()
 
 void ldc::DIBuilder::EmitStopPoint(Loc& loc)
 {
-    if (!global.params.symdebug || !loc.linnum)
+    if (!global.params.symdebug)
+        return;
+
+    // If we already have a location set and the current loc is invalid
+    // (line 0), then we can just ignore it (see GitHub issue #998 for why we
+    // cannot do this in all cases).
+    if (!loc.linnum &&
+          !IR->ir->getCurrentDebugLocation()
+#if LDC_LLVM_VER < 307
+              .isUnknown()
+#endif
+        )
         return;
 
     Logger::println("D to dwarf stoppoint at line %u, column %u", loc.linnum, loc.charnum);
@@ -970,7 +985,7 @@ ldc::DIGlobalVariable ldc::DIBuilder::EmitGlobalVariable(llvm::GlobalVariable *l
     );
 }
 
-void ldc::DIBuilder::EmitModuleEnd()
+void ldc::DIBuilder::Finalize()
 {
     if (!global.params.symdebug)
         return;

@@ -220,7 +220,7 @@ static LLValue* getTypeinfoArrayArgumentForDVarArg(Expressions* arguments, int b
     LLArrayType* typeinfoarraytype = LLArrayType::get(typeinfotype, numVariadicArgs);
 
     llvm::GlobalVariable* typeinfomem =
-        new llvm::GlobalVariable(*gIR->module, typeinfoarraytype, true, llvm::GlobalValue::InternalLinkage, NULL, "._arguments.storage");
+        new llvm::GlobalVariable(gIR->module, typeinfoarraytype, true, llvm::GlobalValue::InternalLinkage, NULL, "._arguments.storage");
     IF_LOG Logger::cout() << "_arguments storage: " << *typeinfomem << '\n';
 
     std::vector<LLConstant*> vtypeinfos;
@@ -241,7 +241,7 @@ static LLValue* getTypeinfoArrayArgumentForDVarArg(Expressions* arguments, int b
     };
     LLType* tiarrty = DtoType(Type::dtypeinfo->type->arrayOf());
     tiinits = LLConstantStruct::get(isaStruct(tiarrty), llvm::ArrayRef<LLConstant*>(pinits));
-    LLValue* typeinfoarrayparam = new llvm::GlobalVariable(*gIR->module, tiarrty,
+    LLValue* typeinfoarrayparam = new llvm::GlobalVariable(gIR->module, tiarrty,
         true, llvm::GlobalValue::InternalLinkage, tiinits, "._arguments.array");
 
     return DtoLoad(typeinfoarrayparam);
@@ -284,12 +284,11 @@ DValue* DtoCallFunction(Loc& loc, Type* resulttype, DValue* fnval, Expressions* 
     bool nestedcall = irFty.arg_nest;
     bool dvarargs = irFty.arg_arguments;
 
-    llvm::CallingConv::ID callconv = gABI->callingConv(tf->linkage);
-
     // get callee llvm value
     LLValue* callable = DtoCallableValue(fnval);
     LLFunctionType* callableTy = DtoExtractFunctionType(callable->getType());
     assert(callableTy);
+    llvm::CallingConv::ID callconv = gABI->callingConv(callableTy, tf->linkage);
 
 //     IF_LOG Logger::cout() << "callable: " << *callable << '\n';
 
