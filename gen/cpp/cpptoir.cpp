@@ -339,7 +339,8 @@ bool InternalFunctionEmitter::Emit(const clang::FunctionDecl *Callee)
 
     auto resolved = ResolvedFunc::get(CGM, Callee);
 
-    if (Callee->hasExternalFormalLinkage() || Emitted.count(Def))
+    if (Emitted.count(Def) ||
+            (Callee->hasExternalFormalLinkage() && !Callee->hasAttr<clang::AlwaysInlineAttr>()))
         return true;
 
     Emitted.insert(Def);
