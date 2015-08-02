@@ -433,9 +433,11 @@ Ldeclaration:
             auto Decl = (*I)->getFriendDecl();
             if (!Decl || !Decl->isOutOfLine())
                 continue;
-            if (auto Func = dyn_cast<clang::FunctionDecl>(Decl)) // HACK FIXME: map them as template decls using the tpl from the record
-                if (Func->isDependentContext())
-                    continue;
+
+            auto Func = dyn_cast<clang::FunctionDecl>(Decl);
+            if (!Func || Func->isDependentContext()) // HACK FIXME: map them as template decls using the tpl from the record
+                continue;
+
             if (auto s = VisitDecl(Decl))
                 decldefs->append(s);
         }
