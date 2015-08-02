@@ -134,7 +134,7 @@ void CodeGenerator::prepareLLModule(Module *m) {
     // CALYPSO
     for (auto I = global.langPlugins.begin(), E = global.langPlugins.end();
             I != E; I++)
-        (*I)->codegen()->enterModule(&ir_->module);
+        (*I)->codegen()->enterModule(m, &ir_->module);
 
     // TODO: Make ldc::DIBuilder per-Module to be able to emit several CUs for
     // singleObj compilations?
@@ -147,7 +147,7 @@ void CodeGenerator::finishLLModule(Module *m) {
     // CALYPSO
     for (auto I = global.langPlugins.begin(), E = global.langPlugins.end();
             I != E; I++)
-        (*I)->codegen()->leaveModule();
+        (*I)->codegen()->leaveModule(m, &ir_->module);
 
     if (singleObj_) return;
 

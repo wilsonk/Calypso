@@ -116,8 +116,8 @@ public:
     std::stack<clangCG::CodeGenFunction *> CGFStack;
     inline clangCG::CodeGenFunction *CGF() { return CGFStack.top(); }
 
-    void enterModule(llvm::Module *m) override;
-    void leaveModule() override;
+    void enterModule(::Module *m, llvm::Module *) override;
+    void leaveModule(::Module *m, llvm::Module *) override;
 
     void enterFunc(::FuncDeclaration *fd) override;
     void leaveFunc() override;

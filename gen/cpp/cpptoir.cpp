@@ -47,7 +47,7 @@ using llvm::isa;
 
 namespace clangCG = clang::CodeGen;
 
-void LangPlugin::enterModule(llvm::Module *m)
+void LangPlugin::enterModule(::Module *, llvm::Module *lm)
 {
     if (!getASTUnit())
         return;
@@ -56,16 +56,19 @@ void LangPlugin::enterModule(llvm::Module *m)
 
     auto CGO = new clang::CodeGenOptions;
     CGM.reset(new clangCG::CodeGenModule(Context,
-                            *CGO, *m, *gDataLayout, *pch.Diags));
+                            *CGO, *lm, *gDataLayout, *pch.Diags));
 }
 
-void LangPlugin::leaveModule()
+void LangPlugin::leaveModule(::Module *m, llvm::Module *)
 {
     if (!getASTUnit())
         return;
 
     CGM->Release();
     CGM.reset();
+
+    if (!global.errors && isCPP(m))
+        calypso.genModSet.add(m);
 }
 
 void LangPlugin::enterFunc(::FuncDeclaration *fd)
