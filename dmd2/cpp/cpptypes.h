@@ -159,8 +159,8 @@ protected:
 
     const clang::Decl *GetRootForTypeQualified(clang::NamedDecl* D);
 
-    ::Import *BuildImplicitImport(const clang::Decl *D);
-    ::Import *BuildImplicitImport(const clang::Decl *D, const clang::Module *Mod);
+    ::Import *BuildImplicitImport(const clang::Decl *D, Identifier *aliasid = nullptr);
+    ::Import *BuildImplicitImport(const clang::Decl *D, const clang::Module *Mod, Identifier *aliasid = nullptr);
     Module::RootKey GetImplicitImportKeyForDecl(const clang::NamedDecl *D);
     const clang::Decl *GetNonNestedContext(const clang::Decl *D);  // returns the "root" for qualified types
 

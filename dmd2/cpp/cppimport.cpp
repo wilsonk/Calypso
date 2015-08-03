@@ -22,7 +22,7 @@ Import::Import(Loc loc, Identifiers *packages, Identifier *id, Identifier *alias
     this->packages->shift(Lexer::idPool("cpp"));  // any better idea ?
 
     this->fromCpp = fromCpp;
-    if (!fromCpp) // do not change the ident to "cpp" if the import is inside a C++ module as this makes symbol mapping a lot more complicated
+    if (!aliasId && !fromCpp) // do not change the ident to "cpp" if the import is inside a C++ module as this makes symbol mapping a lot more complicated
         setSymIdent();
 }
 
