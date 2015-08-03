@@ -74,7 +74,7 @@ static llvm::GlobalVariable *getDCXXVTable(::ClassDeclaration *cd,
         dcxxInfo = DCXXVTableInfo::get(cd);
 
     auto dcxxVTable = getOrCreateGlobal(cd->loc,
-        *gIR->module, dcxxInfo->VTArrayType, false,
+        gIR->module, dcxxInfo->VTArrayType, false,
         llvm::GlobalValue::ExternalLinkage, NULL, initname);
 
     return dcxxVTable;

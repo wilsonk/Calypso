@@ -12,8 +12,8 @@ class VarDeclaration;
 class ForeignCodeGen
 {
 public:
-    virtual void enterModule(llvm::Module *m) = 0;
-    virtual void leaveModule() = 0;
+    virtual void enterModule(::Module *m, llvm::Module *lm) = 0;
+    virtual void leaveModule(::Module *m, llvm::Module *lm) = 0;
 
     virtual void enterFunc(FuncDeclaration *fd) = 0;
     virtual void leaveFunc() = 0;

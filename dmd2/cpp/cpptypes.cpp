@@ -1714,6 +1714,11 @@ static clang::Module *GetClangModuleForDecl(const clang::Decl* D)
 
     auto FID = SrcMgr.getFileID(DLoc);
     auto Header = SrcMgr.getFileEntryForID(FID);
+    if (!Header)
+    {
+        assert(D->isImplicit()); // maybe too narrow..
+        return nullptr;
+    }
 
     auto KH = MMap->findModuleForHeader(Header);
     if (!KH)
@@ -1757,7 +1762,10 @@ static clang::Module *GetClangModuleForDecl(const clang::Decl* D)
 
 Module::RootKey TypeMapper::GetImplicitImportKeyForDecl(const clang::NamedDecl* D)
 {
-    if (D->getFriendObjectKind() != clang::Decl::FOK_None && D->isOutOfLine())
+    D = cast<clang::NamedDecl>(D->getCanonicalDecl());
+
+    if (D->getFriendObjectKind() != clang::Decl::FOK_None && D->isOutOfLine() &&
+            isa<clang::FunctionDecl>(D))
         return GetImplicitImportKeyForDecl(  // friend declarations which aren't redeclared in the semantic declctx are part of the record module
                 cast<clang::NamedDecl>(D->getLexicalDeclContext()));
 

@@ -47,7 +47,7 @@ using llvm::isa;
 
 namespace clangCG = clang::CodeGen;
 
-void LangPlugin::enterModule(llvm::Module *m)
+void LangPlugin::enterModule(::Module *, llvm::Module *lm)
 {
     if (!getASTUnit())
         return;
@@ -56,16 +56,19 @@ void LangPlugin::enterModule(llvm::Module *m)
 
     auto CGO = new clang::CodeGenOptions;
     CGM.reset(new clangCG::CodeGenModule(Context,
-                            *CGO, *m, *gDataLayout, *pch.Diags));
+                            *CGO, *lm, *gDataLayout, *pch.Diags));
 }
 
-void LangPlugin::leaveModule()
+void LangPlugin::leaveModule(::Module *m, llvm::Module *)
 {
     if (!getASTUnit())
         return;
 
     CGM->Release();
     CGM.reset();
+
+    if (!global.errors && isCPP(m))
+        calypso.genModSet.add(m);
 }
 
 void LangPlugin::enterFunc(::FuncDeclaration *fd)
@@ -108,10 +111,15 @@ struct ResolvedFunc
 
         auto MD = dyn_cast<const clang::CXXMethodDecl>(FD);
 
+        clangCG::StructorType structorType = clangCG::StructorType::Complete;
+        // Most of the time we only need the complete ***structor, but for abstract classes there simply isn't one
+        if (MD && MD->getParent()->isAbstract())
+            structorType = clangCG::StructorType::Base;
+
         if (MD)
         {
             if (isa<const clang::CXXConstructorDecl>(FD) || isa<const clang::CXXDestructorDecl>(FD))
-                FInfo = &CGM.getTypes().arrangeCXXStructorDeclaration(MD, clangCG::StructorType::Complete);
+                FInfo = &CGM.getTypes().arrangeCXXStructorDeclaration(MD, structorType);
             else
                 FInfo = &CGM.getTypes().arrangeCXXMethodDeclaration(MD);
 
@@ -122,7 +130,7 @@ struct ResolvedFunc
 
         llvm::Constant *GV;
         if (isa<const clang::CXXConstructorDecl>(FD) || isa<const clang::CXXDestructorDecl>(FD))
-            GV = CGM.getAddrOfCXXStructor(MD, clangCG::StructorType::Complete, FInfo, result.Ty);
+            GV = CGM.getAddrOfCXXStructor(MD, structorType, FInfo, result.Ty);
         else
             GV = CGM.GetAddrOfFunction(FD, result.Ty);
         result.Func = cast<llvm::Function>(GV);
@@ -298,9 +306,94 @@ static const clangCG::CGFunctionInfo &arrangeFunctionCall(
         return CGM->getTypes().arrangeFreeFunctionCall(Args, FPT, false);
 }
 
+// Emits functions with internal linkage that functions being defined or called depends upon.
+class InternalFunctionEmitter : public clang::RecursiveASTVisitor<InternalFunctionEmitter>
+{
+    clang::ASTContext &Context;
+    clangCG::CodeGenModule &CGM;
+
+    llvm::DenseSet<const clang::FunctionDecl *> Emitted;
+
+public:
+    InternalFunctionEmitter(clang::ASTContext &Context,
+                        clangCG::CodeGenModule &CGM) : Context(Context), CGM(CGM) {}
+    bool Emit(const clang::FunctionDecl *Callee);
+    void Traverse(const clang::FunctionDecl *Def);
+
+    bool VisitCallExpr(const clang::CallExpr *E);
+    bool VisitCXXConstructExpr(const clang::CXXConstructExpr *E);
+    bool VisitCXXNewExpr(const clang::CXXNewExpr *E);
+    bool VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E);
+};
+
+void InternalFunctionEmitter::Traverse(const clang::FunctionDecl *Def)
+{
+    TraverseStmt(Def->getBody());
+    if (auto Ctor = dyn_cast<clang::CXXConstructorDecl>(Def))
+        for (auto& Init: Ctor->inits())
+            TraverseStmt(Init->getInit());
+}
+
+bool InternalFunctionEmitter::Emit(const clang::FunctionDecl *Callee)
+{
+    const clang::FunctionDecl *Def;
+
+    if (!Callee || !Callee->hasBody(Def))
+        return true;
+
+    auto FPT = Callee->getType()->getAs<clang::FunctionProtoType>();
+    if (FPT->getExceptionSpecType() == clang::EST_Unevaluated)
+        return true;
+
+    auto resolved = ResolvedFunc::get(CGM, Callee);
+
+    if (Emitted.count(Def) ||
+            (Callee->hasExternalFormalLinkage() && !Callee->hasAttr<clang::AlwaysInlineAttr>()))
+        return true;
+
+    Emitted.insert(Def);
+
+    if (resolved.Func->isDeclaration())
+        CGM.EmitTopLevelDecl(const_cast<clang::FunctionDecl*>(Def));
+
+    Traverse(Def);
+    return true;
+}
+
+bool InternalFunctionEmitter::VisitCallExpr(const clang::CallExpr *E)
+{
+    return Emit(E->getDirectCallee());
+}
+
+bool InternalFunctionEmitter::VisitCXXConstructExpr(const clang::CXXConstructExpr *E)
+{
+    return Emit(E->getConstructor());
+}
+
+bool InternalFunctionEmitter::VisitCXXNewExpr(const clang::CXXNewExpr *E)
+{
+    return Emit(E->getOperatorNew());
+}
+
+bool InternalFunctionEmitter::VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E)
+{
+    auto DestroyedType = E->getDestroyedType();
+    if (!DestroyedType.isNull()) {
+        if (const clang::RecordType *RT = DestroyedType->getAs<clang::RecordType>()) {
+            clang::CXXRecordDecl *RD = cast<clang::CXXRecordDecl>(RT->getDecl());
+            if (RD->hasDefinition())
+                Emit(RD->getDestructor());
+        }
+    }
+
+    return Emit(E->getOperatorDelete());
+}
+
 DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval, 
                                    Expressions* arguments, llvm::Value *retvar)
 {
+    auto& Context = getASTContext();
+
     updateCGFInsertPoint();
     
     DFuncValue* dfnval = fnval->isFunc();
@@ -319,6 +412,8 @@ DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
 
     auto FD = getFD(fd);
     auto MD = dyn_cast<const clang::CXXMethodDecl>(FD);
+
+    InternalFunctionEmitter(Context, *CGM).Emit(FD);
 
     auto This = MD ? dfnval->vthis : nullptr;
 
@@ -405,88 +500,6 @@ void LangPlugin::toResolveFunction(::FuncDeclaration* fdecl)
     irFty.funcType = resolved.Ty;
 }
 
-// Emits functions with internal linkage the function being defined depends upon.
-class InternalFunctionEmitter : public clang::RecursiveASTVisitor<InternalFunctionEmitter>
-{
-    clang::ASTContext &Context;
-    clangCG::CodeGenModule &CGM;
-
-    llvm::DenseSet<const clang::FunctionDecl *> Emitted;
-
-    bool Emit(const clang::FunctionDecl *Callee);
-public:
-    InternalFunctionEmitter(clang::ASTContext &Context,
-                        clangCG::CodeGenModule &CGM) : Context(Context), CGM(CGM) {}
-    void Traverse(const clang::FunctionDecl *Def);
-
-    bool VisitCallExpr(const clang::CallExpr *E);
-    bool VisitCXXConstructExpr(const clang::CXXConstructExpr *E);
-    bool VisitCXXNewExpr(const clang::CXXNewExpr *E);
-    bool VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E);
-};
-
-void InternalFunctionEmitter::Traverse(const clang::FunctionDecl *Def)
-{
-    TraverseStmt(Def->getBody());
-    if (auto Ctor = dyn_cast<clang::CXXConstructorDecl>(Def))
-        for (auto& Init: Ctor->inits())
-            TraverseStmt(Init->getInit());
-}
-
-bool InternalFunctionEmitter::Emit(const clang::FunctionDecl *Callee)
-{
-    const clang::FunctionDecl *Def;
-
-    if (!Callee || !Callee->hasBody(Def))
-        return true;
-
-    auto FPT = Callee->getType()->getAs<clang::FunctionProtoType>();
-    if (FPT->getExceptionSpecType() == clang::EST_Unevaluated)
-        return true;
-
-    auto resolved = ResolvedFunc::get(CGM, Callee);
-
-    if (Callee->hasExternalFormalLinkage() || Emitted.count(Def))
-        return true;
-
-    Emitted.insert(Def);
-
-    if (resolved.Func->isDeclaration())
-        CGM.EmitTopLevelDecl(const_cast<clang::FunctionDecl*>(Def));
-
-    Traverse(Def);
-    return true;
-}
-
-bool InternalFunctionEmitter::VisitCallExpr(const clang::CallExpr *E)
-{
-    return Emit(E->getDirectCallee());
-}
-
-bool InternalFunctionEmitter::VisitCXXConstructExpr(const clang::CXXConstructExpr *E)
-{
-    return Emit(E->getConstructor());
-}
-
-bool InternalFunctionEmitter::VisitCXXNewExpr(const clang::CXXNewExpr *E)
-{
-    return Emit(E->getOperatorNew());
-}
-
-bool InternalFunctionEmitter::VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E)
-{
-    auto DestroyedType = E->getDestroyedType();
-    if (!DestroyedType.isNull()) {
-        if (const clang::RecordType *RT = DestroyedType->getAs<clang::RecordType>()) {
-            clang::CXXRecordDecl *RD = cast<clang::CXXRecordDecl>(RT->getDecl());
-            if (RD->hasDefinition())
-                Emit(RD->getDestructor());
-        }
-    }
-
-    return Emit(E->getOperatorDelete());
-}
-
 void LangPlugin::toDefineFunction(::FuncDeclaration* fdecl)
 {
     auto& Context = getASTContext();
@@ -552,7 +565,17 @@ void LangPlugin::toDeclareVariable(::VarDeclaration* vd)
 
 void LangPlugin::toDefineVariable(::VarDeclaration* vd)
 {
-    // FIXME: initialize static variables from template instantiations
+    auto& Context = getASTContext();
+
+    auto c_vd = static_cast<cpp::VarDeclaration*>(vd);
+    auto VD = dyn_cast<clang::VarDecl>(c_vd->VD);
+
+    if (!VD)
+        return;
+
+    VD = VD->getDefinition(Context);
+    if (VD && VD->hasGlobalStorage() && !VD->hasExternalStorage())
+        CGM->EmitTopLevelDecl(const_cast<clang::VarDecl*>(VD));
 }
 
 void LangPlugin::toDefaultInitVarDeclaration(::VarDeclaration* vd)
