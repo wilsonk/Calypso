@@ -826,9 +826,14 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::Decl *D)
             // build a fake import
             if (auto im = tm.AddImplicitImportForDecl(TopDecl, true))
             {
-                for (size_t i = 1; i < im->packages->dim; i++)
-                    addIdent(tqual, (*im->packages)[i]);
-                addIdent(tqual, im->id);
+                if (im->aliasId)
+                    addIdent(tqual, im->aliasId);
+                else
+                {
+                    for (size_t i = 1; i < im->packages->dim; i++)
+                        addIdent(tqual, (*im->packages)[i]);
+                    addIdent(tqual, im->id);
+                }
             }
             // if no Import was returned D is part of the module being mapped
 
@@ -1745,11 +1750,39 @@ static clang::Module *GetClangModuleForDecl(const clang::Decl* D)
     if (!fake && implicitImports[Key])
         return nullptr; // already imported
 
+    Identifier *importAliasid = nullptr;
+    if (mod && isa<clang::TagDecl>(Key.first) &&
+            getDeclContextNamedOrTU(Key.first)->isTranslationUnit())
+    {
+        // Special check for C tags which may have the same name as functions
+        // When this does happens, rename the import
+        // NOTE: is this really specific to tags and functions?
+        auto TD = cast<clang::TagDecl>(Key.first);
+        auto TU = TD->getTranslationUnitDecl();
+
+        auto R = TU->lookup(TD->getDeclName());
+        for (auto Match: R)
+        {
+            if (Match->getCanonicalDecl() == Key.first)
+                continue;
+            if (GetImplicitImportKeyForDecl(Match) != mod->rootKey)
+                continue; // the matching decl is part of another module, no conflict
+
+            { auto importIdent = getIdentifier(TD);
+            llvm::SmallString<48> s(u8"§"); // non-ASCII but pretty
+            s += llvm::StringRef(importIdent->string, importIdent->len);
+            importAliasid = Lexer::idPool(s.c_str()); }
+
+            assert(!Key.second);
+            break;
+        }
+    }
+
     ::Import *im;
     if (Key.second)
-        im = BuildImplicitImport(Key.first, Key.second);
+        im = BuildImplicitImport(Key.first, Key.second, importAliasid);
     else
-        im = BuildImplicitImport(Key.first);
+        im = BuildImplicitImport(Key.first, importAliasid);
 
     if (!fake)
     {
@@ -1893,7 +1926,7 @@ static Identifier *BuildImplicitImportInternal(const clang::DeclContext *DC,
     llvm_unreachable("Unhandled case");
 }
 
-::Import *TypeMapper::BuildImplicitImport(const clang::Decl *D)
+::Import *TypeMapper::BuildImplicitImport(const clang::Decl *D, Identifier *aliasid)
 {
     auto loc = fromLoc(D->getLocation());
 
@@ -1911,10 +1944,11 @@ static Identifier *BuildImplicitImportInternal(const clang::DeclContext *DC,
             sModule = Lexer::idPool("_");
     }
 
-    return new cpp::Import(loc, sPackages, sModule, nullptr, 1);
+    return new cpp::Import(loc, sPackages, sModule, aliasid, 1);
 }
 
-::Import *TypeMapper::BuildImplicitImport(const clang::Decl *D, const clang::Module *Mod)
+::Import *TypeMapper::BuildImplicitImport(const clang::Decl *D, const clang::Module *Mod,
+                                          Identifier *aliasid)
 {
     auto loc = Loc();
     auto sPackages = new Identifiers;
@@ -1937,7 +1971,7 @@ static Identifier *BuildImplicitImportInternal(const clang::DeclContext *DC,
         M = M->Parent;
     }
 
-    return new cpp::Import(loc, sPackages, sModule, nullptr, 1);
+    return new cpp::Import(loc, sPackages, sModule, aliasid, 1);
 }
 
 void TypeMapper::pushTempParamList(const clang::Decl *D)
