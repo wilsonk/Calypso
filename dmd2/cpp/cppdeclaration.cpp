@@ -244,6 +244,11 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, const clang::CallExpr 
     if (D->isInvalidDecl())
         return true;
 
+    for (const clang::Decl *DI = D; !isa<clang::TranslationUnitDecl>(DI); DI = cast<clang::Decl>(DI->getDeclContext()))
+        if (auto RD = dyn_cast<clang::CXXRecordDecl>(DI))
+            if (RD->isLocalClass())
+                return true; // are local records emitted when emitting a function? if no this is a FIXME
+
     if (auto FD = dyn_cast<clang::FunctionDecl>(D))
     {
         // all FIXME except implicit and builtin decls
