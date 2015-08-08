@@ -213,8 +213,7 @@ void FuncDeclaration::semantic(Scope *sc)
         DeclMapper m(static_cast<cpp::Module*>(sc->module), true);
         m.addImplicitDecls = false;
 
-        auto inst = static_cast<decltype(this)>(
-                m.VisitInstancedFunctionTemplate(Inst))->isFuncDeclaration();
+        auto inst = m.VisitInstancedFunctionTemplate(Inst);
         assert(inst);
 
         inst->syntaxCopy(this);

@@ -704,7 +704,8 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
         //   Mapping the C++ operator to opBinary()() directly would make D lose info and overriding the C++ method impossible
 
         bool wrapInTemp = (op != nullptr) &&
-                    !D->getDescribedFunctionTemplate();  // if it's a templated overloaded operator then the template declaration is already taken care of
+                    !D->getDescribedFunctionTemplate() &&  // if it's a templated overloaded operator then the template declaration is already taken care of
+                    !(D->isFunctionTemplateSpecialization() && D->isTemplateInstantiation());  // if we're instantiating a templated overloaded operator, we're after the function
 
         Identifier *fullIdent;
         if (wrapInTemp)
@@ -1010,15 +1011,15 @@ Dsymbol *DeclMapper::VisitInstancedClassTemplate(const clang::ClassTemplateSpeci
     return (*a)[0];
 }
 
-Dsymbol *DeclMapper::VisitInstancedFunctionTemplate(const clang::FunctionDecl *D)
+FuncDeclaration *DeclMapper::VisitInstancedFunctionTemplate(const clang::FunctionDecl *D)
 {
     instantiating = true;
     rebuildScope(cast<clang::Decl>(D->getDeclContext()));
     pushTempParamList(D);
 
     auto a = VisitFunctionDecl(D);
-    assert(a->dim);
-    return (*a)[0];
+    assert(a->dim == 1 && (*a)[0]->isFuncDeclaration() && isCPP((*a)[0]));
+    return static_cast<FuncDeclaration*>((*a)[0]);
 }
 
 // Explicit specializations only
