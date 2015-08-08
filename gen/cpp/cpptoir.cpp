@@ -130,9 +130,9 @@ struct ResolvedFunc
 
         llvm::Constant *GV;
         if (isa<const clang::CXXConstructorDecl>(FD) || isa<const clang::CXXDestructorDecl>(FD))
-            GV = CGM.getAddrOfCXXStructor(MD, structorType, FInfo, result.Ty);
+            GV = CGM.getAddrOfCXXStructor(MD, structorType, FInfo, result.Ty, true);
         else
-            GV = CGM.GetAddrOfFunction(FD, result.Ty);
+            GV = CGM.GetAddrOfFunction(FD, result.Ty, false, true); // NOTE: DontDefer needs to be true or else many functions will get wrongly emitted in this module (sometimes causing linking errors)
         result.Func = cast<llvm::Function>(GV);
 
         return result;
