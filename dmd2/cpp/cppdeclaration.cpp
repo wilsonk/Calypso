@@ -196,11 +196,12 @@ void OverloadAliasDeclaration::semantic(Scope *sc)
     }
 }
 
-void FuncDeclaration::semantic(Scope *sc)
+void FuncDeclaration::cppSemantic(::FuncDeclaration *fd, Scope *sc)
 {
-    if (semanticRun >= PASSsemanticdone)
+    if (fd->semanticRun >= PASSsemanticdone)
         return;
 
+    auto FD = getFD(fd);
     if (FD->getDescribedFunctionTemplate())
     {
         auto ti = sc->parent->isTemplateInstance();
@@ -216,10 +217,26 @@ void FuncDeclaration::semantic(Scope *sc)
         auto inst = m.VisitInstancedFunctionTemplate(Inst);
         assert(inst);
 
-        inst->syntaxCopy(this);
+        inst->syntaxCopy(fd);
     }
+}
 
+void FuncDeclaration::semantic(Scope *sc)
+{
+    FuncDeclaration::cppSemantic(this, sc);
     ::FuncDeclaration::semantic(sc);
+}
+
+void CtorDeclaration::semantic(Scope *sc)
+{
+    cpp::FuncDeclaration::cppSemantic(this, sc);
+    ::CtorDeclaration::semantic(sc);
+}
+
+void DtorDeclaration::semantic(Scope *sc)
+{
+    cpp::FuncDeclaration::cppSemantic(this, sc);
+    ::DtorDeclaration::semantic(sc);
 }
 
 // Cheat and use the C++ "global scope", we can do it safely in specific cases

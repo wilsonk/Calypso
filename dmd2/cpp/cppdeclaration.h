@@ -59,6 +59,7 @@ public:
     bool allowFinalOverride() override { return true; }
     FuncDeclaration *overloadCppMatch(const clang::FunctionDecl* FD);
 
+    static void cppSemantic(::FuncDeclaration *fd, Scope *sc);
     static void semantic3reference(::FuncDeclaration *fd, Scope *sc);
 };
 
@@ -73,6 +74,7 @@ public:
                     Type* type, const clang::CXXConstructorDecl *CCD);
     CtorDeclaration(const CtorDeclaration&);
     Dsymbol *syntaxCopy(Dsymbol *s) override;
+    void semantic(Scope *sc) override;
     void semantic3(Scope *sc) override;
     bool functionSemantic3() override { return true; }
 };
@@ -88,6 +90,7 @@ public:
                     Identifier *id, const clang::CXXDestructorDecl *CDD);
     DtorDeclaration(const DtorDeclaration&);
     Dsymbol *syntaxCopy(Dsymbol *s) override;
+    void semantic(Scope *sc) override;
     void semantic3(Scope *sc) override;
     bool functionSemantic3() override { return true; }
     bool allowFinalOverride() override { return true; }

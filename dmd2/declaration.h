@@ -805,7 +805,7 @@ class CtorDeclaration : public FuncDeclaration
 public:
     CtorDeclaration(Loc loc, Loc endloc, StorageClass stc, Type *type);
     virtual Dsymbol *syntaxCopy(Dsymbol *);
-    void semantic(Scope *sc);
+    virtual void semantic(Scope *sc); // CALYPSO
     const char *kind();
     char *toChars();
     bool isVirtual();
@@ -821,7 +821,7 @@ class PostBlitDeclaration : public FuncDeclaration
 public:
     PostBlitDeclaration(Loc loc, Loc endloc, StorageClass stc, Identifier *id);
     Dsymbol *syntaxCopy(Dsymbol *);
-    void semantic(Scope *sc);
+    virtual void semantic(Scope *sc); // CALYPSO
     void toCBuffer(OutBuffer *buf, HdrGenState *hgs);
     bool isVirtual();
     bool addPreInvariant();
