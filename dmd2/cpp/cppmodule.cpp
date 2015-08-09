@@ -705,7 +705,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
         auto opIdent = getIdentifierOrNull(D, &op); // will return nullptr if the operator isn't supported by D
                             // TODO map the unsupported operators anyway
 
-        if (D->isImplicit() || !opIdent)
+        if (!opIdent)
             return nullptr;
 
         // NOTE: C++ overloaded operators might be virtual, unlike D which are always final (being templates)
