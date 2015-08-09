@@ -136,6 +136,8 @@ public:
     void toDefineFunction(::FuncDeclaration* fdecl) override;
     void toDeclareVariable(::VarDeclaration* vd) override;
     void toDefineVariable(::VarDeclaration* vd) override;
+    void toDefineStruct(::StructDeclaration* sd) override;
+    void toDefineClass(::ClassDeclaration* cd) override;
     void toDefaultInitVarDeclaration(::VarDeclaration* vd) override;
     void toDefineTemplateInstance(::TemplateInstance *tempinst) override;
 

@@ -31,6 +31,8 @@
 #include "clang/Basic/ABI.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/Sema/Sema.h"
+#include "clang/Sema/Lookup.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/LLVMContext.h"
@@ -592,6 +594,31 @@ void LangPlugin::toDefaultInitVarDeclaration(::VarDeclaration* vd)
         DFuncValue dfn(cf, getIrFunc(cf)->func, irLocal->value);
         DtoCallFunction(vd->loc, tc, &dfn, new Expressions);
     }
+}
+
+void LangPlugin::toDefineStruct(::StructDeclaration* sd)
+{
+    auto& S = pch.AST->getSema();
+
+    auto c_sd = static_cast<cpp::StructDeclaration*>(sd);
+    auto RD = dyn_cast<clang::CXXRecordDecl>(c_sd->RD);
+
+    if (!RD || RD->isInvalidDecl() || !RD->getDefinition())
+        return;
+
+    if (!RD->hasDefaultConstructor())
+        return;
+
+    auto CCD = S.LookupDefaultConstructor(const_cast<clang::CXXRecordDecl *>(RD));
+    if (CCD && !CCD->isDeleted())
+    {
+        CGM->getAddrOfCXXStructor(CCD, clangCG::StructorType::Complete); // mark it used
+        CGM->EmitTopLevelDecl(CCD); // mark it emittable
+    }
+}
+
+void LangPlugin::toDefineClass(::ClassDeclaration* cd)
+{
 }
 
 void LangPlugin::toDefineTemplateInstance(::TemplateInstance *inst)

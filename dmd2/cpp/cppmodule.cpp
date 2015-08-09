@@ -270,6 +270,18 @@ Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
     return oneSymbol(a);
 }
 
+static void MarkFunctionForEmit(const clang::FunctionDecl *D)
+{
+    auto& S = calypso.pch.AST->getSema();
+
+    if (!D->getDeclContext()->isDependentContext())
+    {
+        auto D_ = const_cast<clang::FunctionDecl*>(D);
+        D_->setTrivial(false);  // force its definition and Sema to resolve its exception spec
+        S.MarkFunctionReferenced(clang::SourceLocation(), D_);
+    }
+}
+
 Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags)
 {
     auto& S = calypso.pch.AST->getSema();
@@ -369,10 +381,11 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
 
     if (CRD && !D->isUnion())
     {
-        if (!isPOD && !CRD->isDependentType())
+        if (!CRD->isDependentType())
             // Clang declares and defines the implicit default constructor lazily, so do it here
             // before adding methods.
-            S.LookupDefaultConstructor(const_cast<clang::CXXRecordDecl *>(CRD));
+            if (auto CCD = S.LookupDefaultConstructor(const_cast<clang::CXXRecordDecl *>(CRD)))
+                MarkFunctionForEmit(CCD); // do it here because POD default ctors won't be visited
 
         for (auto I = CRD->method_begin(), E = CRD->method_end();
             I != E; ++I)
@@ -382,7 +395,7 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
 
             auto CCD = dyn_cast<clang::CXXConstructorDecl>(*I);
             if (CCD && CCD->isDefaultConstructor() && isPOD)
-                continue;
+                continue; // default constructors aren't allowed for structs, but some template C++ code rely on them so they'll need to be emitted anyway
 
             // CALYPSO FIXME remove the null check once everything is implemented
             auto fd = VisitFunctionDecl(*I);
@@ -643,12 +656,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     }
     assert(tf->ty == Tfunction);
 
-    if (!D->getDeclContext()->isDependentContext())
-    {
-        auto D_ = const_cast<clang::FunctionDecl*>(D);
-        D_->setTrivial(false);  // force its definition and Sema to resolve its exception spec
-        S.MarkFunctionReferenced(clang::SourceLocation(), D_);
-    }
+    MarkFunctionForEmit(D);
 
     const clang::FunctionDecl *Def;
     if (D->hasBody(Def))
