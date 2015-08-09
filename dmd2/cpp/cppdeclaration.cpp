@@ -255,7 +255,7 @@ void DeclReferencer::Traverse(Loc loc, Scope *sc, clang::Stmt *S)
     TraverseStmt(S);
 }
 
-bool DeclReferencer::Reference(const clang::NamedDecl *D, const clang::CallExpr *Call)
+bool DeclReferencer::Reference(const clang::NamedDecl *D, bool isCall)
 {
     if (D->isInvalidDecl())
         return true;
@@ -297,7 +297,7 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, const clang::CallExpr 
     ReferenceTemplateArguments(D);
 
     auto Func = dyn_cast<clang::FunctionDecl>(D);
-    if (Call && Func->getPrimaryTemplate())
+    if (isCall && Func->getPrimaryTemplate())
         D = Func->getPrimaryTemplate()->getCanonicalDecl();
 
     // HACK FIXME
@@ -321,7 +321,7 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, const clang::CallExpr 
     auto te = new TypeExp(loc, tqual);
     auto e = te->semantic(sc);
 
-    if (Call && Func->getPrimaryTemplate())
+    if (isCall && Func->getPrimaryTemplate())
     {
         assert(e->op == TOKvar || e->op == TOKtemplate);
         Dsymbol *s;
@@ -434,7 +434,7 @@ void DeclReferencer::ReferenceTemplateArguments(const clang::NamedDecl *D)
 bool DeclReferencer::VisitCallExpr(const clang::CallExpr *E)
 {
     if (auto Callee = E->getDirectCallee())
-        return Reference(Callee, E);
+        return Reference(Callee, true);
     return true;
 }
 
@@ -443,7 +443,7 @@ bool DeclReferencer::VisitCXXConstructExpr(const clang::CXXConstructExpr *E)
     auto ConstructedType = E->getType();
     if (!ConstructedType.isNull())
         Reference(ConstructedType.getTypePtr());
-    return true;
+    return Reference(E->getConstructor(), true);
 }
 
 bool DeclReferencer::VisitCXXNewExpr(const clang::CXXNewExpr *E)
