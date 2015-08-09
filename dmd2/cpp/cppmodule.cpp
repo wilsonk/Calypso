@@ -381,11 +381,24 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
 
     if (CRD && !D->isUnion())
     {
-        if (!CRD->isDependentType())
-            // Clang declares and defines the implicit default constructor lazily, so do it here
+        if (!CRD->isDependentType() && !CRD->isInvalidDecl())
+        {
+            auto _CRD = const_cast<clang::CXXRecordDecl *>(CRD);
+
+            // Clang declares and defines implicit ctors/assignment operators lazily, so do it here
             // before adding methods.
-            if (auto CCD = S.LookupDefaultConstructor(const_cast<clang::CXXRecordDecl *>(CRD)))
+            if (auto CCD = S.LookupDefaultConstructor(_CRD))
                 MarkFunctionForEmit(CCD); // do it here because POD default ctors won't be visited
+
+            for (int i = 0; i < 2; i++)
+                S.LookupCopyingConstructor(_CRD, i ? clang::Qualifiers::Const : 0);
+
+            for (int i = 0; i < 2; i++)
+                for (int j = 0; j < 2; j++)
+                    for (int k = 0; k < 2; k++)
+                        S.LookupCopyingAssignment(_CRD, i ? clang::Qualifiers::Const : 0, j ? true : false,
+                                                  k ? clang::Qualifiers::Const : 0);
+        }
 
         for (auto I = CRD->method_begin(), E = CRD->method_end();
             I != E; ++I)
