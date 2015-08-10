@@ -399,22 +399,6 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
                         S.LookupCopyingAssignment(_CRD, i ? clang::Qualifiers::Const : 0, j ? true : false,
                                                   k ? clang::Qualifiers::Const : 0);
         }
-
-        for (auto I = CRD->method_begin(), E = CRD->method_end();
-            I != E; ++I)
-        {
-            if (I->getCanonicalDecl() != *I)
-                continue;
-
-            auto CCD = dyn_cast<clang::CXXConstructorDecl>(*I);
-            if (CCD && CCD->isDefaultConstructor() && isPOD)
-                continue; // default constructors aren't allowed for structs, but some template C++ code rely on them so they'll need to be emitted anyway
-
-            // CALYPSO FIXME remove the null check once everything is implemented
-            auto fd = VisitFunctionDecl(*I);
-            if (fd)
-                members->append(fd);
-        }
     }
 
     // Add specific decls: vars, tags, templates, typedefs
@@ -429,6 +413,7 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
             members->append(s); \
     }
 
+    SPECIFIC_ADD(Function)
     SPECIFIC_ADD(Tag)
     SPECIFIC_ADD(Var)
     SPECIFIC_ADD(RedeclarableTemplate)
@@ -638,6 +623,10 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 
     if (isa<clang::FunctionNoProtoType>(D->getType()))
         return nullptr; // functions without prototypes are afaik builtins, and since D needs a prototype they can't be mapped
+
+    if (auto CCD = dyn_cast<clang::CXXConstructorDecl>(D))
+        if (CCD->isDefaultConstructor() && CCD->getParent()->isPOD())
+            return nullptr; // default constructors aren't allowed for structs (but some template C++ code rely on them so they'll need to be emitted anyway)
 
     if (!instantiating && D->isTemplateInstantiation())
         return nullptr;
