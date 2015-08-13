@@ -150,6 +150,8 @@ const clang::FunctionDecl *getFD(::FuncDeclaration *f);
     }
 // NOTE: we use copy constructors only to copy the arguments passed to the main constructor, the rest is handled by syntaxCopy
 
+bool isMapped(const clang::Decl *D);
+
 class DeclMapper : public TypeMapper
 {
 protected:

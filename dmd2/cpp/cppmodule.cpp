@@ -611,22 +611,38 @@ bool FunctionReferencer::VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E)
 }
 }
 
+bool isMapped(const clang::Decl *D) // TODO
+{
+    if (auto FD = dyn_cast<clang::FunctionDecl>(D))
+    {
+        if (D->isInvalidDecl())
+            return false;
+
+        if (isa<clang::CXXConversionDecl>(D))
+            return false; // TODO
+
+        if (isa<clang::FunctionNoProtoType>(FD->getType()))
+            return false; // functions without prototypes are afaik builtins, and since D needs a prototype they can't be mapped
+
+        if (auto MD = dyn_cast<clang::CXXMethodDecl>(D))
+            if (MD->getParent()->isUnion())
+                return false;
+
+        if (auto CCD = dyn_cast<clang::CXXConstructorDecl>(D))
+            if ((CCD->isImplicit() || CCD->isDefaultConstructor()) && CCD->getParent()->isPOD())
+                return false; // default constructors aren't allowed for structs (but some template C++ code rely on them so they'll need to be emitted anyway)
+                    // also if the implicit copy constructor gets mapped for a struct for example, then new thatStruct won't work without arguments
+    }
+
+    return true;
+}
+
 Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 {
     auto& S = calypso.pch.AST->getSema();
 
-    if (D->isInvalidDecl())
+    if (!isMapped(D))
         return nullptr;
-
-    if (isa<clang::CXXConversionDecl>(D))
-        return nullptr; // TODO
-
-    if (isa<clang::FunctionNoProtoType>(D->getType()))
-        return nullptr; // functions without prototypes are afaik builtins, and since D needs a prototype they can't be mapped
-
-    if (auto CCD = dyn_cast<clang::CXXConstructorDecl>(D))
-        if (CCD->isDefaultConstructor() && CCD->getParent()->isPOD())
-            return nullptr; // default constructors aren't allowed for structs (but some template C++ code rely on them so they'll need to be emitted anyway)
 
     if (!instantiating && D->isTemplateInstantiation())
         return nullptr;
