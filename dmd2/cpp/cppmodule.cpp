@@ -385,13 +385,17 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
         {
             auto _CRD = const_cast<clang::CXXRecordDecl *>(CRD);
 
-            // Clang declares and defines implicit ctors/assignment operators lazily, so do it here
-            // before adding methods.
-            if (auto CCD = S.LookupDefaultConstructor(_CRD))
-                MarkFunctionForEmit(CCD); // do it here because POD default ctors won't be visited
+            auto MarkEmit = [&] (clang::FunctionDecl *FD) {
+                if (FD) MarkFunctionForEmit(FD);
+            };
+
+            // Clang declares and defines implicit ctors/assignment operators lazily,
+            // but they need to be emitted all in the record module.
+            // Mark them for emit here since they won't be visited.
+            MarkEmit(S.LookupDefaultConstructor(_CRD));
 
             for (int i = 0; i < 2; i++)
-                S.LookupCopyingConstructor(_CRD, i ? clang::Qualifiers::Const : 0);
+                MarkEmit(S.LookupCopyingConstructor(_CRD, i ? clang::Qualifiers::Const : 0));
 
             for (int i = 0; i < 2; i++)
                 for (int j = 0; j < 2; j++)
