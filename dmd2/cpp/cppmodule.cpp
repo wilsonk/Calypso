@@ -1041,7 +1041,7 @@ Dsymbol *DeclMapper::VisitInstancedClassTemplate(const clang::ClassTemplateSpeci
     return (*a)[0];
 }
 
-FuncDeclaration *DeclMapper::VisitInstancedFunctionTemplate(const clang::FunctionDecl *D)
+::FuncDeclaration *DeclMapper::VisitInstancedFunctionTemplate(const clang::FunctionDecl *D)
 {
     instantiating = true;
     rebuildScope(cast<clang::Decl>(D->getDeclContext()));
@@ -1049,7 +1049,7 @@ FuncDeclaration *DeclMapper::VisitInstancedFunctionTemplate(const clang::Functio
 
     auto a = VisitFunctionDecl(D);
     assert(a->dim == 1 && (*a)[0]->isFuncDeclaration() && isCPP((*a)[0]));
-    return static_cast<FuncDeclaration*>((*a)[0]);
+    return static_cast<::FuncDeclaration*>((*a)[0]);
 }
 
 // Explicit specializations only
