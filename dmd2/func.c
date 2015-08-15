@@ -364,9 +364,9 @@ Dsymbol *FuncDeclaration::syntaxCopy(Dsymbol *s)
     //printf("FuncDeclaration::syntaxCopy('%s')\n", toChars());
     if (s)
     {
+        assert(s->isFuncDeclaration());
         f = (FuncDeclaration *)s;
-        // CALYPSO syntaxCopy is horribly inconsistent..
-        f->loc = loc;
+        f->loc = loc; // CALYPSO NOTE: syntaxCopy was very inconsistent..
         f->endloc = endloc;
         f->ident = ident;
         f->storage_class = storage_class;
@@ -4724,8 +4724,13 @@ Dsymbol *CtorDeclaration::syntaxCopy(Dsymbol *s)
     CtorDeclaration *f;
     if (s)
     {
-        f  = s->isCtorDeclaration();
-        assert(f);
+        assert(s->isCtorDeclaration());
+        f  = (CtorDeclaration *)s;
+        f->loc = loc;
+        f->endloc = endloc;
+        f->storage_class = storage_class;
+        if (type)
+            f->type = type->syntaxCopy();
     }
     else
         f = new CtorDeclaration(loc, endloc, storage_class, type->syntaxCopy());
@@ -4907,8 +4912,8 @@ Dsymbol *DtorDeclaration::syntaxCopy(Dsymbol *s)
     DtorDeclaration *dd;
     if (s)
     {
-        dd = s->isDtorDeclaration();
-        assert(dd);
+        assert(s->isDtorDeclaration());
+        dd  = (DtorDeclaration *)s;
     }
     else
         dd = new DtorDeclaration(loc, endloc, storage_class, ident);
