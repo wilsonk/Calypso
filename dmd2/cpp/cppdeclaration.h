@@ -59,6 +59,7 @@ public:
     bool allowFinalOverride() override { return true; }
     FuncDeclaration *overloadCppMatch(const clang::FunctionDecl* FD);
 
+    static void cppSemantic(::FuncDeclaration *fd, Scope *sc);
     static void semantic3reference(::FuncDeclaration *fd, Scope *sc);
 };
 
@@ -73,6 +74,7 @@ public:
                     Type* type, const clang::CXXConstructorDecl *CCD);
     CtorDeclaration(const CtorDeclaration&);
     Dsymbol *syntaxCopy(Dsymbol *s) override;
+    void semantic(Scope *sc) override;
     void semantic3(Scope *sc) override;
     bool functionSemantic3() override { return true; }
 };
@@ -88,6 +90,7 @@ public:
                     Identifier *id, const clang::CXXDestructorDecl *CDD);
     DtorDeclaration(const DtorDeclaration&);
     Dsymbol *syntaxCopy(Dsymbol *s) override;
+    void semantic(Scope *sc) override;
     void semantic3(Scope *sc) override;
     bool functionSemantic3() override { return true; }
     bool allowFinalOverride() override { return true; }
@@ -147,6 +150,8 @@ const clang::FunctionDecl *getFD(::FuncDeclaration *f);
     }
 // NOTE: we use copy constructors only to copy the arguments passed to the main constructor, the rest is handled by syntaxCopy
 
+bool isMapped(const clang::Decl *D);
+
 class DeclMapper : public TypeMapper
 {
 protected:
@@ -172,7 +177,7 @@ public:
     Dsymbols *VisitEnumDecl(const clang::EnumDecl *D);
 
     Dsymbol *VisitInstancedClassTemplate(const clang::ClassTemplateSpecializationDecl *D, unsigned int flags = 0); // entry point when mapping instances during semantic()
-    Dsymbol *VisitInstancedFunctionTemplate(const clang::FunctionDecl *D);
+    ::FuncDeclaration *VisitInstancedFunctionTemplate(const clang::FunctionDecl *D);
     TemplateParameter *VisitTemplateParameter(const clang::NamedDecl *Param,
                                                                     const clang::TemplateArgument *SpecArg = nullptr); // in DMD explicit specializations use parameters, whereas Clang uses args
 
@@ -192,7 +197,7 @@ class DeclReferencer : public clang::RecursiveASTVisitor<DeclReferencer>
 
     llvm::DenseSet<const clang::Decl *> Referenced;
 
-    bool Reference(const clang::NamedDecl *D, const clang::CallExpr *Call = nullptr);
+    bool Reference(const clang::NamedDecl *D, bool isCall = false);
     bool Reference(const clang::Type *T);
     bool Reference(const clang::Expr *E);
     void ReferenceTemplateArguments(const clang::NamedDecl *D);

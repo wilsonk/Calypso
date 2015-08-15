@@ -2170,10 +2170,16 @@ const clang::DeclContext *getDeclContextNonLinkSpec(const clang::Decl *D)
 const clang::DeclContext *getDeclContextNamedOrTU(const clang::Decl *D)
 {
     auto DC = getDeclContextNonLinkSpec(D);
-
     auto NamedDC = dyn_cast<clang::NamedDecl>(DC);
+    
     if (NamedDC && NamedDC->getDeclName().isEmpty())
+    {
+        if (auto Tag = llvm::dyn_cast<clang::TagDecl>(DC))
+            if (auto Typedef = Tag->getTypedefNameForAnonDecl())
+                return DC;
+
         return getDeclContextNamedOrTU(NamedDC);
+    }
 
     assert(NamedDC || isa<clang::TranslationUnitDecl>(DC));
     return DC;

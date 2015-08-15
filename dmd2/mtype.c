@@ -5368,8 +5368,10 @@ const char *TypeFunction::kind()
     return "function";
 }
 
-Type *TypeFunction::syntaxCopy(Type *)
+Type *TypeFunction::syntaxCopy(Type *o)
 {
+    assert(!o); // CALYPSO sanity check
+
     Type *treturn = next ? next->syntaxCopy() : NULL;
     Parameters *params = Parameter::arraySyntaxCopy(parameters);
     TypeFunction *t = new TypeFunction(params, treturn, varargs, linkage);
@@ -6870,6 +6872,7 @@ Type *TypeIdentifier::syntaxCopy(Type *o)
     {
         assert(o->ty == Tident);
         t = (TypeIdentifier*)o;
+        t->ident = ident;
     }
     else
         t = new TypeIdentifier(loc, ident);
@@ -7040,6 +7043,7 @@ Type *TypeInstance::syntaxCopy(Type *o)
     {
         assert(o->ty == Tinstance);
         t = (TypeInstance*)o;
+        t->tempinst = (TemplateInstance *)tempinst->syntaxCopy(NULL);
     }
     else
         t = new TypeInstance(loc, (TemplateInstance *)tempinst->syntaxCopy(NULL));
@@ -7169,6 +7173,7 @@ Type *TypeTypeof::syntaxCopy(Type *o)
     {
         assert(o->ty == Ttypeof);
         t = (TypeTypeof*)o;
+        t->exp = exp->syntaxCopy();
     }
     else
         t = new TypeTypeof(loc, exp->syntaxCopy());
@@ -7332,8 +7337,9 @@ const char *TypeReturn::kind()
     return "return";
 }
 
-Type *TypeReturn::syntaxCopy(Type *)
+Type *TypeReturn::syntaxCopy(Type *o)
 {
+    assert(!o); // CALYPSO sanity check
     TypeReturn *t = new TypeReturn(loc);
     t->syntaxCopyHelper(this);
     t->mod = mod;

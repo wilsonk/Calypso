@@ -7,6 +7,8 @@
 #include "ir/irtypeaggr.h"
 
 class Type;
+class ClassDeclaration;
+class StructDeclaration;
 class VarDeclaration;
 
 class ForeignCodeGen
@@ -32,6 +34,8 @@ public:
     virtual void toDefineFunction(FuncDeclaration* fdecl) = 0;
     virtual void toDeclareVariable(VarDeclaration* vd) = 0;
     virtual void toDefineVariable(VarDeclaration* vd) = 0;
+    virtual void toDefineStruct(StructDeclaration* sd) = 0;
+    virtual void toDefineClass(ClassDeclaration* cd) = 0;
     virtual void toDefaultInitVarDeclaration(VarDeclaration* vd) = 0;
     virtual void toDefineTemplateInstance(TemplateInstance *tempinst) = 0;
 

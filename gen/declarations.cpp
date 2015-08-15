@@ -114,6 +114,10 @@ public:
             DtoResolveStruct(decl);
             decl->ir.setDefined();
 
+            // CALYPSO: the following code should be put into its own DtoDefineStruct function
+            if (auto lp = decl->langPlugin())  // CALYPSO
+                lp->codegen()->toDefineStruct(decl);
+
             for (Dsymbols::iterator I = decl->members->begin(),
                                     E = decl->members->end();
                                     I != E; ++I)
@@ -159,6 +163,10 @@ public:
         {
             DtoResolveClass(decl);
             decl->ir.setDefined();
+
+            // CALYPSO: the following code should be put into its own DtoDefineStruct function
+            if (auto lp = decl->langPlugin())  // CALYPSO
+                lp->codegen()->toDefineClass(decl);
 
             for (Dsymbols::iterator I = decl->members->begin(),
                                     E = decl->members->end();

@@ -196,11 +196,12 @@ void OverloadAliasDeclaration::semantic(Scope *sc)
     }
 }
 
-void FuncDeclaration::semantic(Scope *sc)
+void FuncDeclaration::cppSemantic(::FuncDeclaration *fd, Scope *sc)
 {
-    if (semanticRun >= PASSsemanticdone)
+    if (fd->semanticRun >= PASSsemanticdone)
         return;
 
+    auto FD = getFD(fd);
     if (FD->getDescribedFunctionTemplate())
     {
         auto ti = sc->parent->isTemplateInstance();
@@ -213,14 +214,29 @@ void FuncDeclaration::semantic(Scope *sc)
         DeclMapper m(static_cast<cpp::Module*>(sc->module), true);
         m.addImplicitDecls = false;
 
-        auto inst = static_cast<decltype(this)>(
-                m.VisitInstancedFunctionTemplate(Inst))->isFuncDeclaration();
+        auto inst = m.VisitInstancedFunctionTemplate(Inst);
         assert(inst);
 
-        inst->syntaxCopy(this);
+        inst->syntaxCopy(fd);
     }
+}
 
+void FuncDeclaration::semantic(Scope *sc)
+{
+    FuncDeclaration::cppSemantic(this, sc);
     ::FuncDeclaration::semantic(sc);
+}
+
+void CtorDeclaration::semantic(Scope *sc)
+{
+    cpp::FuncDeclaration::cppSemantic(this, sc);
+    ::CtorDeclaration::semantic(sc);
+}
+
+void DtorDeclaration::semantic(Scope *sc)
+{
+    cpp::FuncDeclaration::cppSemantic(this, sc);
+    ::DtorDeclaration::semantic(sc);
 }
 
 // Cheat and use the C++ "global scope", we can do it safely in specific cases
@@ -239,18 +255,22 @@ void DeclReferencer::Traverse(Loc loc, Scope *sc, clang::Stmt *S)
     TraverseStmt(S);
 }
 
-bool DeclReferencer::Reference(const clang::NamedDecl *D, const clang::CallExpr *Call)
+bool DeclReferencer::Reference(const clang::NamedDecl *D, bool isCall)
 {
     if (D->isInvalidDecl())
         return true;
 
+    for (const clang::Decl *DI = D; !isa<clang::TranslationUnitDecl>(DI); DI = cast<clang::Decl>(DI->getDeclContext()))
+        if (auto RD = dyn_cast<clang::CXXRecordDecl>(DI))
+            if (RD->isLocalClass())
+                return true; // are local records emitted when emitting a function? if no this is a FIXME
+
     if (auto FD = dyn_cast<clang::FunctionDecl>(D))
     {
-        // all FIXME except implicit and builtin decls
-        if (FD->getBuiltinID() ||
-                isa<clang::CXXConversionDecl>(D))
+        if (!isMapped(D))
             return true;
-        if ((FD->isOverloadedOperator() || isa<clang::CXXDestructorDecl>(D)) && FD->isImplicit())
+        if (FD->getBuiltinID() ||
+                ((FD->isOverloadedOperator() || isa<clang::CXXDestructorDecl>(D)) && FD->isImplicit()))
             return true;
         if (FD->isExternC())
             return true; // FIXME: Clang 3.6 doesn't always map decls to the right source file,
@@ -276,7 +296,7 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, const clang::CallExpr 
     ReferenceTemplateArguments(D);
 
     auto Func = dyn_cast<clang::FunctionDecl>(D);
-    if (Call && Func->getPrimaryTemplate())
+    if (isCall && Func->getPrimaryTemplate())
         D = Func->getPrimaryTemplate()->getCanonicalDecl();
 
     // HACK FIXME
@@ -300,7 +320,7 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, const clang::CallExpr 
     auto te = new TypeExp(loc, tqual);
     auto e = te->semantic(sc);
 
-    if (Call && Func->getPrimaryTemplate())
+    if (isCall && Func->getPrimaryTemplate())
     {
         assert(e->op == TOKvar || e->op == TOKtemplate);
         Dsymbol *s;
@@ -413,7 +433,7 @@ void DeclReferencer::ReferenceTemplateArguments(const clang::NamedDecl *D)
 bool DeclReferencer::VisitCallExpr(const clang::CallExpr *E)
 {
     if (auto Callee = E->getDirectCallee())
-        return Reference(Callee, E);
+        return Reference(Callee, true);
     return true;
 }
 
@@ -422,7 +442,7 @@ bool DeclReferencer::VisitCXXConstructExpr(const clang::CXXConstructExpr *E)
     auto ConstructedType = E->getType();
     if (!ConstructedType.isNull())
         Reference(ConstructedType.getTypePtr());
-    return true;
+    return Reference(E->getConstructor(), true);
 }
 
 bool DeclReferencer::VisitCXXNewExpr(const clang::CXXNewExpr *E)

@@ -369,6 +369,9 @@ void PCH::add(StringRef header)
     needEmit = true;
 }
 
+// WORKAROUND Temporary visitor to deserialize the entire ASTContext
+class ASTDummyVisitor : public clang::RecursiveASTVisitor<ASTDummyVisitor> {};
+
 void PCH::update()
 {
     auto& cachePrefix = calypso.cachePrefix;
@@ -492,6 +495,11 @@ void PCH::update()
 
     AST = ASTUnit::LoadFromASTFile(pchFilename,
                                 Diags, FileSystemOpts, &instCollector);
+
+    // WORKAROUND for https://llvm.org/bugs/show_bug.cgi?id=24420
+    // « RecordDecl::LoadFieldsFromExternalStorage() expels existing decls from the DeclContext linked list »
+    // This only concerns serialized declarations, new records aren't affected by this issue
+    ASTDummyVisitor().TraverseDecl(AST->getASTContext().getTranslationUnitDecl());
 
     /* Collect Clang module map files */
     auto& SrcMgr = AST->getSourceManager();

@@ -270,6 +270,18 @@ Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
     return oneSymbol(a);
 }
 
+static void MarkFunctionForEmit(const clang::FunctionDecl *D)
+{
+    auto& S = calypso.pch.AST->getSema();
+
+    if (!D->getDeclContext()->isDependentContext())
+    {
+        auto D_ = const_cast<clang::FunctionDecl*>(D);
+        D_->setTrivial(false);  // force its definition and Sema to resolve its exception spec
+        S.MarkFunctionReferenced(clang::SourceLocation(), D_);
+    }
+}
+
 Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags)
 {
     auto& S = calypso.pch.AST->getSema();
@@ -369,25 +381,27 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
 
     if (CRD && !D->isUnion())
     {
-        if (!isPOD && !CRD->isDependentType())
-            // Clang declares and defines the implicit default constructor lazily, so do it here
-            // before adding methods.
-            S.LookupDefaultConstructor(const_cast<clang::CXXRecordDecl *>(CRD));
-
-        for (auto I = CRD->method_begin(), E = CRD->method_end();
-            I != E; ++I)
+        if (!CRD->isDependentType() && !CRD->isInvalidDecl())
         {
-            if (I->getCanonicalDecl() != *I)
-                continue;
+            auto _CRD = const_cast<clang::CXXRecordDecl *>(CRD);
 
-            auto CCD = dyn_cast<clang::CXXConstructorDecl>(*I);
-            if (CCD && CCD->isDefaultConstructor() && isPOD)
-                continue;
+            auto MarkEmit = [&] (clang::FunctionDecl *FD) {
+                if (FD) MarkFunctionForEmit(FD);
+            };
 
-            // CALYPSO FIXME remove the null check once everything is implemented
-            auto fd = VisitFunctionDecl(*I);
-            if (fd)
-                members->append(fd);
+            // Clang declares and defines implicit ctors/assignment operators lazily,
+            // but they need to be emitted all in the record module.
+            // Mark them for emit here since they won't be visited.
+            MarkEmit(S.LookupDefaultConstructor(_CRD));
+
+            for (int i = 0; i < 2; i++)
+                MarkEmit(S.LookupCopyingConstructor(_CRD, i ? clang::Qualifiers::Const : 0));
+
+            for (int i = 0; i < 2; i++)
+                for (int j = 0; j < 2; j++)
+                    for (int k = 0; k < 2; k++)
+                        S.LookupCopyingAssignment(_CRD, i ? clang::Qualifiers::Const : 0, j ? true : false,
+                                                  k ? clang::Qualifiers::Const : 0);
         }
     }
 
@@ -403,6 +417,7 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
             members->append(s); \
     }
 
+    SPECIFIC_ADD(Function)
     SPECIFIC_ADD(Tag)
     SPECIFIC_ADD(Var)
     SPECIFIC_ADD(RedeclarableTemplate)
@@ -600,18 +615,38 @@ bool FunctionReferencer::VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E)
 }
 }
 
+bool isMapped(const clang::Decl *D) // TODO
+{
+    if (auto FD = dyn_cast<clang::FunctionDecl>(D))
+    {
+        if (D->isInvalidDecl())
+            return false;
+
+        if (isa<clang::CXXConversionDecl>(D))
+            return false; // TODO
+
+        if (isa<clang::FunctionNoProtoType>(FD->getType()))
+            return false; // functions without prototypes are afaik builtins, and since D needs a prototype they can't be mapped
+
+        if (auto MD = dyn_cast<clang::CXXMethodDecl>(D))
+            if (MD->getParent()->isUnion())
+                return false;
+
+        if (auto CCD = dyn_cast<clang::CXXConstructorDecl>(D))
+            if ((CCD->isImplicit() || CCD->isDefaultConstructor()) && CCD->getParent()->isPOD())
+                return false; // default constructors aren't allowed for structs (but some template C++ code rely on them so they'll need to be emitted anyway)
+                    // also if the implicit copy constructor gets mapped for a struct for example, then new thatStruct won't work without arguments
+    }
+
+    return true;
+}
+
 Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
 {
     auto& S = calypso.pch.AST->getSema();
 
-    if (D->isInvalidDecl())
+    if (!isMapped(D))
         return nullptr;
-
-    if (isa<clang::CXXConversionDecl>(D))
-        return nullptr; // TODO
-
-    if (isa<clang::FunctionNoProtoType>(D->getType()))
-        return nullptr; // functions without prototypes are afaik builtins, and since D needs a prototype they can't be mapped
 
     if (!instantiating && D->isTemplateInstantiation())
         return nullptr;
@@ -643,12 +678,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     }
     assert(tf->ty == Tfunction);
 
-    if (!D->getDeclContext()->isDependentContext())
-    {
-        auto D_ = const_cast<clang::FunctionDecl*>(D);
-        D_->setTrivial(false);  // force its definition and Sema to resolve its exception spec
-        S.MarkFunctionReferenced(clang::SourceLocation(), D_);
-    }
+    MarkFunctionForEmit(D);
 
     const clang::FunctionDecl *Def;
     if (D->hasBody(Def))
@@ -697,14 +727,15 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
         auto opIdent = getIdentifierOrNull(D, &op); // will return nullptr if the operator isn't supported by D
                             // TODO map the unsupported operators anyway
 
-        if (D->isImplicit() || !opIdent)
+        if (!opIdent)
             return nullptr;
 
         // NOTE: C++ overloaded operators might be virtual, unlike D which are always final (being templates)
         //   Mapping the C++ operator to opBinary()() directly would make D lose info and overriding the C++ method impossible
 
         bool wrapInTemp = (op != nullptr) &&
-                    !D->getDescribedFunctionTemplate();  // if it's a templated overloaded operator then the template declaration is already taken care of
+                    !D->getDescribedFunctionTemplate() &&  // if it's a templated overloaded operator then the template declaration is already taken care of
+                    !(D->isFunctionTemplateSpecialization() && D->isTemplateInstantiation());  // if we're instantiating a templated overloaded operator, we're after the function
 
         Identifier *fullIdent;
         if (wrapInTemp)
@@ -1010,15 +1041,15 @@ Dsymbol *DeclMapper::VisitInstancedClassTemplate(const clang::ClassTemplateSpeci
     return (*a)[0];
 }
 
-Dsymbol *DeclMapper::VisitInstancedFunctionTemplate(const clang::FunctionDecl *D)
+::FuncDeclaration *DeclMapper::VisitInstancedFunctionTemplate(const clang::FunctionDecl *D)
 {
     instantiating = true;
     rebuildScope(cast<clang::Decl>(D->getDeclContext()));
     pushTempParamList(D);
 
     auto a = VisitFunctionDecl(D);
-    assert(a->dim);
-    return (*a)[0];
+    assert(a->dim == 1 && (*a)[0]->isFuncDeclaration() && isCPP((*a)[0]));
+    return static_cast<::FuncDeclaration*>((*a)[0]);
 }
 
 // Explicit specializations only
