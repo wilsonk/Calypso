@@ -66,7 +66,7 @@ public:
     void finalizeVtbl() override;
     void buildLayout() override; // determine the agg size and field offsets
 
-    inline FuncDeclaration *findMethod(const clang::CXXMethodDecl *MD);
+    inline ::FuncDeclaration *findMethod(const clang::CXXMethodDecl *MD);
 };
 
 template<typename AggTy> void buildAggLayout(AggTy *ad);

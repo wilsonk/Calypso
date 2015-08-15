@@ -251,7 +251,7 @@ void ClassDeclaration::interfaceSemantic(Scope *sc)
 {
 }
 
-FuncDeclaration *ClassDeclaration::findMethod(const clang::CXXMethodDecl* MD)
+::FuncDeclaration *ClassDeclaration::findMethod(const clang::CXXMethodDecl* MD)
 {
     TypeMapper tmap;
     tmap.addImplicitDecls = false;
@@ -262,8 +262,8 @@ FuncDeclaration *ClassDeclaration::findMethod(const clang::CXXMethodDecl* MD)
     if (s && s->isFuncDeclaration())
     {
         assert(isCPP(s));
-        auto fd = static_cast<FuncDeclaration*>(s);
-        fd = fd->overloadCppMatch(MD);
+        auto fd = static_cast<::FuncDeclaration*>(s);
+        fd = FuncDeclaration::overloadCppMatch(fd, MD);
         if (fd)
             return fd;
     }
