@@ -6872,6 +6872,7 @@ Type *TypeIdentifier::syntaxCopy(Type *o)
     {
         assert(o->ty == Tident);
         t = (TypeIdentifier*)o;
+        t->ident = ident;
     }
     else
         t = new TypeIdentifier(loc, ident);
@@ -7042,6 +7043,7 @@ Type *TypeInstance::syntaxCopy(Type *o)
     {
         assert(o->ty == Tinstance);
         t = (TypeInstance*)o;
+        t->tempinst = (TemplateInstance *)tempinst->syntaxCopy(NULL);
     }
     else
         t = new TypeInstance(loc, (TemplateInstance *)tempinst->syntaxCopy(NULL));
@@ -7171,6 +7173,7 @@ Type *TypeTypeof::syntaxCopy(Type *o)
     {
         assert(o->ty == Ttypeof);
         t = (TypeTypeof*)o;
+        t->exp = exp->syntaxCopy();
     }
     else
         t = new TypeTypeof(loc, exp->syntaxCopy());
