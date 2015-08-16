@@ -15,7 +15,7 @@ namespace clang
 {
 class RecordDecl;
 class CXXRecordDecl; // NOTE: will disappear in a future version of Clang
-class ThunkInfo;
+struct ThunkInfo;
 }
 
 namespace cpp

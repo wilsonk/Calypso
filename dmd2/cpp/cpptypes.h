@@ -21,7 +21,7 @@ class Module;
 class Dsymbol;
 class Identifier;
 class Import;
-class Scope;
+struct Scope;
 class Type;
 class TypeQualified;
 class TypeFunction;
