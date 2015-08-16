@@ -593,6 +593,10 @@ void LangPlugin::toDeclareVariable(::VarDeclaration* vd)
         v = CGM->GetAddrOfGlobalVar(VD);
 
     getIrGlobal(vd)->value = v;
+
+    // If this is a static variable, it needs to be emitted in every module using it
+    if (!VD->hasExternalFormalLinkage())
+        toDefineVariable(vd);
 }
 
 void LangPlugin::toDefineVariable(::VarDeclaration* vd)
@@ -600,10 +604,7 @@ void LangPlugin::toDefineVariable(::VarDeclaration* vd)
     auto& Context = getASTContext();
 
     auto c_vd = static_cast<cpp::VarDeclaration*>(vd);
-    auto VD = dyn_cast<clang::VarDecl>(c_vd->VD);
-
-    if (!VD)
-        return;
+    auto VD = cast<clang::VarDecl>(c_vd->VD);
 
     VD = VD->getDefinition(Context);
     if (VD && VD->hasGlobalStorage() && !VD->hasExternalStorage())
