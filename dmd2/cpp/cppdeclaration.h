@@ -57,10 +57,10 @@ public:
     void semantic3(Scope *sc) override;
     bool functionSemantic3() override { return true; }
     bool allowFinalOverride() override { return true; }
-    FuncDeclaration *overloadCppMatch(const clang::FunctionDecl* FD);
 
     static void cppSemantic(::FuncDeclaration *fd, Scope *sc);
     static void semantic3reference(::FuncDeclaration *fd, Scope *sc);
+    static ::FuncDeclaration *overloadCppMatch(::FuncDeclaration *fd, const clang::FunctionDecl* FD);
 };
 
 class CtorDeclaration : public ::CtorDeclaration

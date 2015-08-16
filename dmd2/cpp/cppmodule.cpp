@@ -393,9 +393,10 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
             // but they need to be emitted all in the record module.
             // Mark them for emit here since they won't be visited.
             MarkEmit(S.LookupDefaultConstructor(_CRD));
-
             for (int i = 0; i < 2; i++)
                 MarkEmit(S.LookupCopyingConstructor(_CRD, i ? clang::Qualifiers::Const : 0));
+            
+            S.LookupDestructor(_CRD);
 
             for (int i = 0; i < 2; i++)
                 for (int j = 0; j < 2; j++)
@@ -714,11 +715,6 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     }
     else if (auto DD = dyn_cast<clang::CXXDestructorDecl>(D))
     {
-        // Destructors are a special case, Clang can only emit a destructor if it's not trivial.
-        // The dtor is checked and added by buildDtor during the semantic pass.
-        if (DD->isImplicit())
-            return nullptr;
-
         fd = new DtorDeclaration(loc, stc, Id::dtor, DD);
     }
     else if (D->isOverloadedOperator())

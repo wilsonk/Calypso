@@ -606,15 +606,20 @@ void LangPlugin::toDefineStruct(::StructDeclaration* sd)
     if (!RD || RD->isInvalidDecl() || !RD->getDefinition())
         return;
 
-    if (!RD->hasDefaultConstructor())
-        return;
+    auto _RD = const_cast<clang::CXXRecordDecl *>(RD);
+    auto EmitStructor = [&] (clang::CXXMethodDecl *D) {
+        if (D && !D->isDeleted())
+        {
+            CGM->getAddrOfCXXStructor(D, clangCG::StructorType::Complete); // mark it used
+            CGM->EmitTopLevelDecl(D); // mark it emittable
+        }
+    };
 
-    auto CCD = S.LookupDefaultConstructor(const_cast<clang::CXXRecordDecl *>(RD));
-    if (CCD && !CCD->isDeleted())
-    {
-        CGM->getAddrOfCXXStructor(CCD, clangCG::StructorType::Complete); // mark it used
-        CGM->EmitTopLevelDecl(CCD); // mark it emittable
-    }
+    assert(RD->hasDefaultConstructor() &&
+            RD->hasCopyConstructorWithConstParam());
+
+    EmitStructor(S.LookupDefaultConstructor(_RD));
+    EmitStructor(S.LookupCopyingConstructor(_RD, clang::Qualifiers::Const));
 }
 
 void LangPlugin::toDefineClass(::ClassDeclaration* cd)

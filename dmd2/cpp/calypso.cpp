@@ -370,7 +370,11 @@ void PCH::add(StringRef header)
 }
 
 // WORKAROUND Temporary visitor to deserialize the entire ASTContext
-class ASTDummyVisitor : public clang::RecursiveASTVisitor<ASTDummyVisitor> {};
+class ASTDummyVisitor : public clang::RecursiveASTVisitor<ASTDummyVisitor>
+{
+public:
+    bool shouldVisitTemplateInstantiations() const { return true; }
+};
 
 void PCH::update()
 {

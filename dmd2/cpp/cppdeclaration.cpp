@@ -5,6 +5,7 @@
 #include "cpp/cppexpression.h"
 #include "cpp/cpptemplate.h"
 #include "aggregate.h"
+#include "init.h"
 #include "scope.h"
 
 #include "clang/AST/Decl.h"
@@ -26,7 +27,9 @@ VarDeclaration::VarDeclaration(Loc loc, Identifier *id,
 }
 
 VarDeclaration::VarDeclaration(const VarDeclaration& o)
-    : VarDeclaration(o.loc, o.ident, o.VD, o.type, o.init)
+    : VarDeclaration(o.loc, o.ident, o.VD,
+                     o.type ? o.type->syntaxCopy() : nullptr,
+                     o.init ? o.init->syntaxCopy() : nullptr)
 {
     storage_class = o.storage_class; // workaround for syntaxCopy because base method only assigns storage_class if the arg is null (BUG?)
 }
@@ -39,25 +42,27 @@ FuncDeclaration::FuncDeclaration(Loc loc, Identifier *id, StorageClass storage_c
 }
 
 FuncDeclaration::FuncDeclaration(const FuncDeclaration& o)
-    : FuncDeclaration(o.loc, o.ident, o.storage_class, o.type, o.FD)
+    : FuncDeclaration(o.loc, o.ident, o.storage_class,
+                      o.type ? o.type->syntaxCopy() : nullptr, o.FD)
 {
 }
 
-FuncDeclaration *FuncDeclaration::overloadCppMatch(const clang::FunctionDecl* FD)
+::FuncDeclaration *FuncDeclaration::overloadCppMatch(::FuncDeclaration *fd,
+                                                        const clang::FunctionDecl* FD)
 {
     struct FDEquals
     {
         const clang::FunctionDecl* FD;            // type to match
-        FuncDeclaration *f; // return value
+        ::FuncDeclaration *f; // return value
 
         static int fp(void *param, Dsymbol *s)
         {
             if (!s->isFuncDeclaration() || !isCPP(s))
                 return 0;
-            FuncDeclaration *f = static_cast<FuncDeclaration*>(s);
+            auto f = static_cast<::FuncDeclaration*>(s);
             FDEquals *p = (FDEquals *)param;
 
-            if (p->FD == f->FD)
+            if (p->FD == getFD(f))
             {
                 p->f = f;
                 return 1;
@@ -69,7 +74,7 @@ FuncDeclaration *FuncDeclaration::overloadCppMatch(const clang::FunctionDecl* FD
     FDEquals p;
     p.FD = FD;
     p.f = nullptr;
-    overloadApply(this, &p, &FDEquals::fp);
+    overloadApply(fd, &p, &FDEquals::fp);
     return p.f;
 }
 
@@ -81,7 +86,8 @@ CtorDeclaration::CtorDeclaration(Loc loc, StorageClass storage_class,
 }
 
 CtorDeclaration::CtorDeclaration(const CtorDeclaration& o)
-    : CtorDeclaration(o.loc, o.storage_class, o.type, o.CCD)
+    : CtorDeclaration(o.loc, o.storage_class,
+                      o.type ? o.type->syntaxCopy() : nullptr, o.CCD)
 {
 }
 
@@ -105,7 +111,8 @@ EnumDeclaration::EnumDeclaration(Loc loc, Identifier* id, Type* memtype,
 }
 
 EnumDeclaration::EnumDeclaration(const EnumDeclaration &o)
-    : EnumDeclaration(o.loc, o.ident, o.memtype, o.ED)
+    : EnumDeclaration(o.loc, o.ident,
+                      o.memtype ? o.memtype->syntaxCopy() : nullptr, o.ED)
 {
 }
 
@@ -167,13 +174,13 @@ void OverloadAliasDeclaration::semantic(Scope *sc)
             struct TypeFunctionEquals
             {
                 TypeFunction *tf;            // type to match
-                FuncDeclaration *f; // return value
+                ::FuncDeclaration *f; // return value
 
                 static int fp(void *param, Dsymbol *s)
                 {
                     if (!s->isFuncDeclaration())
                         return 0;
-                    FuncDeclaration *f = static_cast<FuncDeclaration*>(s);
+                    auto f = static_cast<::FuncDeclaration*>(s);
                     TypeFunctionEquals *p = (TypeFunctionEquals *)param;
 
                     if (p->tf->deco == f->type->deco)
@@ -270,7 +277,7 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, bool isCall)
         if (!isMapped(D))
             return true;
         if (FD->getBuiltinID() ||
-                ((FD->isOverloadedOperator() || isa<clang::CXXDestructorDecl>(D)) && FD->isImplicit()))
+                (FD->isOverloadedOperator() && FD->isImplicit()))
             return true;
         if (FD->isExternC())
             return true; // FIXME: Clang 3.6 doesn't always map decls to the right source file,
