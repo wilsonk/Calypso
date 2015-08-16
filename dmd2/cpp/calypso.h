@@ -45,10 +45,16 @@ using reclang::ModuleMap;
 
 namespace clangCG = clang::CodeGen;
 
+struct SpecValue
+{
+    const char *op = nullptr; // for overloaded operators
+    Type *t = nullptr; // for conversion operators
+};
+
 Identifier *fromIdentifier(const clang::IdentifierInfo *II);
-Identifier *fromDeclarationName(const clang::DeclarationName N, const char **op = nullptr);
-Identifier *getIdentifier(const clang::NamedDecl *D, const char **op = nullptr);
-Identifier *getIdentifierOrNull(const clang::NamedDecl *D, const char **op = nullptr);
+Identifier *fromDeclarationName(const clang::DeclarationName N, SpecValue *spec = nullptr);
+Identifier *getIdentifier(const clang::NamedDecl *D, SpecValue *spec = nullptr);
+Identifier *getIdentifierOrNull(const clang::NamedDecl *D, SpecValue *spec = nullptr);
 
 Identifier *getExtendedIdentifier(const clang::NamedDecl *D); // will return the name of the non-templated method for operators, same than getIdentifier() for other Decls
 RootObject *getIdentOrTempinst(Loc loc, const clang::DeclarationName N);

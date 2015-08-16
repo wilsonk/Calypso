@@ -197,7 +197,7 @@ static Identifier *getOperatorIdentifier(const clang::FunctionDecl *FD,
 }
 
 Identifier *fromDeclarationName(const clang::DeclarationName N,
-                                    const char **op)
+                                    SpecValue *spec)
 {
     switch (N.getNameKind())
     {
@@ -209,8 +209,8 @@ Identifier *fromDeclarationName(const clang::DeclarationName N,
             return Id::dtor; // NOTE: Id::dtor is the user-provided destructor code, "aggrDtor" the "true" destructor
         case clang::DeclarationName::CXXOperatorName:
         {
-            assert(op && "Operator name and op isn't set");
-            return getOperatorIdentifier(nullptr, *op,
+            assert(spec && "Operator name and spec isn't set");
+            return getOperatorIdentifier(nullptr, spec->op,
                     N.getCXXOverloadedOperator());
         }
         default:
@@ -221,7 +221,7 @@ Identifier *fromDeclarationName(const clang::DeclarationName N,
     llvm_unreachable("Unhandled DeclarationName");
 }
 
-Identifier *getIdentifierOrNull(const clang::NamedDecl *D, const char **op)
+Identifier *getIdentifierOrNull(const clang::NamedDecl *D, SpecValue *spec)
 {
     if (auto FTD = dyn_cast<clang::FunctionTemplateDecl>(D))
         D = FTD->getTemplatedDecl(); // same ident, can dyn_cast
@@ -233,8 +233,8 @@ Identifier *getIdentifierOrNull(const clang::NamedDecl *D, const char **op)
     else if (auto FD = dyn_cast<clang::FunctionDecl>(D))
         if (FD->isOverloadedOperator())
         {
-            assert(op);
-            return getOperatorIdentifier(FD, *op);
+            assert(spec);
+            return getOperatorIdentifier(FD, spec->op);
         }
 
     clang::IdentifierInfo *II = nullptr;
@@ -270,9 +270,9 @@ Identifier *getIdentifierOrNull(const clang::NamedDecl *D, const char **op)
     return ident;
 }
 
-Identifier *getIdentifier(const clang::NamedDecl *D, const char **op)
+Identifier *getIdentifier(const clang::NamedDecl *D, SpecValue *spec)
 {
-    auto result = getIdentifierOrNull(D, op);
+    auto result = getIdentifierOrNull(D, spec);
     assert(result);
 
     return result;
@@ -280,11 +280,11 @@ Identifier *getIdentifier(const clang::NamedDecl *D, const char **op)
 
 Identifier *getExtendedIdentifier(const clang::NamedDecl *D)
 {
-    const char *op = nullptr;
-    auto ident = getIdentifier(D, &op);
+    SpecValue spec;
+    auto ident = getIdentifier(D, &spec);
 
     auto FD = dyn_cast<clang::FunctionDecl>(D);
-    if (op && FD)
+    if (spec.op && FD)
         ident = fullOperatorMapIdent(ident, FD);
 
     return ident;
@@ -292,16 +292,16 @@ Identifier *getExtendedIdentifier(const clang::NamedDecl *D)
 
 RootObject *getIdentOrTempinst(Loc loc, const clang::DeclarationName N)
 {
-    const char *op = nullptr; // overloaded operator
-    auto ident = fromDeclarationName(N, &op);
+    SpecValue spec;
+    auto ident = fromDeclarationName(N, &spec);
     if (!ident)
         return nullptr;
 
-    if (op)
+    if (spec.op)
     {
         auto tempinst = new cpp::TemplateInstance(loc, ident);
         tempinst->tiargs = new Objects;
-        tempinst->tiargs->push(new StringExp(loc, const_cast<char*>(op)));
+        tempinst->tiargs->push(new StringExp(loc, const_cast<char*>(spec.op)));
         return tempinst;
     }
     else
