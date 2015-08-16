@@ -256,7 +256,7 @@ void ClassDeclaration::interfaceSemantic(Scope *sc)
     TypeMapper tmap;
     tmap.addImplicitDecls = false;
 
-    auto ident = getExtendedIdentifier(MD);
+    auto ident = getExtendedIdentifier(MD, tmap);
 
     auto s = ScopeDsymbol::search(loc, ident);
     if (s && s->isFuncDeclaration())

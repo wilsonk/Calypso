@@ -490,14 +490,23 @@ Dsymbols *DeclMapper::VisitTypedefNameDecl(const clang::TypedefNameDecl* D)
 
 TemplateParameters *initTempParams(Loc loc, SpecValue &spec)
 {
-    auto dstringty = new TypeIdentifier(loc, Id::object);
-    dstringty->addIdent(Lexer::idPool("string"));
-
     auto tpl = new TemplateParameters;
-    auto tp_specvalue = new StringExp(loc, const_cast<char*>(spec.op));
-    tpl->push(new TemplateValueParameter(loc, Lexer::idPool("op"),
-                                        dstringty, tp_specvalue, nullptr));
+    TemplateParameter *p = nullptr;
 
+    if (spec.op)
+    {
+        auto dstringty = new TypeIdentifier(loc, Id::object);
+        dstringty->addIdent(Lexer::idPool("string"));
+
+        auto tp_specvalue = new StringExp(loc, const_cast<char*>(spec.op));
+        p = new TemplateValueParameter(loc, Lexer::idPool("op"),
+                                            dstringty, tp_specvalue, nullptr);
+    }
+    else if (spec.t)
+        p = new TemplateTypeParameter(loc, Lexer::idPool("type"), spec.t, nullptr);
+
+    if (p)
+        tpl->push(p);
     return tpl;
 }
 
@@ -623,9 +632,6 @@ bool isMapped(const clang::Decl *D) // TODO
         if (D->isInvalidDecl())
             return false;
 
-        if (isa<clang::CXXConversionDecl>(D))
-            return false; // TODO
-
         if (isa<clang::FunctionNoProtoType>(FD->getType()))
             return false; // functions without prototypes are afaik builtins, and since D needs a prototype they can't be mapped
 
@@ -717,9 +723,9 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     {
         fd = new DtorDeclaration(loc, stc, Id::dtor, DD);
     }
-    else if (D->isOverloadedOperator())
+    else if (D->isOverloadedOperator() || isa<clang::CXXConversionDecl>(D))
     {
-        SpecValue spec;
+        SpecValue spec(*this);
         auto opIdent = getIdentifierOrNull(D, &spec); // will return nullptr if the operator isn't supported by D
                             // TODO map the unsupported operators anyway
 
@@ -729,13 +735,13 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
         // NOTE: C++ overloaded operators might be virtual, unlike D which are always final (being templates)
         //   Mapping the C++ operator to opBinary()() directly would make D lose info and overriding the C++ method impossible
 
-        bool wrapInTemp = (spec.op != nullptr) &&
+        bool wrapInTemp = spec &&
                     !D->getDescribedFunctionTemplate() &&  // if it's a templated overloaded operator then the template declaration is already taken care of
                     !(D->isFunctionTemplateSpecialization() && D->isTemplateInstantiation());  // if we're instantiating a templated overloaded operator, we're after the function
 
         Identifier *fullIdent;
         if (wrapInTemp)
-            fullIdent = getExtendedIdentifier(D);
+            fullIdent = getExtendedIdentifier(D, *this);
         else
             fullIdent = opIdent;
 
@@ -822,11 +828,7 @@ Dsymbols *DeclMapper::VisitRedeclarableTemplateDecl(const clang::RedeclarableTem
          && !isa<clang::FunctionTemplateDecl>(D))
         return nullptr; // temporary
 
-    if (auto FTD = dyn_cast<clang::FunctionTemplateDecl>(D))
-        if (isa<clang::CXXConversionDecl>(FTD->getTemplatedDecl()))
-            return nullptr;
-
-    SpecValue spec;
+    SpecValue spec(*this);
 
     auto loc = fromLoc(D->getLocation());
     auto id = getIdentifierOrNull(D, &spec);
@@ -840,7 +842,7 @@ Dsymbols *DeclMapper::VisitRedeclarableTemplateDecl(const clang::RedeclarableTem
     else if (auto FTD = dyn_cast<clang::FunctionTemplateDecl>(D))
         Def = getDefinition(FTD);
 
-    auto tpl = !spec.op ? new TemplateParameters : initTempParams(loc, spec);
+    auto tpl = initTempParams(loc, spec);
     auto TPL = Def->getTemplateParameters();
 
     TempParamScope.push_back(TPL);

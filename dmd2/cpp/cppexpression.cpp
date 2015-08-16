@@ -366,7 +366,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
     }
     else if (auto CDSM = dyn_cast<clang::CXXDependentScopeMemberExpr>(E))
     {
-        auto member = getIdentOrTempinst(loc, CDSM->getMember());
+        auto member = getIdentOrTempinst(loc, CDSM->getMember(), tymap);
         auto e1 = fromExpression(CDSM->getBase());
 
         if (!e1 || !member)

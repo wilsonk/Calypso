@@ -786,17 +786,17 @@ RootObject *TypeQualifiedBuilder::getIdentOrTempinst(const clang::Decl *D)
     if (!Named)
         return nullptr;
 
-    SpecValue spec; // overloaded operator
+    SpecValue spec(tm); // overloaded operator
     auto ident = getIdentifierOrNull(Named, &spec);
     if (!ident)
         return nullptr;
 
-    if (spec.op && !options.overOpSkipSpecArg)
+    if (spec && !options.overOpSkipSpecArg)
     {
         auto loc = fromLoc(D->getLocation());
         auto tempinst = new cpp::TemplateInstance(loc, ident);
         tempinst->tiargs = new Objects;
-        tempinst->tiargs->push(new StringExp(loc, const_cast<char*>(spec.op)));
+        tempinst->tiargs->push(spec.toTemplateArg(Loc()));
         return tempinst;
     }
     else

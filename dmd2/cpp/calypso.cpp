@@ -40,6 +40,15 @@ BuiltinTypes builtinTypes;
 
 static inline ASTUnit* ast() { return calypso.pch.AST; }
 
+RootObject *SpecValue::toTemplateArg(Loc loc)
+{
+    assert(op || t);
+    if (op)
+        return new StringExp(loc, const_cast<char*>(op));
+    else
+        return t;
+}
+
 Identifier *fromIdentifier(const clang::IdentifierInfo *II)
 {
     return Lexer::idPool(II->getNameStart());
@@ -201,8 +210,11 @@ static Identifier *fullConversionMapIdent(Identifier *baseIdent,
 {
     auto& Context = calypso.getASTContext();
 
-    auto T = D->getConversionType();
-    auto t = TypeMapper().fromType(T);
+    TypeMapper mapper;
+    mapper.addImplicitDecls = false;
+
+    auto T = D->getConversionType().getDesugaredType(Context);
+    auto t = mapper.fromType(T);
 
     std::string fullName(baseIdent->string, baseIdent->len);
     fullName += "_";
@@ -226,12 +238,12 @@ static Identifier *fullConversionMapIdent(Identifier *baseIdent,
 }
 
 static Identifier *getConversionIdentifier(const clang::CXXConversionDecl *D,
-                Type *&t, clang::QualType T = clang::QualType())
+                TypeMapper &mapper, Type *&t, clang::QualType T = clang::QualType())
 {
     if (D)
         T = D->getConversionType();
 
-    t = TypeMapper().fromType(T);
+    t = mapper.fromType(T);
     return Id::cast;
 }
 
@@ -255,8 +267,8 @@ Identifier *fromDeclarationName(const clang::DeclarationName N,
         case clang::DeclarationName::CXXConversionFunctionName:
         {
             assert(spec && "Conversion name and spec isn't set");
-            return getConversionIdentifier(nullptr, spec->t,
-                    N.getCXXNameType());
+            return getConversionIdentifier(nullptr, spec->mapper,
+                    spec->t, N.getCXXNameType());
         }
         default:
 //             break;
@@ -278,7 +290,7 @@ Identifier *getIdentifierOrNull(const clang::NamedDecl *D, SpecValue *spec)
     else if (auto Conv = dyn_cast<clang::CXXConversionDecl>(D))
     {
         assert(spec);
-        return getConversionIdentifier(Conv, spec->t);
+        return getConversionIdentifier(Conv, spec->mapper, spec->t);
     }
     else if (auto FD = dyn_cast<clang::FunctionDecl>(D))
         if (FD->isOverloadedOperator())
@@ -328,9 +340,10 @@ Identifier *getIdentifier(const clang::NamedDecl *D, SpecValue *spec)
     return result;
 }
 
-Identifier *getExtendedIdentifier(const clang::NamedDecl *D)
+Identifier *getExtendedIdentifier(const clang::NamedDecl *D,
+                                  TypeMapper &mapper)
 {
-    SpecValue spec;
+    SpecValue spec(mapper);
     auto ident = getIdentifier(D, &spec);
 
     auto FD = dyn_cast<clang::FunctionDecl>(D);
@@ -343,24 +356,19 @@ Identifier *getExtendedIdentifier(const clang::NamedDecl *D)
     return ident;
 }
 
-RootObject *getIdentOrTempinst(Loc loc, const clang::DeclarationName N)
+RootObject *getIdentOrTempinst(Loc loc, const clang::DeclarationName N,
+                               TypeMapper &mapper)
 {
-    SpecValue spec;
+    SpecValue spec(mapper);
     auto ident = fromDeclarationName(N, &spec);
     if (!ident)
         return nullptr;
 
-    if (spec.op || spec.t)
+    if (spec)
     {
         auto tempinst = new cpp::TemplateInstance(loc, ident);
         tempinst->tiargs = new Objects;
-
-        RootObject *arg;
-        if (spec.op)
-            arg = new StringExp(loc, const_cast<char*>(spec.op));
-        else
-            arg = spec.t;
-        tempinst->tiargs->push(arg);
+        tempinst->tiargs->push(spec.toTemplateArg(loc));
         return tempinst;
     }
     else
