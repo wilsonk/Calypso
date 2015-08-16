@@ -277,7 +277,7 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, bool isCall)
         if (!isMapped(D))
             return true;
         if (FD->getBuiltinID() ||
-                ((FD->isOverloadedOperator() || isa<clang::CXXDestructorDecl>(D)) && FD->isImplicit()))
+                (FD->isOverloadedOperator() && FD->isImplicit()))
             return true;
         if (FD->isExternC())
             return true; // FIXME: Clang 3.6 doesn't always map decls to the right source file,
