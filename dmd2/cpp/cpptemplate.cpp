@@ -132,13 +132,13 @@ static void fillTemplateArgumentListInfo(Loc loc, Scope *sc, clang::TemplateArgu
 {
     auto& Context = calypso.pch.AST->getASTContext();
 
-    const char *op = nullptr;
-    getIdentifierOrNull(Temp, &op);
+    SpecValue spec(tymap);
+    getIdentifierOrNull(Temp, &spec);
 
     // See translateTemplateArgument() in SemaTemplate.cpp
     for (unsigned i = 0; i < tiargs->dim; i++)
     {
-        if (i == 0 && op)
+        if (i == 0 && spec)
             continue; // skip the first parameter of opUnary/opBinary/opOpAssign/...
 
         auto o = (*tiargs)[i];
@@ -266,13 +266,10 @@ MATCH TemplateDeclaration::matchWithInstance(Scope *sc, ::TemplateInstance *ti,
         auto tdtypes = TypeMapper::FromType(tymap).fromTemplateArguments(InstArgs.begin(), InstArgs.end(),
                         Temp->getTemplateParameters());
 
-        const char *op = nullptr;
-        getIdentifier(TempOrSpec, &op);
-        if (op)
-        {
-            auto se = new StringExp(loc, const_cast<char*>(op));
-            tdtypes->shift(se->semantic(sc));
-        }
+        SpecValue spec(tymap);
+        getIdentifier(TempOrSpec, &spec);
+        if (spec)
+            tdtypes->shift(spec.toTemplateArg(loc));
 
         assert(tdtypes->dim == dedtypes->dim);
         for (unsigned i = 0; i < tdtypes->dim; i++)
@@ -396,13 +393,13 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
     {
         clang::TemplateArgumentListInfo Args;
 
-        const char *op = nullptr;
-        getIdentifierOrNull(Temp, &op);
+        SpecValue spec(tymap);
+        getIdentifierOrNull(Temp, &spec);
 
         // See translateTemplateArgument() in SemaTemplate.cpp
         for (unsigned i = 0; i < ti->tiargs->dim; i++)
         {
-            if (i == 0 && op)
+            if (i == 0 && spec)
                 continue; // skip the first parameter of opUnary/opBinary/opOpAssign/...
 
             auto o = (*ti->tiargs)[i];

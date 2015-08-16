@@ -40,6 +40,15 @@ BuiltinTypes builtinTypes;
 
 static inline ASTUnit* ast() { return calypso.pch.AST; }
 
+RootObject *SpecValue::toTemplateArg(Loc loc)
+{
+    assert(op || t);
+    if (op)
+        return new StringExp(loc, const_cast<char*>(op));
+    else
+        return t;
+}
+
 Identifier *fromIdentifier(const clang::IdentifierInfo *II)
 {
     return Lexer::idPool(II->getNameStart());
@@ -196,8 +205,50 @@ static Identifier *getOperatorIdentifier(const clang::FunctionDecl *FD,
     return opIdent;
 }
 
+static Identifier *fullConversionMapIdent(Identifier *baseIdent,
+                                       const clang::CXXConversionDecl *D)
+{
+    auto& Context = calypso.getASTContext();
+
+    TypeMapper mapper;
+    mapper.addImplicitDecls = false;
+
+    auto T = D->getConversionType().getDesugaredType(Context);
+    auto t = mapper.fromType(T);
+
+    std::string fullName(baseIdent->string, baseIdent->len);
+    fullName += "_";
+    if (t->isTypeBasic()) // not too complex, use a readable suffix
+    {
+        auto TypeQuals = T.getCVRQualifiers();
+        if (TypeQuals & clang::Qualifiers::Const) fullName += "const_";
+        if (TypeQuals & clang::Qualifiers::Volatile) fullName += "volatile_";
+        if (TypeQuals & clang::Qualifiers::Restrict) fullName += "restrict_";
+        fullName += t->kind();
+    }
+    else // use the mangled name, rare occurrence and not a big deal if unreadable (only ever matters for virtual conversion operators)
+    {
+        auto MangleCtx = Context.createMangleContext();
+        llvm::raw_string_ostream OS(fullName);
+        MangleCtx->mangleTypeName(T, OS);
+        OS.flush();
+    }
+
+    return Lexer::idPool(fullName.c_str());
+}
+
+static Identifier *getConversionIdentifier(const clang::CXXConversionDecl *D,
+                TypeMapper &mapper, Type *&t, clang::QualType T = clang::QualType())
+{
+    if (D)
+        T = D->getConversionType();
+
+    t = mapper.fromType(T);
+    return Id::cast;
+}
+
 Identifier *fromDeclarationName(const clang::DeclarationName N,
-                                    const char **op)
+                                    SpecValue *spec)
 {
     switch (N.getNameKind())
     {
@@ -209,9 +260,15 @@ Identifier *fromDeclarationName(const clang::DeclarationName N,
             return Id::dtor; // NOTE: Id::dtor is the user-provided destructor code, "aggrDtor" the "true" destructor
         case clang::DeclarationName::CXXOperatorName:
         {
-            assert(op && "Operator name and op isn't set");
-            return getOperatorIdentifier(nullptr, *op,
+            assert(spec && "Operator name and spec isn't set");
+            return getOperatorIdentifier(nullptr, spec->op,
                     N.getCXXOverloadedOperator());
+        }
+        case clang::DeclarationName::CXXConversionFunctionName:
+        {
+            assert(spec && "Conversion name and spec isn't set");
+            return getConversionIdentifier(nullptr, spec->mapper,
+                    spec->t, N.getCXXNameType());
         }
         default:
 //             break;
@@ -221,7 +278,7 @@ Identifier *fromDeclarationName(const clang::DeclarationName N,
     llvm_unreachable("Unhandled DeclarationName");
 }
 
-Identifier *getIdentifierOrNull(const clang::NamedDecl *D, const char **op)
+Identifier *getIdentifierOrNull(const clang::NamedDecl *D, SpecValue *spec)
 {
     if (auto FTD = dyn_cast<clang::FunctionTemplateDecl>(D))
         D = FTD->getTemplatedDecl(); // same ident, can dyn_cast
@@ -230,11 +287,16 @@ Identifier *getIdentifierOrNull(const clang::NamedDecl *D, const char **op)
         return Id::ctor;
     else if (isa<clang::CXXDestructorDecl>(D))
         return Id::dtor;
+    else if (auto Conv = dyn_cast<clang::CXXConversionDecl>(D))
+    {
+        assert(spec);
+        return getConversionIdentifier(Conv, spec->mapper, spec->t);
+    }
     else if (auto FD = dyn_cast<clang::FunctionDecl>(D))
         if (FD->isOverloadedOperator())
         {
-            assert(op);
-            return getOperatorIdentifier(FD, *op);
+            assert(spec);
+            return getOperatorIdentifier(FD, spec->op);
         }
 
     clang::IdentifierInfo *II = nullptr;
@@ -270,38 +332,43 @@ Identifier *getIdentifierOrNull(const clang::NamedDecl *D, const char **op)
     return ident;
 }
 
-Identifier *getIdentifier(const clang::NamedDecl *D, const char **op)
+Identifier *getIdentifier(const clang::NamedDecl *D, SpecValue *spec)
 {
-    auto result = getIdentifierOrNull(D, op);
+    auto result = getIdentifierOrNull(D, spec);
     assert(result);
 
     return result;
 }
 
-Identifier *getExtendedIdentifier(const clang::NamedDecl *D)
+Identifier *getExtendedIdentifier(const clang::NamedDecl *D,
+                                  TypeMapper &mapper)
 {
-    const char *op = nullptr;
-    auto ident = getIdentifier(D, &op);
+    SpecValue spec(mapper);
+    auto ident = getIdentifier(D, &spec);
 
     auto FD = dyn_cast<clang::FunctionDecl>(D);
-    if (op && FD)
+    if (spec.op && FD)
         ident = fullOperatorMapIdent(ident, FD);
+    else if (spec.t)
+        ident = fullConversionMapIdent(ident,
+                    cast<clang::CXXConversionDecl>(D));
 
     return ident;
 }
 
-RootObject *getIdentOrTempinst(Loc loc, const clang::DeclarationName N)
+RootObject *getIdentOrTempinst(Loc loc, const clang::DeclarationName N,
+                               TypeMapper &mapper)
 {
-    const char *op = nullptr; // overloaded operator
-    auto ident = fromDeclarationName(N, &op);
+    SpecValue spec(mapper);
+    auto ident = fromDeclarationName(N, &spec);
     if (!ident)
         return nullptr;
 
-    if (op)
+    if (spec)
     {
         auto tempinst = new cpp::TemplateInstance(loc, ident);
         tempinst->tiargs = new Objects;
-        tempinst->tiargs->push(new StringExp(loc, const_cast<char*>(op)));
+        tempinst->tiargs->push(spec.toTemplateArg(loc));
         return tempinst;
     }
     else

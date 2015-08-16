@@ -37,6 +37,7 @@ namespace cpp
 class ClassDeclaration;
 class BuiltinTypes;
 class TemplateInstance;
+class TypeMapper;
 class DeclReferencer;
 
 namespace reclang { class ASTUnit; class ModuleMap; }
@@ -45,13 +46,26 @@ using reclang::ModuleMap;
 
 namespace clangCG = clang::CodeGen;
 
-Identifier *fromIdentifier(const clang::IdentifierInfo *II);
-Identifier *fromDeclarationName(const clang::DeclarationName N, const char **op = nullptr);
-Identifier *getIdentifier(const clang::NamedDecl *D, const char **op = nullptr);
-Identifier *getIdentifierOrNull(const clang::NamedDecl *D, const char **op = nullptr);
+struct SpecValue
+{
+    const char *op = nullptr; // for overloaded operators
+    Type *t = nullptr; // for conversion operators
 
-Identifier *getExtendedIdentifier(const clang::NamedDecl *D); // will return the name of the non-templated method for operators, same than getIdentifier() for other Decls
-RootObject *getIdentOrTempinst(Loc loc, const clang::DeclarationName N);
+    TypeMapper &mapper;
+    SpecValue(TypeMapper &mapper) : mapper(mapper) {}
+
+    operator bool() { return op || t; }
+    RootObject *toTemplateArg(Loc loc);
+};
+
+Identifier *fromIdentifier(const clang::IdentifierInfo *II);
+Identifier *fromDeclarationName(const clang::DeclarationName N, SpecValue *spec = nullptr);
+Identifier *getIdentifier(const clang::NamedDecl *D, SpecValue *spec = nullptr);
+Identifier *getIdentifierOrNull(const clang::NamedDecl *D, SpecValue *spec = nullptr);
+
+Identifier *getExtendedIdentifier(const clang::NamedDecl *D, TypeMapper &mapper); // will return the name of the non-templated method for operators, same than getIdentifier() for other Decls
+RootObject *getIdentOrTempinst(Loc loc, const clang::DeclarationName N,
+                               TypeMapper &mapper);
 
 const clang::TagDecl *isOverloadedOperatorWithTagOperand(const clang::Decl *D,
                                                            const clang::NamedDecl *SpecificTag = nullptr);

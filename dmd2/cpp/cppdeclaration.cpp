@@ -371,10 +371,10 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, bool isCall)
         auto td = p.s->isTemplateDeclaration();
         auto tiargs = mapper.fromTemplateArguments(Func->getTemplateSpecializationArgs());
         assert(tiargs);
-        const char *op = nullptr;
-        getIdentifier(Func, &op);
-        if (op)
-            tiargs->shift(new StringExp(loc, const_cast<char*>(op)));
+        SpecValue spec(mapper);
+        getIdentifier(Func, &spec);
+        if (spec)
+            tiargs->shift(spec.toTemplateArg(loc));
         auto tempinst = new cpp::TemplateInstance(loc, td, tiargs);
         tempinst->Inst = const_cast<clang::FunctionDecl*>(Func);
         tempinst->semantictiargsdone = false; // NOTE: the "havetempdecl" ctor of Templateinstance set semantictiargsdone to true...
