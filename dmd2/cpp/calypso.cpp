@@ -196,6 +196,45 @@ static Identifier *getOperatorIdentifier(const clang::FunctionDecl *FD,
     return opIdent;
 }
 
+static Identifier *fullConversionMapIdent(Identifier *baseIdent,
+                                       const clang::CXXConversionDecl *D)
+{
+    auto& Context = calypso.getASTContext();
+
+    auto T = D->getConversionType();
+    auto t = TypeMapper().fromType(T);
+
+    std::string fullName(baseIdent->string, baseIdent->len);
+    fullName += "_";
+    if (t->isTypeBasic()) // not too complex, use a readable suffix
+    {
+        auto TypeQuals = T.getCVRQualifiers();
+        if (TypeQuals & clang::Qualifiers::Const) fullName += "const_";
+        if (TypeQuals & clang::Qualifiers::Volatile) fullName += "volatile_";
+        if (TypeQuals & clang::Qualifiers::Restrict) fullName += "restrict_";
+        fullName += t->kind();
+    }
+    else // use the mangled name, rare occurrence and not a big deal if unreadable (only ever matters for virtual conversion operators)
+    {
+        auto MangleCtx = Context.createMangleContext();
+        llvm::raw_string_ostream OS(fullName);
+        MangleCtx->mangleTypeName(T, OS);
+        OS.flush();
+    }
+
+    return Lexer::idPool(fullName.c_str());
+}
+
+static Identifier *getConversionIdentifier(const clang::CXXConversionDecl *D,
+                Type *&t, clang::QualType T = clang::QualType())
+{
+    if (D)
+        T = D->getConversionType();
+
+    t = TypeMapper().fromType(T);
+    return Id::cast;
+}
+
 Identifier *fromDeclarationName(const clang::DeclarationName N,
                                     SpecValue *spec)
 {
@@ -212,6 +251,12 @@ Identifier *fromDeclarationName(const clang::DeclarationName N,
             assert(spec && "Operator name and spec isn't set");
             return getOperatorIdentifier(nullptr, spec->op,
                     N.getCXXOverloadedOperator());
+        }
+        case clang::DeclarationName::CXXConversionFunctionName:
+        {
+            assert(spec && "Conversion name and spec isn't set");
+            return getConversionIdentifier(nullptr, spec->t,
+                    N.getCXXNameType());
         }
         default:
 //             break;
@@ -230,6 +275,11 @@ Identifier *getIdentifierOrNull(const clang::NamedDecl *D, SpecValue *spec)
         return Id::ctor;
     else if (isa<clang::CXXDestructorDecl>(D))
         return Id::dtor;
+    else if (auto Conv = dyn_cast<clang::CXXConversionDecl>(D))
+    {
+        assert(spec);
+        return getConversionIdentifier(Conv, spec->t);
+    }
     else if (auto FD = dyn_cast<clang::FunctionDecl>(D))
         if (FD->isOverloadedOperator())
         {
@@ -286,6 +336,9 @@ Identifier *getExtendedIdentifier(const clang::NamedDecl *D)
     auto FD = dyn_cast<clang::FunctionDecl>(D);
     if (spec.op && FD)
         ident = fullOperatorMapIdent(ident, FD);
+    else if (spec.t)
+        ident = fullConversionMapIdent(ident,
+                    cast<clang::CXXConversionDecl>(D));
 
     return ident;
 }
@@ -297,11 +350,17 @@ RootObject *getIdentOrTempinst(Loc loc, const clang::DeclarationName N)
     if (!ident)
         return nullptr;
 
-    if (spec.op)
+    if (spec.op || spec.t)
     {
         auto tempinst = new cpp::TemplateInstance(loc, ident);
         tempinst->tiargs = new Objects;
-        tempinst->tiargs->push(new StringExp(loc, const_cast<char*>(spec.op)));
+
+        RootObject *arg;
+        if (spec.op)
+            arg = new StringExp(loc, const_cast<char*>(spec.op));
+        else
+            arg = spec.t;
+        tempinst->tiargs->push(arg);
         return tempinst;
     }
     else
