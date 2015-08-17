@@ -272,6 +272,10 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, bool isCall)
             if (RD->isLocalClass())
                 return true; // are local records emitted when emitting a function? if no this is a FIXME
 
+    if (auto VD = dyn_cast<clang::VarDecl>(D))
+        if (!VD->isFileVarDecl())
+            return true;
+
     if (auto FD = dyn_cast<clang::FunctionDecl>(D))
     {
         if (!isMapped(D))
