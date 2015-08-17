@@ -404,14 +404,6 @@ bool DeclReferencer::Reference(const clang::Type *T)
     return true;
 }
 
-bool DeclReferencer::Reference(const clang::Expr *E)
-{
-    if (auto DR = dyn_cast<clang::DeclRefExpr>(E))
-        Reference(DR->getDecl());
-
-    return true;
-}
-
 void DeclReferencer::ReferenceTemplateArguments(const clang::NamedDecl *D)
 {
     const clang::TemplateArgumentList *InstArgs = nullptr;
@@ -427,7 +419,7 @@ void DeclReferencer::ReferenceTemplateArguments(const clang::NamedDecl *D)
         switch (Arg.getKind())
         {
             case clang::TemplateArgument::Expression:
-                Reference(Arg.getAsExpr());
+                TraverseStmt(Arg.getAsExpr());
                 break;
             case clang::TemplateArgument::Type:
                 Reference(Arg.getAsType().getTypePtr());
