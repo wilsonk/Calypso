@@ -136,10 +136,14 @@ static Identifier *getOperatorIdentifier(const clang::FunctionDecl *FD,
                 case clang::OO_Tilde:
                 case clang::OO_PlusPlus:
                 case clang::OO_MinusMinus:
+                    // operators without D equivalent need to be mapped for linking
+                case clang::OO_Exclaim:
+                case clang::OO_Arrow:
+                case clang::OO_ArrowStar:
                     opIdent = Id::opUnary;
                     break;
                 default:
-    //                     ::warning(loc, "Ignoring C++ unary operator%s", clang::getOperatorSpelling(OO));
+                    ::warning(Loc(), "Ignoring C++ unary operator %s", clang::getOperatorSpelling(OO));
                     return nullptr;
             }
         }
@@ -158,6 +162,10 @@ static Identifier *getOperatorIdentifier(const clang::FunctionDecl *FD,
                 case clang::OO_Tilde:
                 case clang::OO_LessLess:
                 case clang::OO_GreaterGreater:
+                    // operators without D equivalent need to be mapped for linking
+                case clang::OO_PlusPlus:
+                case clang::OO_MinusMinus:
+                case clang::OO_Comma:
                     opIdent = Id::opBinary;
                     break;
                 case clang::OO_EqualEqual:
@@ -193,12 +201,12 @@ static Identifier *getOperatorIdentifier(const clang::FunctionDecl *FD,
                     opIdent = Id::opOpAssign;
                     break;
                 default:
-    //                     ::warning(loc, "Ignoring C++ binary operator%s", clang::getOperatorSpelling(OO));
+                    ::warning(Loc(), "Ignoring C++ binary operator %s", clang::getOperatorSpelling(OO));
                     return nullptr;
             }
         }
         else
-            return nullptr; // operator new or delete
+            return nullptr; // operator new or delete (TODO linking)
     }
 
     op = wrapInTemp ? getDOperatorSpelling(OO) : nullptr;
