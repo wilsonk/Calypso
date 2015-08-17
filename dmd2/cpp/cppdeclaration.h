@@ -197,10 +197,12 @@ class DeclReferencer : public clang::RecursiveASTVisitor<DeclReferencer>
 
     llvm::DenseSet<const clang::Decl *> Referenced;
 
-    bool Reference(const clang::NamedDecl *D, bool isCall = false);
+    bool Reference(const clang::NamedDecl *D);
     bool Reference(const clang::Type *T);
     bool Reference(const clang::Expr *E);
     void ReferenceTemplateArguments(const clang::NamedDecl *D);
+
+    bool VisitDeclRef(const clang::NamedDecl *D);
 public:
     DeclReferencer()
     {
@@ -211,10 +213,11 @@ public:
 
     void Traverse(Loc loc, Scope *sc, clang::Stmt *S);
 
-    bool VisitCallExpr(const clang::CallExpr *E);
     bool VisitCXXConstructExpr(const clang::CXXConstructExpr *E);
     bool VisitCXXNewExpr(const clang::CXXNewExpr *E);
     bool VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E);
+    bool VisitDeclRefExpr(const clang::DeclRefExpr *E);
+    bool VisitMemberExpr(const clang::MemberExpr *E);
 };
 
 extern DeclReferencer declReferencer;
