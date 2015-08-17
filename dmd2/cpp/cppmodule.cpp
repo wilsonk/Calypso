@@ -260,8 +260,19 @@ Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
                 Var->getAnyInitializer())
         {
             // we avoid initializer expressions except for const/constexpr variables
-            auto e = expmap.fromExpression(Var->getAnyInitializer(),
+            auto Init = Var->getAnyInitializer();
+            clang::APValue Eval;
+            llvm::SmallVector<clang::PartialDiagnosticAt, 2> Diags;
+
+            Expression *e = nullptr;
+            if (!Init->isValueDependent() && Init->EvaluateAsInitializer(Eval, Context, Var, Diags))
+                e = expmap.fromAPValue(loc, Eval); // evaluating integer and boolean expressions is always preferable, because in some rare cases
+                    // DMD and Clang's intepretations differ, one important instance being -1u < 0u (true for DMD, false for Clang)
+
+            if (!e)
+                e = expmap.fromExpression(Var->getAnyInitializer(),
                                            clang::QualType(), true);
+
             if (e && e->op != TOKnull)
                 a->init = new ExpInitializer(loc, e);
         }
@@ -933,7 +944,7 @@ TemplateParameter *DeclMapper::VisitTemplateParameter(const clang::NamedDecl *Pa
                         tp_specvalue = expmap.fromExpression(SpecArg->getAsExpr());
                         break;
                     case clang::TemplateArgument::Integral:
-                        tp_specvalue = expmap.fromAPInt(SpecArg->getAsIntegral());
+                        tp_specvalue = expmap.fromAPInt(loc, SpecArg->getAsIntegral());
                         break;
                     case clang::TemplateArgument::NullPtr:
                         tp_specvalue = new NullExp(Loc()/*, fromType(SpecArg->getNullPtrType())*/);

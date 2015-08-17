@@ -478,7 +478,7 @@ RootObject* TypeMapper::FromType::fromTemplateArgument(const clang::TemplateArgu
             break;
         case clang::TemplateArgument::Integral:
         {
-            auto e = expmap.fromAPInt(Arg->getAsIntegral());
+            auto e = expmap.fromAPInt(Loc(), Arg->getAsIntegral());
 
             if (auto NTTP = llvm::dyn_cast_or_null<clang::NonTypeTemplateParmDecl>(Param))
                 e = expmap.fixIntegerExp(static_cast<IntegerExp*>(e), NTTP->getType());

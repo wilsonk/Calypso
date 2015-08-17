@@ -252,30 +252,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
     else if (auto FL = dyn_cast<clang::FloatingLiteral>(E))
     {
         auto APFVal = FL->getValue();
-
-        real_t val;
-        t = Type::tfloat32;
-
-        if (APFVal.isZero())
-            val = 0.0;
-        else if (&APFVal.getSemantics() == &llvm::APFloat::IEEEsingle)
-            val = APFVal.convertToFloat();
-        else if (&APFVal.getSemantics() == &llvm::APFloat::IEEEdouble)
-        {
-            val = APFVal.convertToDouble();
-            t = Type::tfloat64;
-        }
-        else
-        {
-            ::warning(loc, "Floating point semantics for non-zero APFloat handled by converting to string and strtold");
-
-            llvm::SmallString<16> Str;
-            APFVal.toString(Str, 0, llvm::APFloat::semanticsPrecision(APFVal.getSemantics()));
-            val = strtold(Str.c_str(), nullptr);
-            t = Type::tfloat80;
-        }
-
-        e = new RealExp(loc, val, t);
+        e = fromAPFloat(loc, APFVal, &t);
     }
     else if (auto SL = dyn_cast<clang::StringLiteral>(E))
     {
@@ -648,11 +625,54 @@ Type *getAPIntDType(const llvm::APInt &i)
         return needs64bits ? Type::tuns64 : Type::tuns32;
 }
 
-Expression* ExprMapper::fromAPInt(const APInt& Val)
+Expression *ExprMapper::fromAPValue(Loc loc, const clang::APValue &Val)
 {
-    return new IntegerExp(Loc(),
+    using clang::APValue;
+
+    switch (Val.getKind())
+    {
+        case APValue::Int:
+            return fromAPInt(loc, Val.getInt());
+        case APValue::Float:
+            return fromAPFloat(loc, Val.getFloat());
+        default:
+            return nullptr;
+    }
+}
+
+Expression* ExprMapper::fromAPInt(Loc loc, const APInt& Val)
+{
+    return new IntegerExp(loc,
             Val.isNegative() ? Val.getSExtValue() : Val.getZExtValue(),
             getAPIntDType(Val));
+}
+
+Expression* ExprMapper::fromAPFloat(Loc loc, const APFloat& Val, Type **pt)
+{
+    real_t val;
+    Type *t = Type::tfloat32;
+
+    if (Val.isZero())
+        val = 0.0;
+    else if (&Val.getSemantics() == &llvm::APFloat::IEEEsingle)
+        val = Val.convertToFloat();
+    else if (&Val.getSemantics() == &llvm::APFloat::IEEEdouble)
+    {
+        val = Val.convertToDouble();
+        t = Type::tfloat64;
+    }
+    else
+    {
+        ::warning(loc, "Floating point semantics for non-zero APFloat handled by converting to string and strtold");
+
+        llvm::SmallString<16> Str;
+        Val.toString(Str, 0, llvm::APFloat::semanticsPrecision(Val.getSemantics()));
+        val = strtold(Str.c_str(), nullptr);
+        t = Type::tfloat80;
+    }
+
+    if (pt) *pt = t;
+    return new RealExp(loc, val, t);
 }
 
 Expression* ExprMapper::fromExpressionDeclRef(Loc loc, clang::NamedDecl *D,
