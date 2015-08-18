@@ -19,7 +19,7 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
-static Type *getAPIntDType(const llvm::APInt &i);
+static Type *getAPIntDType(const llvm::APSInt &i);
 
 Expression *dotIdentOrInst(Loc loc, Expression *e1, RootObject *o)
 {
@@ -217,11 +217,12 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
     else if (auto IL = dyn_cast<clang::IntegerLiteral>(E))
     {
         auto Val = IL->getValue();
+        Ty = E->getType();
 
-        t = (!destType || !destType->isintegral()) ? getAPIntDType(Val) : destType;
+        t = (!destType || !destType->isintegral()) ? tymap.fromType(Ty) : destType;
 
-        e = new IntegerExp(loc,
-                Val.isNegative() ? Val.getSExtValue() : Val.getZExtValue(), t);
+        e = new IntegerExp(loc, Ty->hasSignedIntegerRepresentation() ?
+                        Val.getSExtValue() : Val.getZExtValue(), t);
     }
     else if (auto CL = dyn_cast<clang::CharacterLiteral>(E))
     {
@@ -615,11 +616,11 @@ Lcast:
     return new CastExp(loc, e, destType);
 }
 
-Type *getAPIntDType(const llvm::APInt &i)
+Type *getAPIntDType(const llvm::APSInt &i)
 {
     bool needs64bits = i.getBitWidth() > 32;
 
-    if (i.isNegative())
+    if (i.isSigned())
         return needs64bits ? Type::tint64 : Type::tint32;
     else
         return needs64bits ? Type::tuns64 : Type::tuns32;
@@ -640,10 +641,10 @@ Expression *ExprMapper::fromAPValue(Loc loc, const clang::APValue &Val)
     }
 }
 
-Expression* ExprMapper::fromAPInt(Loc loc, const APInt& Val)
+Expression* ExprMapper::fromAPInt(Loc loc, const llvm::APSInt &Val)
 {
     return new IntegerExp(loc,
-            Val.isNegative() ? Val.getSExtValue() : Val.getZExtValue(),
+            Val.isSigned() ? Val.getSExtValue() : Val.getZExtValue(),
             getAPIntDType(Val));
 }
 

@@ -17,7 +17,7 @@
 
 namespace llvm
 {
-class APInt;
+class APSInt;
 }
 
 namespace clang
@@ -44,7 +44,7 @@ public:
                                     const clang::NonTypeTemplateParmDecl* D);
 
     static Expression *fromAPValue(Loc loc, const clang::APValue &Val);
-    static Expression *fromAPInt(Loc loc, const llvm::APInt &Val);
+    static Expression *fromAPInt(Loc loc, const llvm::APSInt &Val);
     static Expression *fromAPFloat(Loc loc, const APFloat &Val, Type **pt = nullptr);
 
     Expression *fixIntegerExp(IntegerExp *e, clang::QualType T); // revert integer literals to DeclRefs pointing to enum constants if T is an EnumType
