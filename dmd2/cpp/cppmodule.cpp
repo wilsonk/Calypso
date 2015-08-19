@@ -266,7 +266,7 @@ Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
 
             Expression *e = nullptr;
             if (!Init->isValueDependent() && Init->EvaluateAsInitializer(Eval, Context, Var, Diags))
-                e = expmap.fromAPValue(loc, Eval); // evaluating integer and boolean expressions is always preferable, because in some rare cases
+                e = expmap.fromAPValue(loc, Eval, Var->getType()); // evaluating integer and boolean expressions is always preferable, because in some rare cases
                     // DMD and Clang's intepretations differ, one important instance being -1u < 0u (true for DMD, false for Clang)
 
             if (!e)
