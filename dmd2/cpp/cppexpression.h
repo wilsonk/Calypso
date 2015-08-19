@@ -43,9 +43,9 @@ public:
     Expression *fromExpressionNonTypeTemplateParm(Loc loc,
                                     const clang::NonTypeTemplateParmDecl* D);
 
-    static Expression *fromAPValue(Loc loc, const clang::APValue &Val);
-    static Expression *fromAPInt(Loc loc, const llvm::APSInt &Val);
-    static Expression *fromAPFloat(Loc loc, const APFloat &Val, Type **pt = nullptr);
+    Expression *fromAPValue(Loc loc, const clang::APValue &Val, clang::QualType Ty = clang::QualType());
+    Expression *fromAPInt(Loc loc, const llvm::APSInt &Val, clang::QualType Ty = clang::QualType());
+    Expression *fromAPFloat(Loc loc, const APFloat &Val, Type **pt = nullptr);
 
     Expression *fixIntegerExp(IntegerExp *e, clang::QualType T); // revert integer literals to DeclRefs pointing to enum constants if T is an EnumType
 

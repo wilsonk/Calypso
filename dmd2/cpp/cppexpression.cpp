@@ -56,25 +56,38 @@ Objects *fromASTTemplateArgumentListInfo(
     return tiargs;
 }
 
-// In Clang AST enum values in template arguments are resolved to integer literals
-// If the parameter has an enum type, we need to revert integer literals to DeclRefs pointing to enum constants
-// or else DMD won't find the template decl since from its point of view uint != Enum
-// Also useful for function default zero arguments.
 Expression *ExprMapper::fixIntegerExp(IntegerExp *e, clang::QualType T)
 {
-    auto ET = dyn_cast<clang::EnumType>(T);
-    if (!ET)
-        return e;
-
-    for (auto ECD: ET->getDecl()->enumerators())
+    if (auto ET = T->getAs<clang::EnumType>())
     {
-        auto Val = ECD->getInitVal().getZExtValue();
+        // In Clang AST enum values in template arguments are resolved to integer literals
+        // If the parameter has an enum type, we need to revert integer literals to DeclRefs pointing to enum constants
+        // or else DMD won't find the template decl since from its point of view uint != Enum
+        // Also useful for function default zero arguments
 
-        if (Val == ((IntegerExp *)e)->getInteger())
-            return fromExpressionDeclRef(Loc(), ECD);
+        for (auto ECD: ET->getDecl()->enumerators())
+        {
+            auto Val = ECD->getInitVal().getZExtValue();
+
+            if (Val == e->getInteger())
+                return fromExpressionDeclRef(Loc(), ECD);
+        }
+
+        llvm_unreachable("Couldn't find the corresponding enum constant");
     }
 
-    llvm_unreachable("Couldn't find the corresponding enum constant");
+    auto BT = T->getAs<clang::BuiltinType>();
+    if (BT && BT->getKind() == clang::BuiltinType::Char_S)
+    {
+        // C++ char may be signed, unlike D's, yet mapping char to uns8 instead of char
+        // would be very destructive since character and string literals wouldn't work
+        // In special cases such as numeric_traits::min we convert negative values to unsigned during the mapping.
+        // The value won't be correct but the implicit conversion won't fail.
+        if (!e->type->isunsigned() && static_cast<sinteger_t>(e->getInteger()) < 0)
+            e = new IntegerExp(e->loc, static_cast<unsigned char>(e->getInteger()), Type::tchar);
+    }
+
+    return e;
 }
 
 Expression *ExprMapper::fromUnaExp(clang::SourceLocation Loc,
@@ -626,14 +639,15 @@ Type *getAPIntDType(const llvm::APSInt &i)
         return needs64bits ? Type::tuns64 : Type::tuns32;
 }
 
-Expression *ExprMapper::fromAPValue(Loc loc, const clang::APValue &Val)
+Expression *ExprMapper::fromAPValue(Loc loc, const clang::APValue &Val,
+                        clang::QualType Ty)
 {
     using clang::APValue;
 
     switch (Val.getKind())
     {
         case APValue::Int:
-            return fromAPInt(loc, Val.getInt());
+            return fromAPInt(loc, Val.getInt(), Ty);
         case APValue::Float:
             return fromAPFloat(loc, Val.getFloat());
         default:
@@ -641,11 +655,17 @@ Expression *ExprMapper::fromAPValue(Loc loc, const clang::APValue &Val)
     }
 }
 
-Expression* ExprMapper::fromAPInt(Loc loc, const llvm::APSInt &Val)
+Expression* ExprMapper::fromAPInt(Loc loc, const llvm::APSInt &Val,
+                                  clang::QualType Ty)
 {
-    return new IntegerExp(loc,
+    auto e = new IntegerExp(loc,
             Val.isSigned() ? Val.getSExtValue() : Val.getZExtValue(),
             getAPIntDType(Val));
+
+    if (!Ty.isNull())
+        return fixIntegerExp(e, Ty);
+    else
+        return e;
 }
 
 Expression* ExprMapper::fromAPFloat(Loc loc, const APFloat& Val, Type **pt)
