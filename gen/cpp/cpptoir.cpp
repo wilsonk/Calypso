@@ -333,11 +333,13 @@ public:
     bool Emit(const clang::VarDecl *Var);
     void Traverse(const clang::FunctionDecl *Def);
 
-    bool VisitCallExpr(const clang::CallExpr *E);
+    bool VisitDeclRef(const clang::Decl *D);
+
     bool VisitCXXConstructExpr(const clang::CXXConstructExpr *E);
     bool VisitCXXNewExpr(const clang::CXXNewExpr *E);
     bool VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E);
     bool VisitDeclRefExpr(const clang::DeclRefExpr *E);
+    bool VisitMemberExpr(const clang::MemberExpr *E);
 };
 
 void InternalDeclEmitter::Traverse(const clang::FunctionDecl *Def)
@@ -349,18 +351,18 @@ void InternalDeclEmitter::Traverse(const clang::FunctionDecl *Def)
             TraverseStmt(Init->getInit());
 }
 
-bool InternalDeclEmitter::Emit(const clang::FunctionDecl *Callee)
+bool InternalDeclEmitter::Emit(const clang::FunctionDecl *Func)
 {
     const clang::FunctionDecl *Def;
 
-    if (!Callee || !Callee->hasBody(Def))
+    if (!Func || !Func->hasBody(Def))
         return true;
 
     if (Emitted.count(Def))
         return true;
     Emitted.insert(Def);
 
-    ResolvedFunc::get(CGM, Callee);
+    ResolvedFunc::get(CGM, Func);
     Traverse(Def);
     return true;
 }
@@ -384,9 +386,14 @@ bool InternalDeclEmitter::Emit(const clang::VarDecl *Var)
     return true;
 }
 
-bool InternalDeclEmitter::VisitCallExpr(const clang::CallExpr *E)
+bool InternalDeclEmitter::VisitDeclRef(const clang::Decl *D)
 {
-    return Emit(E->getDirectCallee());
+    if (auto Func = dyn_cast<clang::FunctionDecl>(D))
+        return Emit(Func);
+    else if (auto Var = dyn_cast<clang::VarDecl>(D))
+        return Emit(Var);
+
+    return true;
 }
 
 bool InternalDeclEmitter::VisitCXXConstructExpr(const clang::CXXConstructExpr *E)
@@ -415,10 +422,12 @@ bool InternalDeclEmitter::VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E)
 
 bool InternalDeclEmitter::VisitDeclRefExpr(const clang::DeclRefExpr *E)
 {
-    if (auto Var = dyn_cast<clang::VarDecl>(E->getDecl()))
-        return Emit(Var);
+    return VisitDeclRef(E->getDecl());
+}
 
-    return true;
+bool InternalDeclEmitter::VisitMemberExpr(const clang::MemberExpr *E)
+{
+    return VisitDeclRef(E->getMemberDecl());
 }
 
 DValue* LangPlugin::toCallFunction(Loc& loc, Type* resulttype, DValue* fnval, 

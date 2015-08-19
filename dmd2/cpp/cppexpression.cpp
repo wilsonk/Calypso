@@ -19,7 +19,7 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
-static Type *getAPIntDType(const llvm::APInt &i);
+static Type *getAPIntDType(const llvm::APSInt &i);
 
 Expression *dotIdentOrInst(Loc loc, Expression *e1, RootObject *o)
 {
@@ -217,11 +217,12 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
     else if (auto IL = dyn_cast<clang::IntegerLiteral>(E))
     {
         auto Val = IL->getValue();
+        Ty = E->getType();
 
-        t = (!destType || !destType->isintegral()) ? getAPIntDType(Val) : destType;
+        t = (!destType || !destType->isintegral()) ? tymap.fromType(Ty) : destType;
 
-        e = new IntegerExp(loc,
-                Val.isNegative() ? Val.getSExtValue() : Val.getZExtValue(), t);
+        e = new IntegerExp(loc, Ty->hasSignedIntegerRepresentation() ?
+                        Val.getSExtValue() : Val.getZExtValue(), t);
     }
     else if (auto CL = dyn_cast<clang::CharacterLiteral>(E))
     {
@@ -252,30 +253,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
     else if (auto FL = dyn_cast<clang::FloatingLiteral>(E))
     {
         auto APFVal = FL->getValue();
-
-        real_t val;
-        t = Type::tfloat32;
-
-        if (APFVal.isZero())
-            val = 0.0;
-        else if (&APFVal.getSemantics() == &llvm::APFloat::IEEEsingle)
-            val = APFVal.convertToFloat();
-        else if (&APFVal.getSemantics() == &llvm::APFloat::IEEEdouble)
-        {
-            val = APFVal.convertToDouble();
-            t = Type::tfloat64;
-        }
-        else
-        {
-            ::warning(loc, "Floating point semantics for non-zero APFloat handled by converting to string and strtold");
-
-            llvm::SmallString<16> Str;
-            APFVal.toString(Str, 0, llvm::APFloat::semanticsPrecision(APFVal.getSemantics()));
-            val = strtold(Str.c_str(), nullptr);
-            t = Type::tfloat80;
-        }
-
-        e = new RealExp(loc, val, t);
+        e = fromAPFloat(loc, APFVal, &t);
     }
     else if (auto SL = dyn_cast<clang::StringLiteral>(E))
     {
@@ -638,21 +616,64 @@ Lcast:
     return new CastExp(loc, e, destType);
 }
 
-Type *getAPIntDType(const llvm::APInt &i)
+Type *getAPIntDType(const llvm::APSInt &i)
 {
     bool needs64bits = i.getBitWidth() > 32;
 
-    if (i.isNegative())
+    if (i.isSigned())
         return needs64bits ? Type::tint64 : Type::tint32;
     else
         return needs64bits ? Type::tuns64 : Type::tuns32;
 }
 
-Expression* ExprMapper::fromAPInt(const APInt& Val)
+Expression *ExprMapper::fromAPValue(Loc loc, const clang::APValue &Val)
 {
-    return new IntegerExp(Loc(),
-            Val.isNegative() ? Val.getSExtValue() : Val.getZExtValue(),
+    using clang::APValue;
+
+    switch (Val.getKind())
+    {
+        case APValue::Int:
+            return fromAPInt(loc, Val.getInt());
+        case APValue::Float:
+            return fromAPFloat(loc, Val.getFloat());
+        default:
+            return nullptr;
+    }
+}
+
+Expression* ExprMapper::fromAPInt(Loc loc, const llvm::APSInt &Val)
+{
+    return new IntegerExp(loc,
+            Val.isSigned() ? Val.getSExtValue() : Val.getZExtValue(),
             getAPIntDType(Val));
+}
+
+Expression* ExprMapper::fromAPFloat(Loc loc, const APFloat& Val, Type **pt)
+{
+    real_t val;
+    Type *t = Type::tfloat32;
+
+    if (Val.isZero())
+        val = 0.0;
+    else if (&Val.getSemantics() == &llvm::APFloat::IEEEsingle)
+        val = Val.convertToFloat();
+    else if (&Val.getSemantics() == &llvm::APFloat::IEEEdouble)
+    {
+        val = Val.convertToDouble();
+        t = Type::tfloat64;
+    }
+    else
+    {
+        ::warning(loc, "Floating point semantics for non-zero APFloat handled by converting to string and strtold");
+
+        llvm::SmallString<16> Str;
+        Val.toString(Str, 0, llvm::APFloat::semanticsPrecision(Val.getSemantics()));
+        val = strtold(Str.c_str(), nullptr);
+        t = Type::tfloat80;
+    }
+
+    if (pt) *pt = t;
+    return new RealExp(loc, val, t);
 }
 
 Expression* ExprMapper::fromExpressionDeclRef(Loc loc, clang::NamedDecl *D,

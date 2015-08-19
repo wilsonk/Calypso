@@ -262,7 +262,7 @@ void DeclReferencer::Traverse(Loc loc, Scope *sc, clang::Stmt *S)
     TraverseStmt(S);
 }
 
-bool DeclReferencer::Reference(const clang::NamedDecl *D, bool isCall)
+bool DeclReferencer::Reference(const clang::NamedDecl *D)
 {
     if (D->isInvalidDecl())
         return true;
@@ -271,6 +271,10 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, bool isCall)
         if (auto RD = dyn_cast<clang::CXXRecordDecl>(DI))
             if (RD->isLocalClass())
                 return true; // are local records emitted when emitting a function? if no this is a FIXME
+
+    if (auto VD = dyn_cast<clang::VarDecl>(D))
+        if (!VD->isFileVarDecl())
+            return true;
 
     if (auto FD = dyn_cast<clang::FunctionDecl>(D))
     {
@@ -303,7 +307,7 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, bool isCall)
     ReferenceTemplateArguments(D);
 
     auto Func = dyn_cast<clang::FunctionDecl>(D);
-    if (isCall && Func->getPrimaryTemplate())
+    if (Func && Func->getPrimaryTemplate())
         D = Func->getPrimaryTemplate()->getCanonicalDecl();
 
     // HACK FIXME
@@ -327,7 +331,7 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D, bool isCall)
     auto te = new TypeExp(loc, tqual);
     auto e = te->semantic(sc);
 
-    if (isCall && Func->getPrimaryTemplate())
+    if (Func && Func->getPrimaryTemplate())
     {
         assert(e->op == TOKvar || e->op == TOKtemplate);
         Dsymbol *s;
@@ -400,14 +404,6 @@ bool DeclReferencer::Reference(const clang::Type *T)
     return true;
 }
 
-bool DeclReferencer::Reference(const clang::Expr *E)
-{
-    if (auto DR = dyn_cast<clang::DeclRefExpr>(E))
-        Reference(DR->getDecl());
-
-    return true;
-}
-
 void DeclReferencer::ReferenceTemplateArguments(const clang::NamedDecl *D)
 {
     const clang::TemplateArgumentList *InstArgs = nullptr;
@@ -423,7 +419,7 @@ void DeclReferencer::ReferenceTemplateArguments(const clang::NamedDecl *D)
         switch (Arg.getKind())
         {
             case clang::TemplateArgument::Expression:
-                Reference(Arg.getAsExpr());
+                TraverseStmt(Arg.getAsExpr());
                 break;
             case clang::TemplateArgument::Type:
                 Reference(Arg.getAsType().getTypePtr());
@@ -437,19 +433,12 @@ void DeclReferencer::ReferenceTemplateArguments(const clang::NamedDecl *D)
     }
 }
 
-bool DeclReferencer::VisitCallExpr(const clang::CallExpr *E)
-{
-    if (auto Callee = E->getDirectCallee())
-        return Reference(Callee, true);
-    return true;
-}
-
 bool DeclReferencer::VisitCXXConstructExpr(const clang::CXXConstructExpr *E)
 {
     auto ConstructedType = E->getType();
     if (!ConstructedType.isNull())
         Reference(ConstructedType.getTypePtr());
-    return Reference(E->getConstructor(), true);
+    return Reference(E->getConstructor());
 }
 
 bool DeclReferencer::VisitCXXNewExpr(const clang::CXXNewExpr *E)
@@ -464,6 +453,24 @@ bool DeclReferencer::VisitCXXDeleteExpr(const clang::CXXDeleteExpr *E)
         Reference(DestroyedType.getTypePtr());
 
     return Reference(E->getOperatorDelete());
+}
+
+bool DeclReferencer::VisitDeclRef(const clang::NamedDecl *D)
+{
+    if (isa<clang::FunctionDecl>(D) || isa<clang::VarDecl>(D))
+        return Reference(D);
+
+    return true;
+}
+
+bool DeclReferencer::VisitDeclRefExpr(const clang::DeclRefExpr *E)
+{
+    return VisitDeclRef(E->getDecl());
+}
+
+bool DeclReferencer::VisitMemberExpr(const clang::MemberExpr *E)
+{
+    return VisitDeclRef(E->getMemberDecl());
 }
 
 void FuncDeclaration::semantic3reference(::FuncDeclaration *fd, Scope *sc)
