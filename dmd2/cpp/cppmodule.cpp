@@ -270,8 +270,7 @@ Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
                     // DMD and Clang's intepretations differ, one important instance being -1u < 0u (true for DMD, false for Clang)
 
             if (!e)
-                e = expmap.fromExpression(Var->getAnyInitializer(),
-                                           clang::QualType(), true);
+                e = expmap.fromExpression(Var->getAnyInitializer(), true);
 
             if (e && e->op != TOKnull)
                 a->init = new ExpInitializer(loc, e);

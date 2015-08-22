@@ -35,8 +35,7 @@ public:
         : tymap(tymap) {}
 
     // Clang -> DMD
-    Expression *fromExpression(const clang::Expr *E, clang::QualType DestTy = clang::QualType(),
-                               bool interpret = false);
+    Expression *fromExpression(const clang::Expr *E, bool interpret = false);
 
     Expression *fromExpressionDeclRef(Loc loc, clang::NamedDecl* D,
                                     const clang::NestedNameSpecifier *NNS = nullptr);
@@ -61,6 +60,8 @@ protected:
                            const clang::Expr *LHS, const clang::Expr *RHS);
     Expression* fromUnaExp(const clang::UnaryOperator *E);
     Expression* fromBinExp(const clang::BinaryOperator* E);
+
+    Expression *fromCastExpr(Loc loc, const clang::CastExpr *E);
 };
 
 }

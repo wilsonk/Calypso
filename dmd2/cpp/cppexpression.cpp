@@ -173,8 +173,30 @@ Expression* ExprMapper::fromBinExp(const clang::BinaryOperator* E)
                     E->getLHS(), E->getRHS());
 }
 
-Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType DestTy,
-                                            bool interpret)  // TODO implement interpret properly
+Expression *ExprMapper::fromCastExpr(Loc loc, const clang::CastExpr *E)
+{
+    auto Kind = E->getCastKind();
+
+    if (Kind == clang::CK_NullToPointer)
+        return new NullExp(loc);
+
+    auto e = fromExpression(E->getSubExpr());
+
+    if (isa<clang::ImplicitCastExpr>(E))
+        return e;
+
+    if (Kind == clang::CK_NoOp || Kind == clang::CK_ConstructorConversion ||
+            Kind == clang::CK_LValueToRValue)
+        return e;
+
+    auto CastDestTy = E->getType();
+    assert(E->getSubExpr()->getType().getCanonicalType()
+                    != CastDestTy.getCanonicalType()); // we should be ignoring all casts that do not alter the type
+
+    return new CastExp(loc, e, tymap.fromType(CastDestTy));
+}
+
+Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  // TODO implement interpret properly
 {
     auto& Context = calypso.pch.AST->getASTContext();
     auto loc = fromLoc(E->getLocStart());
@@ -183,28 +205,8 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
     Type *t = nullptr;
     clang::QualType Ty;
 
-    Type *destType = nullptr;
-    if (!DestTy.isNull())
-        destType = tymap.fromType(DestTy);
-
     if (auto Cast = dyn_cast<clang::CastExpr>(E))
-    {
-        clang::QualType CastDestTy;
-        auto Kind = Cast->getCastKind();
-
-        if (Kind != clang::CK_NoOp && Kind != clang::CK_ConstructorConversion &&
-                Kind != clang::CK_LValueToRValue)
-        {
-            CastDestTy = Cast->getType();
-            assert(Cast->getSubExpr()->getType().getCanonicalType()
-                            != CastDestTy.getCanonicalType()); // we should be ignoring all casts that do not alter the type
-        }
-
-        if (Kind == clang::CK_NullToPointer)
-            e = new NullExp(loc);
-        else
-            e = fromExpression(Cast->getSubExpr(), CastDestTy);
-    }
+        return fromCastExpr(loc, Cast);
 
     else if (auto PE = dyn_cast<clang::ParenExpr>(E))
         e = fromExpression(PE->getSubExpr());
@@ -231,11 +233,21 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
     {
         auto Val = IL->getValue();
         Ty = E->getType();
-
-        t = (!destType || !destType->isintegral()) ? tymap.fromType(Ty) : destType;
+        t = tymap.fromType(Ty);
 
         e = new IntegerExp(loc, Ty->hasSignedIntegerRepresentation() ?
                         Val.getSExtValue() : Val.getZExtValue(), t);
+
+        // D won't be as lenient as C++ is towards signed constants overflowing into negative values,
+        // so even if Type::implicitConvTo matches we should still check the evaluated expression
+        // (see _ISwgraph in wctype.h for an example of this special case)
+//         if (!E->isInstantiationDependent() && !destType->isunsigned())
+//         {
+//             llvm::APSInt V(Val, Ty->hasUnsignedIntegerRepresentation());
+//             if (E->EvaluateAsInt(V, Context))
+//                 if (V.isUnsigned() && V.getActiveBits() == Context.getIntWidth(Ty))
+//                     e = new CastExp(loc, e, destType);
+//         }
     }
     else if (auto CL = dyn_cast<clang::CharacterLiteral>(E))
     {
@@ -573,60 +585,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, clang::QualType Des
     else
         llvm::llvm_unreachable_internal("Unhandled C++ expression");
 
-    if (!e)
-        return nullptr;
-
-    // When t is an unresolved TypeQualified we may want to emulate
-    // implicitConvTo with the Clang types instead of the D ones
-    if (!Ty.isNull() && !DestTy.isNull())
-    {
-        if (auto DestRecordTy = DestTy->getAs<clang::RecordType>())
-        {
-            if (DestTy->getAs<clang::ReferenceType>())
-                DestRecordTy = DestTy->getPointeeType()->getAs<clang::RecordType>();
-
-            if (!DestRecordTy)
-                goto Lcast;
-
-            auto ExprRecord = Ty->castAs<clang::RecordType>()->getDecl();
-            auto ExprCXXRecord = dyn_cast<clang::CXXRecordDecl>(ExprRecord);
-            auto DestRecord = DestRecordTy->getDecl();
-            auto DestCXXRecord = dyn_cast<clang::CXXRecordDecl>(DestRecord);
-
-            if (!DestRecord)
-                goto Lcast;
-
-            if (DestRecord->getCanonicalDecl() == ExprRecord->getCanonicalDecl())
-                return e;
-
-            if (!DestCXXRecord || !ExprCXXRecord || !ExprCXXRecord->isDerivedFrom(DestCXXRecord))
-                goto Lcast;
-
-            return e;
-        }
-    }
-
-    if (destType && destType->ty == Treference)
-        destType = destType->nextOf();
-
-    // D won't be as lenient as C++ is towards signed constants overflowing into negative values,
-    // so even if Type::implicitConvTo matches we should still check the evaluated expression
-    // (see _ISwgraph in wctype.h for an example of this special case)
-    if (!E->isInstantiationDependent() && !DestTy.isNull() &&
-                destType->isintegral() && !destType->isunsigned())
-    {
-        llvm::APSInt V;
-        if (E->EvaluateAsInt(V, Context))
-            if (V.isUnsigned() && V.getActiveBits() == Context.getIntWidth(DestTy))
-                goto Lcast;
-    }
-
-    if (!t || !destType ||
-            t->implicitConvTo(destType) >= MATCHconst)
-        return e;
-
-Lcast:
-    return new CastExp(loc, e, destType);
+    return e;
 }
 
 Type *getAPIntDType(const llvm::APSInt &i)
