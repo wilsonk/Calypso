@@ -711,7 +711,7 @@ int LangPlugin::doesHandleImport(const utf8_t* tree)
                                    Identifier* id, Identifier* aliasId, int isstatic)
 {
     return new Import(loc,
-                packages, id, aliasId, isstatic, false);
+                packages, id, aliasId, isstatic);
 }
 
 int LangPlugin::doesHandleModmap(const utf8_t* lang)

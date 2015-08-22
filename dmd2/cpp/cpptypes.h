@@ -63,7 +63,7 @@ public:
 
     bool addImplicitDecls = true;
     Dsymbols *substsyms = nullptr; // only for TempateInstance::correctTiargs (partial spec arg deduction)
-    bool useIdEmpty = true; // disabled only for « C++ global scope search »
+    bool cppPrefix = true; // if false, the ".cpp" prefix won't be appended, disabled only for « C++ global scope search »
 
     std::stack<const clang::Decl *> CXXScope;
     void rebuildScope(const clang::Decl *RightMost); // rebuild both CXXScope and TempParamScope

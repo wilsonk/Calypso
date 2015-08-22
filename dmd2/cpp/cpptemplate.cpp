@@ -338,7 +338,7 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
     TypeMapper tymap;
     ExprMapper expmap(tymap);
     tymap.addImplicitDecls = false;
-    tymap.useIdEmpty = false;
+    tymap.cppPrefix = false;
 
     auto Temp = getPrimaryTemplate();
 

@@ -818,7 +818,7 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::Decl *D)
 
         if (LeftMostCheck(D))  // we'll need a fully qualified type
         {
-            if (from.tm.useIdEmpty)
+            if (from.tm.cppPrefix)
                 tqual = new TypeIdentifier(Loc(), Id::empty); // start with the module scope operator . to guarantee against collisions
             else
                 tqual = nullptr;
@@ -830,7 +830,7 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::Decl *D)
                     addIdent(tqual, im->aliasId);
                 else
                 {
-                    for (size_t i = 1; i < im->packages->dim; i++)
+                    for (size_t i = from.tm.cppPrefix ? 0 : 1; i < im->packages->dim; i++)
                         addIdent(tqual, (*im->packages)[i]);
                     addIdent(tqual, im->id);
                 }

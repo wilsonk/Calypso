@@ -206,7 +206,7 @@ public:
     DeclReferencer()
     {
         mapper.addImplicitDecls = false;
-        mapper.useIdEmpty = false;
+        mapper.cppPrefix = false;
         tqualOptions.overOpSkipSpecArg = true;
     }
 
