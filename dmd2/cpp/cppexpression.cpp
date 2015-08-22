@@ -515,7 +515,8 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  //
     else if (auto MT = dyn_cast<clang::MaterializeTemporaryExpr>(E))
     {
         auto Ty = E->getType();
-        e = fromExpression(MT->GetTemporaryExpr());
+        auto TempExpr = MT->GetTemporaryExpr();
+        e = fromExpression(TempExpr);
 
         if (!e)
             return nullptr;
@@ -525,14 +526,12 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  //
                     // for other types there are workarounds but for null class references
                     // I couldn't find any way to turn them into lvalues.
 
-        if (!e->isLvalue())
+        if (!TempExpr->isLValue())
         {
-            if (Ty->getAs<clang::RecordType>())
+            if (e->op == TOKcall &&
+                    static_cast<CallExp*>(e)->e1->op == TOKtype)
             {
-                assert(e->op == TOKcall);
                 auto call = static_cast<CallExp*>(e);
-                assert(call->e1->op == TOKtype);
-
                 e = new NewExp(loc, nullptr, nullptr,
                                call->e1->type, call->arguments);
             }
