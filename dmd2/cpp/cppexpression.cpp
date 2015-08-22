@@ -24,11 +24,22 @@ static Type *getAPIntDType(const llvm::APSInt &i);
 Expression *dotIdentOrInst(Loc loc, Expression *e1, RootObject *o)
 {
     if (o->dyncast() == DYNCAST_IDENTIFIER)
-        return new DotIdExp(loc, e1,
-                        static_cast<Identifier*>(o));
+    {
+        auto ident = static_cast<Identifier*>(o);
+        if (!e1)
+            return new IdentifierExp(loc, ident);
+        else
+            return new DotIdExp(loc, e1, ident);
+    }
     else
-        return new DotTemplateInstanceExp(loc, e1,
-                        static_cast<TemplateInstance*>(o));
+    {
+        assert(o->dyncast() == DYNCAST_DSYMBOL && static_cast<Dsymbol*>(o)->isTemplateInstance());
+        auto tempinst = static_cast<::TemplateInstance*>(o);
+        if (!e1)
+            return new ScopeExp(loc, tempinst);
+        else
+            return new DotTemplateInstanceExp(loc, e1, tempinst);
+    }
 }
 
 static RootObject *typeQualifierRoot(TypeQualified *tqual)
@@ -655,21 +666,22 @@ Expression* ExprMapper::fromAPFloat(Loc loc, const APFloat& Val, Type **pt)
 }
 
 Expression* ExprMapper::fromExpressionDeclRef(Loc loc, clang::NamedDecl *D,
-                                    const clang::NestedNameSpecifier *NNS)
+                                    const clang::NestedNameSpecifier *)
 {
     if (auto NTTP = dyn_cast<clang::NonTypeTemplateParmDecl>(D))
         return fromExpressionNonTypeTemplateParm(loc, NTTP);
 
-
-    TypeQualified *prefix = nullptr;
-    if (NNS)
-        prefix = TypeMapper::FromType(tymap).fromNestedNameSpecifier(NNS);
-
-    auto tqual = TypeMapper::FromType(tymap, prefix).typeQualifiedFor(D);
+    auto tqual = TypeMapper::FromType(tymap).typeQualifiedFor(D);
     assert(tqual && "DeclRefExpr decl without a DeclarationName");
 
+    // Convert the TypeQualified path to DotXXXExp because
+    // NOTE: they are preferable because unlike TypeExp, DotXXXExps call semantic() from left to right
+    Expression *e = dotIdentOrInst(loc, nullptr, typeQualifierRoot(tqual));
+    for (auto id: tqual->idents)
+        e = dotIdentOrInst(loc, e, id);
+
     // TODO: Build a proper expression from the type (mostly for reflection and to mimic parse.c, since TypeExp seems to work too)
-    return new TypeExp(loc, tqual);
+    return e;
 }
 
 Expression* ExprMapper::fromExpressionNonTypeTemplateParm(Loc loc, const clang::NonTypeTemplateParmDecl* D)
