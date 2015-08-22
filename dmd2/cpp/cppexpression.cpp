@@ -352,7 +352,6 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  //
 
         e = fromExpressionDeclRef(loc, const_cast<clang::ValueDecl*>(DR->getDecl()),
                         DR->getQualifier());
-        // FIXME overloaded operators
     }
 
     else if (auto PE = dyn_cast<clang::PackExpansionExpr>(E))
@@ -661,11 +660,6 @@ Expression* ExprMapper::fromExpressionDeclRef(Loc loc, clang::NamedDecl *D,
     if (auto NTTP = dyn_cast<clang::NonTypeTemplateParmDecl>(D))
         return fromExpressionNonTypeTemplateParm(loc, NTTP);
 
-    // BUG FIXME: TypeExp is convenient but not enough because TypeQualified::resolve doesn't resolve function calls
-    // For now we're ignoring overloaded operator calls
-    if (auto FD = dyn_cast<clang::FunctionDecl>(D))
-        if (FD->isOverloadedOperator())
-            return nullptr;
 
     TypeQualified *prefix = nullptr;
     if (NNS)
