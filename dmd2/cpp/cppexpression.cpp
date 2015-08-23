@@ -191,17 +191,29 @@ Expression *ExprMapper::fromCastExpr(Loc loc, const clang::CastExpr *E)
     if (Kind == clang::CK_NullToPointer)
         return new NullExp(loc);
 
-    auto e = fromExpression(E->getSubExpr());
+    auto SubExpr = E->getSubExpr();
+    auto e = fromExpression(SubExpr);
 
+    bool skipCast = false;
     if (isa<clang::ImplicitCastExpr>(E))
-        return e;
+    {
+        skipCast = true;
+
+        // One exception being if the subexpr is an enum constant, in which case handling the cast to specify the signedness of the expression
+        // will prevent some errors during function resolution which overloads for both signed and unsigned arguments.
+        if (Kind == clang::CK_IntegralCast && SubExpr->getType()->isEnumeralType())
+            skipCast = false;
+    }
 
     if (Kind == clang::CK_NoOp || Kind == clang::CK_ConstructorConversion ||
             Kind == clang::CK_LValueToRValue)
+        skipCast = true;
+
+    if (skipCast)
         return e;
 
     auto CastDestTy = E->getType();
-    assert(E->getSubExpr()->getType().getCanonicalType()
+    assert(SubExpr->getType().getCanonicalType()
                     != CastDestTy.getCanonicalType()); // we should be ignoring all casts that do not alter the type
 
     return new CastExp(loc, e, tymap.fromType(CastDestTy));
