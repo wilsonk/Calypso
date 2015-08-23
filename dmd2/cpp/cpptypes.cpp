@@ -1319,20 +1319,6 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
             if (tm.isInjectedClassName(RD))
                 return fromInjectedClassName();
         }
-
-        if (RT && !RT->isDependentType())
-        {
-            RootObject *o;
-            if (tqual->idents.empty())
-                o = static_cast<TypeInstance*>(tqual)->tempinst;
-            else
-                o = tqual->idents.back();
-            auto ti = (cpp::TemplateInstance*)o;
-
-            ti->Inst = RT->getDecl();
-            if (!ti->completeInst(true))
-                return nullptr;
-        }
     }
 
     return tqual;
