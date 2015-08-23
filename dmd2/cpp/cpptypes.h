@@ -54,6 +54,7 @@ protected:
 struct TypeQualifiedBuilderOptions
 {
     bool overOpSkipSpecArg = false; // if true skip "-" in opBinary!"-"
+    bool overOpFullIdent = false; // if true prefer the non-templated function to the forwarding template
 };
 
 class TypeMapper

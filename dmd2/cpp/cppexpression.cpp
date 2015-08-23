@@ -451,9 +451,12 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  //
     }
     else if (auto C = dyn_cast<clang::CallExpr>(E))
     {
-        auto OC = dyn_cast<clang::CXXOperatorCallExpr>(E);
-        if (OC && E->isInstantiationDependent()) // in dependent contexts operator calls aren't resolved yet to UnaryOperator and BinaryOperator
+        if (auto OC = dyn_cast<clang::CXXOperatorCallExpr>(E))
         {
+            // Since calling opBinary!"+"(...) won't work if there multiple opBinary templates, prefer the operator expression when possible so that overloaded operator resolution kicks in.
+            // TODO: note that the mapping won't always result in correct values as long as non member operators don't take part in D's overloaded operator resolution
+            // Additionally in dependent contexts operator calls aren't resolved yet to UnaryOperator and BinaryOperator, which are easier on the eyes
+
             auto OO = OC->getOperator();
             if (C->getNumArgs() == 2 && OO >= clang::OO_Plus && OO <= clang::OO_Arrow &&
                     OO != clang::OO_PlusPlus && OO != clang::OO_MinusMinus)
@@ -469,11 +472,12 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  //
                 e = fromUnaExp(E->getLocStart(), Op, Sub);
             }
         }
-        else
+
+        if (!e)
         {
             auto callee = fromExpression(C->getCallee());
             if (!callee)
-                return nullptr; // FIXME temporary hack skipping overloaded operators
+                return nullptr;
 
             auto args = new Expressions;
             for (auto Arg: C->arguments())
@@ -670,7 +674,10 @@ Expression* ExprMapper::fromExpressionDeclRef(Loc loc, clang::NamedDecl *D,
     if (auto NTTP = dyn_cast<clang::NonTypeTemplateParmDecl>(D))
         return fromExpressionNonTypeTemplateParm(loc, NTTP);
 
-    auto tqual = TypeMapper::FromType(tymap).typeQualifiedFor(D);
+    TypeQualifiedBuilderOptions tqualOpts;
+    tqualOpts.overOpFullIdent = true;
+
+    auto tqual = TypeMapper::FromType(tymap).typeQualifiedFor(D, nullptr, nullptr, &tqualOpts);
     assert(tqual && "DeclRefExpr decl without a DeclarationName");
 
     // Convert the TypeQualified path to DotXXXExp because

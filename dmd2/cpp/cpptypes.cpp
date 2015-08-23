@@ -786,10 +786,11 @@ RootObject *TypeQualifiedBuilder::getIdentOrTempinst(const clang::Decl *D)
     if (!Named)
         return nullptr;
 
+    if (options.overOpFullIdent)
+        return getExtendedIdentifierOrNull(Named, tm);
+
     SpecValue spec(tm); // overloaded operator
     auto ident = getIdentifierOrNull(Named, &spec);
-    if (!ident)
-        return nullptr;
 
     if (spec && !options.overOpSkipSpecArg)
     {
@@ -799,8 +800,8 @@ RootObject *TypeQualifiedBuilder::getIdentOrTempinst(const clang::Decl *D)
         tempinst->tiargs->push(spec.toTemplateArg(Loc()));
         return tempinst;
     }
-    else
-        return ident;
+
+    return ident;
 }
 
 TypeQualified *TypeQualifiedBuilder::get(const clang::Decl *D)
