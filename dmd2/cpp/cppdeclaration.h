@@ -145,6 +145,7 @@ const clang::FunctionDecl *getFD(::FuncDeclaration *f);
     { \
         if (!s) \
             s = new cpp::Class(*this); \
+        assert(isCPP(s) && s->is##Class()); \
         static_cast<cpp::Class*>(s)->D = D; \
         return ::Class::syntaxCopy(s); \
     }

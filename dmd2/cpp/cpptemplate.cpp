@@ -214,6 +214,7 @@ MATCH TemplateDeclaration::matchWithInstance(Scope *sc, ::TemplateInstance *ti,
     // Although the match result is ok, the types deducted by DMD may have been stripped of C++-specific info and end up wrong.
     // That's why we fix dedtypes by taking Inst's instantiation template args.
 
+    assert(isCPP(ti));
     auto c_ti = static_cast<cpp::TemplateInstance*>(ti);
     if (c_ti->origTiargs)
     {
@@ -543,8 +544,9 @@ void TemplateDeclaration::correctTempDecl(TemplateInstance *ti)
         }
     }
 
-    assert(ti->tempdecl && static_cast<cpp::TemplateDeclaration*>(ti->tempdecl)
-            ->TempOrSpec->getCanonicalDecl() == RealTemp);
+    assert(ti->tempdecl && isCPP(ti->tempdecl) &&
+            static_cast<cpp::TemplateDeclaration*>(ti->tempdecl)
+                            ->TempOrSpec->getCanonicalDecl() == RealTemp);
 }
 
 TemplateInstance::TemplateInstance(Loc loc, Identifier* temp_id)
@@ -570,6 +572,7 @@ Dsymbol *TemplateInstance::syntaxCopy(Dsymbol *s)
         s = new cpp::TemplateInstance(*this);
     else
     {
+        assert(s->isTemplateInstance() && isCPP(s));
         auto ti = static_cast<cpp::TemplateInstance*>(s);
         ti->Inst = Inst;
         ti->Dependencies = Dependencies;
@@ -637,7 +640,8 @@ void TemplateInstance::correctTiargs()
     if (!CTSD)
         return;
 
-    auto TempOrSpec = static_cast<TemplateDeclaration*>(tempdecl)->TempOrSpec;
+    assert(isCPP(tempdecl));
+    auto TempOrSpec = static_cast<cpp::TemplateDeclaration*>(tempdecl)->TempOrSpec;
 
     // Correction is only needed for instances from partial specs
     if (auto Partial = dyn_cast<clang::ClassTemplatePartialSpecializationDecl>(TempOrSpec))
