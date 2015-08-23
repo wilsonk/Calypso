@@ -926,7 +926,7 @@ const clang::Decl *TypeMapper::GetRootForTypeQualified(clang::NamedDecl *D)
         ScopeStack.pop();
         ScopeChecker ScopeDeclCheck(ScopeDecl);
 
-        assert(!ScopeDeclCheck(D, false)); // should already be handled
+        assert(ScopeDecl->getCanonicalDecl() != D->getCanonicalDecl()); // should already be handled
 
         const clang::Decl *DI = D, *LastNamedDI = D;
         while(!isa<clang::TranslationUnitDecl>(DI))
@@ -1578,10 +1578,9 @@ bool TypeMapper::isInjectedClassName(const clang::Decl *D)
 {
     if(!CXXScope.empty())
     {
-        auto ScopeDecl = CXXScope.top();
-        ScopeChecker ScopeDeclCheck(ScopeDecl);
+        auto ScopeDecl = CXXScope.top()->getCanonicalDecl();
 
-        if (ScopeDeclCheck(D, false))
+        if (ScopeDecl == D->getCanonicalDecl())
             return true;
     }
 
@@ -1593,10 +1592,9 @@ bool TypeMapper::isInjectedScopeName(const clang::Decl *D)
     decltype(TypeMapper::CXXScope) ScopeStack(CXXScope);
     while(!ScopeStack.empty())
     {
-        auto ScopeDecl = ScopeStack.top();
-        ScopeChecker ScopeDeclCheck(ScopeDecl);
-
-        if (ScopeDeclCheck(D, false))
+        auto ScopeDecl = ScopeStack.top()->getCanonicalDecl();
+        
+        if (ScopeDecl == D->getCanonicalDecl())
             return true;
 
         ScopeStack.pop();
