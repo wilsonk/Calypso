@@ -170,6 +170,8 @@ protected:
     friend class cpp::TypeQualifiedBuilder;
 };
 
+RootObject *typeQualifiedRoot(TypeQualified *tqual);
+
 const clang::ClassTemplateDecl *getDefinition(const clang::ClassTemplateDecl *D);
 const clang::FunctionTemplateDecl *getDefinition(const clang::FunctionTemplateDecl *D);
 const clang::ClassTemplateSpecializationDecl *getDefinition(const clang::ClassTemplateSpecializationDecl *D);

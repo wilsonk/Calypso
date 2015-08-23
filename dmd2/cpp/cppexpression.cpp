@@ -42,7 +42,7 @@ Expression *dotIdentOrInst(Loc loc, Expression *e1, RootObject *o)
     }
 }
 
-static RootObject *typeQualifierRoot(TypeQualified *tqual)
+RootObject *typeQualifiedRoot(TypeQualified *tqual)
 {
     if (tqual->ty == Tident)
         return static_cast<TypeIdentifier*>(tqual)->ident;
@@ -412,7 +412,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  //
         if (auto NNS = CDSM->getQualifier())
         {
             auto tqual = TypeMapper::FromType(tymap).fromNestedNameSpecifier(NNS);
-            e1 = dotIdentOrInst(loc, e1, typeQualifierRoot(tqual));
+            e1 = dotIdentOrInst(loc, e1, typeQualifiedRoot(tqual));
 
             for (auto id: tqual->idents)
                 e1 = dotIdentOrInst(loc, e1, id);
@@ -694,7 +694,7 @@ Expression* ExprMapper::fromExpressionDeclRef(Loc loc, clang::NamedDecl *D,
 
     // Convert the TypeQualified path to DotXXXExp because
     // NOTE: they are preferable because unlike TypeExp, DotXXXExps call semantic() from left to right
-    Expression *e = dotIdentOrInst(loc, nullptr, typeQualifierRoot(tqual));
+    Expression *e = dotIdentOrInst(loc, nullptr, typeQualifiedRoot(tqual));
     for (auto id: tqual->idents)
         e = dotIdentOrInst(loc, e, id);
 

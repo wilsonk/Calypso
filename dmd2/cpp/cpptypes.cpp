@@ -1305,9 +1305,6 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
 
     if (T->isSugared())
     {
-        // NOTE: To reduce DMD -> Clang translations to a minimum we don't instantiate ourselves whenever possible, i.e when
-        // the template instance is already declared or defined in the PCH. If it's only declared, we tell Sema to complete its instantiation.
-
         auto RT = T->getAs<clang::RecordType>();
 
         if (RT)
@@ -1318,6 +1315,26 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
             auto RD = RT->getDecl();
             if (tm.isInjectedClassName(RD))
                 return fromInjectedClassName();
+        }
+
+        // NOTE: To reduce DMD -> Clang translations to a minimum we don't instantiate ourselves whenever possible, i.e when
+        // the template instance is already declared or defined in the PCH. If it's only declared, we tell Sema to complete its instantiation.
+        if (RT && !RT->isDependentType())
+        {
+            auto o = tqual->idents.empty() ? typeQualifiedRoot(tqual) : tqual->idents.back();
+
+            // NOTE: o may be an identifier if this is an « injected scope name »
+            if (o && o->dyncast() == DYNCAST_DSYMBOL)
+            {
+                auto s = static_cast<Dsymbol*>(o);
+                assert(s->isTemplateInstance() && isCPP(s));
+
+                auto ti = static_cast<cpp::TemplateInstance*>(s);
+
+                ti->Inst = RT->getDecl();
+                if (!ti->completeInst(true))
+                    return nullptr;
+            }
         }
     }
 
