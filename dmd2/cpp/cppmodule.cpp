@@ -1612,16 +1612,17 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
         {
             auto OpName = Context.DeclarationNames.getCXXOperatorName(
                         static_cast<clang::OverloadedOperatorKind>(Op));
-            auto Operators = getDeclContextNamedOrTU(D)->lookup(OpName);
 
-            // WARNING: lookups will only search in the top-most namespace for overloaded operators
-            // Can non-member operators be located in a parent namespace or the TU?
-            // Never seen that happening but if it's allowed then it's a FIXME
+            for (auto Ctx = D->getDeclContext(); Ctx; Ctx = Ctx->getLookupParent())
+            {
+                if (Ctx->isTransparentContext())
+                    continue;
 
-            for (auto OverOp: Operators)
-                if (isOverloadedOperatorWithTagOperand(OverOp, D))
-                    if (auto s = mapper.VisitDecl(OverOp->getCanonicalDecl()))
-                        m->members->append(s);
+                for (auto OverOp: Ctx->lookup(OpName))
+                    if (isOverloadedOperatorWithTagOperand(OverOp, D))
+                        if (auto s = mapper.VisitDecl(OverOp->getCanonicalDecl()))
+                            m->members->append(s);
+            }
         }
 
 //         srcFilename = AST->getSourceManager().getFilename(TD->getLocation());
