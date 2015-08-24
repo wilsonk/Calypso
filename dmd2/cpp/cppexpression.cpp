@@ -720,16 +720,34 @@ clang::Expr* ExprMapper::toExpression(Expression* e)
             auto exp = static_cast<IntegerExp*>(e);
             auto value = exp->getInteger();
 
+            if (e->type->ty == Tenum)
+            {
+                auto ed = static_cast<TypeEnum*>(e->type)->sym;
+                if (isCPP(ed))
+                {
+                    auto ED = static_cast<cpp::EnumDeclaration*>(ed)->ED;
+                    
+                    for (auto ECD: ED->enumerators())
+                    {
+                        auto& AI = ECD->getInitVal();
+                        auto Val = AI.isSigned() ? AI.getSExtValue() : AI.getZExtValue();
+
+                        if (Val == value)
+                            return clang::DeclRefExpr::Create(Context,
+                                clang::NestedNameSpecifierLoc(), clang::SourceLocation(),
+                                ECD, false, Loc, Context.getEnumType(ED), clang::VK_RValue);
+                    }
+                }
+            }
+
             if (e->type->ty == Tbool)
                 return new (Context) clang::CXXBoolLiteralExpr(value != 0,
                                                                Context.BoolTy, Loc);
-            else
-            {
-                unsigned IntSize = Context.getTargetInfo().getIntWidth();
-                return clang::IntegerLiteral::Create(Context,
-                                                llvm::APInt(IntSize, value),
-                                                Context.IntTy, Loc);
-            }
+
+            unsigned IntSize = Context.getTargetInfo().getIntWidth();
+            return clang::IntegerLiteral::Create(Context,
+                                            llvm::APInt(IntSize, value),
+                                            Context.IntTy, Loc);
         }
         case TOKfloat64:
         {
