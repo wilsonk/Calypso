@@ -786,10 +786,11 @@ RootObject *TypeQualifiedBuilder::getIdentOrTempinst(const clang::Decl *D)
     if (!Named)
         return nullptr;
 
+    if (options.overOpFullIdent)
+        return getExtendedIdentifierOrNull(Named, tm);
+
     SpecValue spec(tm); // overloaded operator
     auto ident = getIdentifierOrNull(Named, &spec);
-    if (!ident)
-        return nullptr;
 
     if (spec && !options.overOpSkipSpecArg)
     {
@@ -799,8 +800,8 @@ RootObject *TypeQualifiedBuilder::getIdentOrTempinst(const clang::Decl *D)
         tempinst->tiargs->push(spec.toTemplateArg(Loc()));
         return tempinst;
     }
-    else
-        return ident;
+
+    return ident;
 }
 
 TypeQualified *TypeQualifiedBuilder::get(const clang::Decl *D)
@@ -818,7 +819,7 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::Decl *D)
 
         if (LeftMostCheck(D))  // we'll need a fully qualified type
         {
-            if (from.tm.useIdEmpty)
+            if (from.tm.cppPrefix)
                 tqual = new TypeIdentifier(Loc(), Id::empty); // start with the module scope operator . to guarantee against collisions
             else
                 tqual = nullptr;
@@ -830,7 +831,7 @@ TypeQualified *TypeQualifiedBuilder::get(const clang::Decl *D)
                     addIdent(tqual, im->aliasId);
                 else
                 {
-                    for (size_t i = 1; i < im->packages->dim; i++)
+                    for (size_t i = from.tm.cppPrefix ? 0 : 1; i < im->packages->dim; i++)
                         addIdent(tqual, (*im->packages)[i]);
                     addIdent(tqual, im->id);
                 }
@@ -925,7 +926,7 @@ const clang::Decl *TypeMapper::GetRootForTypeQualified(clang::NamedDecl *D)
         ScopeStack.pop();
         ScopeChecker ScopeDeclCheck(ScopeDecl);
 
-        assert(!ScopeDeclCheck(D, false)); // should already be handled
+        assert(ScopeDecl->getCanonicalDecl() != D->getCanonicalDecl()); // should already be handled
 
         const clang::Decl *DI = D, *LastNamedDI = D;
         while(!isa<clang::TranslationUnitDecl>(DI))
@@ -1304,9 +1305,6 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
 
     if (T->isSugared())
     {
-        // NOTE: To reduce DMD -> Clang translations to a minimum we don't instantiate ourselves whenever possible, i.e when
-        // the template instance is already declared or defined in the PCH. If it's only declared, we tell Sema to complete its instantiation.
-
         auto RT = T->getAs<clang::RecordType>();
 
         if (RT)
@@ -1319,18 +1317,24 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
                 return fromInjectedClassName();
         }
 
+        // NOTE: To reduce DMD -> Clang translations to a minimum we don't instantiate ourselves whenever possible, i.e when
+        // the template instance is already declared or defined in the PCH. If it's only declared, we tell Sema to complete its instantiation.
         if (RT && !RT->isDependentType())
         {
-            RootObject *o;
-            if (tqual->idents.empty())
-                o = static_cast<TypeInstance*>(tqual)->tempinst;
-            else
-                o = tqual->idents.back();
-            auto ti = (cpp::TemplateInstance*)o;
+            auto o = tqual->idents.empty() ? typeQualifiedRoot(tqual) : tqual->idents.back();
 
-            ti->Inst = RT->getDecl();
-            if (!ti->completeInst(true))
-                return nullptr;
+            // NOTE: o may be an identifier if this is an « injected scope name »
+            if (o && o->dyncast() == DYNCAST_DSYMBOL)
+            {
+                auto s = static_cast<Dsymbol*>(o);
+                assert(s->isTemplateInstance() && isCPP(s));
+
+                auto ti = static_cast<cpp::TemplateInstance*>(s);
+
+                ti->Inst = RT->getDecl();
+                if (!ti->completeInst(true))
+                    return nullptr;
+            }
         }
     }
 
@@ -1591,10 +1595,9 @@ bool TypeMapper::isInjectedClassName(const clang::Decl *D)
 {
     if(!CXXScope.empty())
     {
-        auto ScopeDecl = CXXScope.top();
-        ScopeChecker ScopeDeclCheck(ScopeDecl);
+        auto ScopeDecl = CXXScope.top()->getCanonicalDecl();
 
-        if (ScopeDeclCheck(D, false))
+        if (ScopeDecl == D->getCanonicalDecl())
             return true;
     }
 
@@ -1606,10 +1609,9 @@ bool TypeMapper::isInjectedScopeName(const clang::Decl *D)
     decltype(TypeMapper::CXXScope) ScopeStack(CXXScope);
     while(!ScopeStack.empty())
     {
-        auto ScopeDecl = ScopeStack.top();
-        ScopeChecker ScopeDeclCheck(ScopeDecl);
-
-        if (ScopeDeclCheck(D, false))
+        auto ScopeDecl = ScopeStack.top()->getCanonicalDecl();
+        
+        if (ScopeDecl == D->getCanonicalDecl())
             return true;
 
         ScopeStack.pop();
@@ -1676,7 +1678,7 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
                                 (*PI)->getUninstantiatedDefaultArg() : (*PI)->getDefaultArg();
 
                 if (DefaultArgExpr) // might be null if BuildCXXDefaultArgExpr returned ExprError
-                    defaultArg = ExprMapper(tm).fromExpression(DefaultArgExpr, *I);
+                    defaultArg = ExprMapper(tm).fromExpression(DefaultArgExpr);
             }
 
             PI++;

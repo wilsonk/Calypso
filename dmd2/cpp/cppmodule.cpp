@@ -270,8 +270,7 @@ Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
                     // DMD and Clang's intepretations differ, one important instance being -1u < 0u (true for DMD, false for Clang)
 
             if (!e)
-                e = expmap.fromExpression(Var->getAnyInitializer(),
-                                           clang::QualType(), true);
+                e = expmap.fromExpression(Var->getAnyInitializer(), true);
 
             if (e && e->op != TOKnull)
                 a->init = new ExpInitializer(loc, e);
@@ -1613,16 +1612,17 @@ Module *Module::load(Loc loc, Identifiers *packages, Identifier *id)
         {
             auto OpName = Context.DeclarationNames.getCXXOperatorName(
                         static_cast<clang::OverloadedOperatorKind>(Op));
-            auto Operators = getDeclContextNamedOrTU(D)->lookup(OpName);
 
-            // WARNING: lookups will only search in the top-most namespace for overloaded operators
-            // Can non-member operators be located in a parent namespace or the TU?
-            // Never seen that happening but if it's allowed then it's a FIXME
+            for (auto Ctx = D->getDeclContext(); Ctx; Ctx = Ctx->getLookupParent())
+            {
+                if (Ctx->isTransparentContext())
+                    continue;
 
-            for (auto OverOp: Operators)
-                if (isOverloadedOperatorWithTagOperand(OverOp, D))
-                    if (auto s = mapper.VisitDecl(OverOp->getCanonicalDecl()))
-                        m->members->append(s);
+                for (auto OverOp: Ctx->lookup(OpName))
+                    if (isOverloadedOperatorWithTagOperand(OverOp, D))
+                        if (auto s = mapper.VisitDecl(OverOp->getCanonicalDecl()))
+                            m->members->append(s);
+            }
         }
 
 //         srcFilename = AST->getSourceManager().getFilename(TD->getLocation());

@@ -348,11 +348,13 @@ Identifier *getIdentifier(const clang::NamedDecl *D, SpecValue *spec)
     return result;
 }
 
-Identifier *getExtendedIdentifier(const clang::NamedDecl *D,
+Identifier *getExtendedIdentifierOrNull(const clang::NamedDecl *D,
                                   TypeMapper &mapper)
 {
     SpecValue spec(mapper);
     auto ident = getIdentifier(D, &spec);
+    if (!ident)
+        return nullptr;
 
     auto FD = dyn_cast<clang::FunctionDecl>(D);
     if (spec.op && FD)
@@ -362,6 +364,15 @@ Identifier *getExtendedIdentifier(const clang::NamedDecl *D,
                     cast<clang::CXXConversionDecl>(D));
 
     return ident;
+}
+
+Identifier *getExtendedIdentifier(const clang::NamedDecl *D,
+                                  TypeMapper &mapper)
+{
+    auto result = getExtendedIdentifierOrNull(D, mapper);
+    assert(result);
+
+    return result;
 }
 
 RootObject *getIdentOrTempinst(Loc loc, const clang::DeclarationName N,
@@ -711,7 +722,7 @@ int LangPlugin::doesHandleImport(const utf8_t* tree)
                                    Identifier* id, Identifier* aliasId, int isstatic)
 {
     return new Import(loc,
-                packages, id, aliasId, isstatic, false);
+                packages, id, aliasId, isstatic);
 }
 
 int LangPlugin::doesHandleModmap(const utf8_t* lang)

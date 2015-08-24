@@ -20,11 +20,7 @@ class Import : public ::Import
 public:
     CALYPSO_LANGPLUGIN
 
-    bool fromCpp;
-
-    Import(Loc loc, Identifiers *packages, Identifier *id, Identifier *aliasId,
-        int isstatic, bool fromCpp = true);
-    void load(Scope *sc) override;
+    Import(Loc loc, Identifiers *packages, Identifier *id, Identifier *aliasId, int isstatic);
 
     ::Module *loadModule(Loc loc, Identifiers *packages, Identifier *id);
 };
