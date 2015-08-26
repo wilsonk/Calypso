@@ -273,7 +273,8 @@ Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
                 e = expmap.fromExpression(Var->getAnyInitializer(), true);
 
             if (e && e->op != TOKnull)
-                a->init = new ExpInitializer(loc, e);
+                if (Init->isInstantiationDependent() || Init->isEvaluatable(Context))
+                    a->init = new ExpInitializer(loc, e);
         }
     }
 
