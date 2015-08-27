@@ -161,6 +161,7 @@ public:
                                    Expressions* arguments, llvm::Value *retvar) override;
 
     void buildGEPIndices(IrTypeAggr *irTyAgrr, VarGEPIndices &varGEPIndices) override;
+    LLValue* toIndexAggregate(LLValue* src, ::AggregateDeclaration* ad, ::VarDeclaration* vd) override;
     void addBaseClassData(AggrTypeBuilder &builder, ::AggregateDeclaration *base) override;
     void emitAdditionalClassSymbols(::ClassDeclaration *cd) override;
     void toInitClass(TypeClass* tc, LLValue* dst) override;

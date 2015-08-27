@@ -253,26 +253,78 @@ void LangPlugin::addFieldInitializers(llvm::SmallVectorImpl<llvm::Constant*>& co
 void LangPlugin::buildGEPIndices(IrTypeAggr *irTyAgrr,
                                  VarGEPIndices &varGEPIndices)
 {
-    auto& CGTypes = CGM->getTypes();
-    
-    auto t = irTyAgrr->getDType();
-    AggregateDeclaration *ad;
-    
-    if (t->ty == Tstruct)
-        ad = static_cast<TypeStruct*>(t)->sym;
-    else if (t->ty == Tclass)
-        ad = static_cast<TypeClass*>(t)->sym;
+//     auto& CGTypes = CGM->getTypes();
+//
+//     auto t = irTyAgrr->getDType();
+//     AggregateDeclaration *ad;
+//
+//     if (t->ty == Tstruct)
+//         ad = static_cast<TypeStruct*>(t)->sym;
+//     else if (t->ty == Tclass)
+//         ad = static_cast<TypeClass*>(t)->sym;
+//
+//     auto RD = getRecordDecl(ad);
+//     assert(RD->getDefinition());
+//
+//     auto& CGRL = CGTypes.getCGRecordLayout(RD);
+//
+//     for (auto vd: ad->fields)
+//     {
+//         auto VD = static_cast<cpp::VarDeclaration*>(vd)->VD;
+//         varGEPIndices[vd] = CGRL.getLLVMFieldNo(llvm::cast<clang::FieldDecl>(VD));
+//     }
+}
 
-    auto RD = getRecordDecl(ad);
-    assert(RD->getDefinition());
-    
-    auto& CGRL = CGTypes.getCGRecordLayout(RD);
-    
-    for (auto vd: ad->fields)
+LLValue* LangPlugin::toIndexAggregate(LLValue* src, ::AggregateDeclaration* ad,
+                                      ::VarDeclaration* vd)
+{
+    auto& Context = getASTContext();
+    assert(isCPP(ad) && isCPP(vd));
+
+    auto Record = getRecordDecl(ad);
+    auto Field = cast<clang::FieldDecl>(
+                        static_cast<cpp::VarDeclaration*>(vd)->VD);
+
+    updateCGFInsertPoint();
+
+    auto LV = clang::CodeGen::LValue::MakeAddr(src, Context.getRecordType(Record),
+                        clang::CharUnits::One(), Context);
+
+    // NOTE: vd might be a field from an anon struct or union injected to ad->fields during semantic
+    // LDC differs from Clang in that it also injects the fields to the LLVM type, and access to indirect fields
+    // goes straight for the field instead of GEPing the anon struct first.
+    // So we need to do this now:
+    std::function<void(const clang::FieldDecl*)>
+            Index = [&] (const clang::FieldDecl *Field)
     {
-        auto VD = static_cast<cpp::VarDeclaration*>(vd)->VD;
-        varGEPIndices[vd] = CGRL.getLLVMFieldNo(llvm::cast<clang::FieldDecl>(VD));
-    }
+        auto Parent = Field->getParent();
+
+        if (Parent->getCanonicalDecl() != Record->getCanonicalDecl())
+        {
+            const clang::FieldDecl *ParentField = nullptr;
+            auto GrandParent = cast<clang::RecordDecl>(Parent->getDeclContext());
+
+            for (auto F: GrandParent->fields())
+                if (auto FRec = F->getType()->getAsCXXRecordDecl())
+                    if (FRec->getCanonicalDecl() == Parent->getCanonicalDecl())
+                    {
+                        ParentField = F;
+                        break;
+                    }
+
+            assert(ParentField);
+            Index(ParentField);
+        }
+
+        LV = CGF()->EmitLValueForField(LV, Field);
+    };
+
+    Index(Field);
+
+    if (LV.isBitField())
+        return LV.getBitFieldAddr();
+
+    return LV.getAddress();
 }
 
 void LangPlugin::toInitClass(TypeClass* tc, LLValue* dst)

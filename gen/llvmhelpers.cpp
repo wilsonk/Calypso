@@ -1949,6 +1949,9 @@ LLValue* DtoIndexAggregate(LLValue* src, AggregateDeclaration* ad, VarDeclaratio
     // ourselves, DtoType below would be enough.
     DtoResolveDsymbol(ad);
 
+    if (auto lp = ad->langPlugin()) // CALYPSO
+        return lp->codegen()->toIndexAggregate(src, ad, vd);
+
     // Cast the pointer we got to the canonical struct type the indices are
     // based on.
     LLType* st = DtoType(ad->type);
