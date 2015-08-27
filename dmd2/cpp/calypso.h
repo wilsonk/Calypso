@@ -166,6 +166,8 @@ public:
     void emitAdditionalClassSymbols(::ClassDeclaration *cd) override;
     void toInitClass(TypeClass* tc, LLValue* dst) override;
     void toPostNewClass(Loc& loc, TypeClass* tc, DValue* val) override;
+
+    void EmitInternalDeclsForFields(const clang::RecordDecl *RD);
          
     // ==== ==== ====
     PCH pch;
