@@ -688,6 +688,29 @@ void LangPlugin::toDefaultInitVarDeclaration(::VarDeclaration* vd)
     }
 }
 
+void LangPlugin::EmitInternalDeclsForFields(const clang::RecordDecl *RD)
+{
+    auto& Context = getASTContext();
+    auto& S = pch.AST->getSema();
+
+    InternalDeclEmitter Emitter(Context, *CGM);
+
+    auto Emit = [&] (clang::CXXMethodDecl *D) {
+        if (D && !D->isDeleted())
+            Emitter.Emit(D);
+    };
+
+    for (auto F: RD->fields())
+    {
+        auto FTyRec = F->getType()->getAsCXXRecordDecl();
+        if (!FTyRec)
+            continue;
+
+        Emit(S.LookupDefaultConstructor(FTyRec));
+        Emit(S.LookupDestructor(FTyRec));
+    }
+}
+
 void LangPlugin::toDefineStruct(::StructDeclaration* sd)
 {
     auto& S = pch.AST->getSema();
@@ -712,10 +735,16 @@ void LangPlugin::toDefineStruct(::StructDeclaration* sd)
 
     EmitStructor(S.LookupDefaultConstructor(_RD));
     EmitStructor(S.LookupCopyingConstructor(_RD, clang::Qualifiers::Const));
+
+    EmitInternalDeclsForFields(RD);
 }
 
 void LangPlugin::toDefineClass(::ClassDeclaration* cd)
 {
+    auto c_cd = static_cast<cpp::ClassDeclaration*>(cd);
+    auto RD = cast<clang::CXXRecordDecl>(c_cd->RD);
+
+    EmitInternalDeclsForFields(RD);
 }
 
 void LangPlugin::toDefineTemplateInstance(::TemplateInstance *inst)
