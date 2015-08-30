@@ -70,19 +70,20 @@ public:
     void rebuildScope(const clang::Decl *RightMost); // rebuild both CXXScope and TempParamScope
 
     // Clang -> DMD
-    Type *fromType(const clang::QualType T);
-    Objects *fromTemplateArguments(const clang::TemplateArgumentList *List,
+    Type *fromType(const clang::QualType T, Loc loc);
+    Objects *fromTemplateArguments(Loc loc, const clang::TemplateArgumentList *List,
                 const clang::TemplateParameterList *ParamList = nullptr);
 
     class FromType // type-specific state
     {
     public:
         TypeMapper &tm;
+        Loc loc;
         TypeQualified *prefix; // special case for NNS qualified types
 
         const clang::Expr *TypeOfExpr = nullptr;
 
-        FromType(TypeMapper &tm, TypeQualified *prefix = nullptr);
+        FromType(TypeMapper &tm, Loc loc, TypeQualified *prefix = nullptr);
 
         Type *operator()(const clang::QualType T);
         Type *fromTypeUnqual(const clang::Type *T);
@@ -139,7 +140,7 @@ public:
     // DMD -> Clang
     clang::QualType toType(Loc loc, Type* t, Scope *sc, StorageClass stc = STCundefined);
     
-    ::Import *AddImplicitImportForDecl(const clang::NamedDecl *D, bool fake = false);
+    ::Import *AddImplicitImportForDecl(Loc loc, const clang::NamedDecl *D, bool fake = false);
 
 protected:
     cpp::Module *mod;
@@ -160,8 +161,8 @@ protected:
 
     const clang::Decl *GetRootForTypeQualified(clang::NamedDecl* D);
 
-    ::Import *BuildImplicitImport(const clang::Decl *D, Identifier *aliasid = nullptr);
-    ::Import *BuildImplicitImport(const clang::Decl *D, const clang::Module *Mod, Identifier *aliasid = nullptr);
+    ::Import *BuildImplicitImport(Loc loc, const clang::Decl *D, Identifier *aliasid = nullptr);
+    ::Import *BuildImplicitImport(Loc loc, const clang::Decl *D, const clang::Module *Mod, Identifier *aliasid = nullptr);
     Module::RootKey GetImplicitImportKeyForDecl(const clang::NamedDecl *D);
     const clang::Decl *GetNonNestedContext(const clang::Decl *D);  // returns the "root" for qualified types
 
