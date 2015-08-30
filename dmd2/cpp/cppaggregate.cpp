@@ -369,31 +369,12 @@ Expression *LangPlugin::getRightThis(Loc loc, Scope *sc, ::AggregateDeclaration 
 ::FuncDeclaration *LangPlugin::buildDtor(::AggregateDeclaration *ad,
                                          Scope *sc)
 {
-    auto& S = getASTUnit()->getSema();
-    bool isClass = ad->isClassDeclaration();
+    assert(ad->dtors.dim < 2);
 
-    const clang::RecordDecl *RD = isClass
-              ? static_cast<cpp::ClassDeclaration*>(ad)->RD
-              : static_cast<cpp::StructDeclaration*>(ad)->RD;
+    if (ad->dtors.empty())
+        return nullptr; // forward reference
 
-    auto CRD = dyn_cast<clang::CXXRecordDecl>(RD);
-    if (!CRD || !RD->isCompleteDefinition())
-        return nullptr;
-
-    if (CRD->hasTrivialDestructor())
-        return nullptr; // WARNING not sure about all the implications of letting DMD build the dtor
-
-    auto CDD = S.LookupDestructor(
-            const_cast<clang::CXXRecordDecl *>(CRD));
-    S.MarkFunctionReferenced(clang::SourceLocation(), CDD);
-
-    StorageClass stc = STCsafe | STCnothrow | STCpure | STCnogc;
-    DtorDeclaration *dd = new DtorDeclaration(Loc(), stc,
-                                              Lexer::idPool("__aggrDtor"), CDD);
-    ad->members->push(dd);
-    dd->semantic(sc);
-
-    return dd;
+    return ad->dtors[0];
 }
 
 template <typename AggTy>
