@@ -101,7 +101,6 @@ static Identifier *fullOperatorMapIdent(Identifier *baseIdent,
 static Identifier *getOperatorIdentifier(const clang::FunctionDecl *FD,
                 const char *&op, clang::OverloadedOperatorKind OO = clang::OO_None)
 {
-    auto& Context = calypso.getASTContext();
     if (FD)
         OO = FD->getOverloadedOperator();
 
@@ -222,7 +221,7 @@ static Identifier *fullConversionMapIdent(Identifier *baseIdent,
     mapper.addImplicitDecls = false;
 
     auto T = D->getConversionType().getDesugaredType(Context);
-    auto t = mapper.fromType(T);
+    auto t = mapper.fromType(T, Loc());
 
     std::string fullName(baseIdent->string, baseIdent->len);
     fullName += "_";
@@ -251,7 +250,7 @@ static Identifier *getConversionIdentifier(const clang::CXXConversionDecl *D,
     if (D)
         T = D->getConversionType();
 
-    t = mapper.fromType(T);
+    t = mapper.fromType(T, Loc());
     return Id::cast;
 }
 

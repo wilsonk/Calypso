@@ -235,7 +235,7 @@ Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
     }
 
     auto id = fromIdentifier(D->getIdentifier());
-    auto t = fromType(D->getType());
+    auto t = fromType(D->getType(), loc);
 
     if (!t)
         return nullptr;
@@ -357,7 +357,7 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
                 for (auto B = CRD->bases_begin(),
                         BEnd = CRD->bases_end(); B != BEnd; ++B)
                 {
-                    auto brt = fromType(B->getType());
+                    auto brt = fromType(B->getType(), loc);
 
                     baseclasses->push(new BaseClass(brt,
                                                     toPROT(B->getAccessSpecifier())));
@@ -490,7 +490,7 @@ Dsymbols *DeclMapper::VisitTypedefNameDecl(const clang::TypedefNameDecl* D)
 
     auto loc = fromLoc(D->getLocation());
     auto id = fromIdentifier(D->getIdentifier());
-    auto t = fromType(D->getUnderlyingType());
+    auto t = fromType(D->getUnderlyingType(), loc);
 
     if (!t)
         return nullptr;
@@ -543,16 +543,17 @@ class FunctionReferencer : public clang::RecursiveASTVisitor<FunctionReferencer>
 {
     DeclMapper &mapper;
     clang::Sema &S;
-    clang::SourceLocation Loc;
+    clang::SourceLocation SLoc;
 
+    Loc loc;
     llvm::DenseSet<const clang::FunctionDecl *> Referenced;
 
     bool Reference(const clang::FunctionDecl *Callee);
     bool ReferenceRecord(const clang::RecordType *RT);
 public:
     FunctionReferencer(DeclMapper &mapper,
-                        clang::Sema &S,
-                        clang::SourceLocation Loc) : mapper(mapper), S(S), Loc(Loc) {}
+                        clang::Sema &S, clang::SourceLocation SLoc)
+        : mapper(mapper), S(S), SLoc(SLoc), loc(fromLoc(SLoc)) {}
     bool VisitCallExpr(const clang::CallExpr *E);
     bool VisitCXXConstructExpr(const clang::CXXConstructExpr *E);
     bool VisitCXXNewExpr(const clang::CXXNewExpr *E);
@@ -567,12 +568,12 @@ bool FunctionReferencer::Reference(const clang::FunctionDecl *D)
     Referenced.insert(Callee->getCanonicalDecl());
 
     Callee->setTrivial(false);  // force its definition and Sema to resolve its exception spec
-    S.MarkFunctionReferenced(Loc, Callee);
+    S.MarkFunctionReferenced(SLoc, Callee);
 
     if (Callee->isImplicitlyInstantiable())
-        S.InstantiateFunctionDefinition(Loc, Callee);
+        S.InstantiateFunctionDefinition(SLoc, Callee);
 
-    mapper.AddImplicitImportForDecl(Callee);
+    mapper.AddImplicitImportForDecl(loc, Callee);
 
     const clang::FunctionDecl *Def;
     if (!Callee->hasBody(Def))
@@ -588,7 +589,7 @@ bool FunctionReferencer::ReferenceRecord(const clang::RecordType *RT)
     if (!RD->hasDefinition())
         return true;
 
-    mapper.AddImplicitImportForDecl(RD);
+    mapper.AddImplicitImportForDecl(loc, RD);
 
     if (!RD->isDependentType())
     {
@@ -687,7 +688,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
                 return nullptr;
     }
 
-    auto tf = FromType(*this).fromTypeFunction(FPT, D);
+    auto tf = FromType(*this, loc).fromTypeFunction(FPT, D);
     if (!tf)
     {
         ::warning(loc, "Discarding %s, non-supported argument or return type (e.g int128_t)",
@@ -921,7 +922,7 @@ TemplateParameter *DeclMapper::VisitTemplateParameter(const clang::NamedDecl *Pa
             dyn_cast<clang::NonTypeTemplateParmDecl>(Param))
     {
         id = getIdentifierForTemplateNonTypeParm(NTTPD);
-        auto valTy = fromType(NTTPD->getType());
+        auto valTy = fromType(NTTPD->getType(), loc);
 
         if (!valTy || isNonSupportedType(NTTPD->getType()))
             return nullptr;
@@ -953,7 +954,7 @@ TemplateParameter *DeclMapper::VisitTemplateParameter(const clang::NamedDecl *Pa
                         assert(false && "Unsupported template specialization value");
                 }
 
-                tp_specvalue = isExpression(FromType(*this).fromTemplateArgument(SpecArg));
+                tp_specvalue = isExpression(FromType(*this, loc).fromTemplateArgument(SpecArg));
                 assert(tp_specvalue);
             }
 
@@ -991,7 +992,7 @@ TemplateParameter *DeclMapper::VisitTemplateParameter(const clang::NamedDecl *Pa
             if (SpecArg)
             {
                 auto SpecTy = SpecArg->getAsType();
-                auto specArg = FromType(*this).fromTemplateArgument(SpecArg);
+                auto specArg = FromType(*this, loc).fromTemplateArgument(SpecArg);
                 if (!specArg || isNonSupportedType(SpecTy))
                     return nullptr; // might be a non supported type
                 tp_spectype = isType(specArg);
@@ -999,7 +1000,7 @@ TemplateParameter *DeclMapper::VisitTemplateParameter(const clang::NamedDecl *Pa
             }
 
             if (TTPD->hasDefaultArgument())
-                tp_defaulttype = fromType(TTPD->getDefaultArgument());
+                tp_defaulttype = fromType(TTPD->getDefaultArgument(), loc);
 
             tp = new TemplateTypeParameter(loc, id, tp_spectype, tp_defaulttype);
         }
@@ -1021,12 +1022,12 @@ TemplateParameter *DeclMapper::VisitTemplateParameter(const clang::NamedDecl *Pa
 
             if (SpecArg)
             {
-                tp_spectype = isType(FromType(*this).fromTemplateArgument(SpecArg));
+                tp_spectype = isType(FromType(*this, loc).fromTemplateArgument(SpecArg));
                 assert(tp_spectype);
             }
 
             if (TempTemp->hasDefaultArgument())
-                tp_defaulttype = FromType(*this).fromTemplateName(
+                tp_defaulttype = FromType(*this, loc).fromTemplateName(
                         TempTemp->getDefaultArgument().getArgument().getAsTemplate());
 
             tp = new TemplateAliasParameter(loc, id, nullptr, tp_spectype, tp_defaulttype);
@@ -1136,7 +1137,7 @@ Dsymbols *DeclMapper::VisitEnumDecl(const clang::EnumDecl* D)
         if (IntType.isNull())
             IntType = D->getPromotionType();
 
-        memtype = fromType(IntType);
+        memtype = fromType(IntType, loc);
     }
 
     auto e = new EnumDeclaration(loc, ident, memtype, D);

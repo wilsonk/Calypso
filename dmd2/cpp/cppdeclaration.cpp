@@ -294,7 +294,7 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D)
     Referenced.insert(D->getCanonicalDecl());
 
     // Although we try to add all the needed imports during importAll(), sometimes we miss a module so ensure it gets loaded
-    auto im = mapper.AddImplicitImportForDecl(D, true);
+    auto im = mapper.AddImplicitImportForDecl(loc, D, true);
     im->isstatic = true;
     auto dst = Package::resolve(im->packages, NULL, &im->pkg);
     if (!dst->lookup(im->id))
@@ -308,7 +308,7 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D)
 
     auto Func = dyn_cast<clang::FunctionDecl>(D);
     if (Func && Func->getPrimaryTemplate())
-        D = Func->getPrimaryTemplate()->getCanonicalDecl();
+        D = cast<clang::NamedDecl>(getSpecializedDeclOrExplicit(Func)->getCanonicalDecl());
 
     // HACK FIXME
     if (Func && Func->isOutOfLine() &&
@@ -322,7 +322,7 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D)
             return true;
     }
 
-    auto tqual = TypeMapper::FromType(mapper).typeQualifiedFor(
+    auto tqual = TypeMapper::FromType(mapper, loc).typeQualifiedFor(
                 const_cast<clang::NamedDecl*>(D), nullptr, nullptr,
                 &tqualOptions);
     if (!tqual)
@@ -373,7 +373,7 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D)
         assert(p.s && p.s->isTemplateDeclaration());
 
         auto td = p.s->isTemplateDeclaration();
-        auto tiargs = mapper.fromTemplateArguments(Func->getTemplateSpecializationArgs());
+        auto tiargs = mapper.fromTemplateArguments(loc, Func->getTemplateSpecializationArgs());
         assert(tiargs);
         SpecValue spec(mapper);
         getIdentifier(Func, &spec);

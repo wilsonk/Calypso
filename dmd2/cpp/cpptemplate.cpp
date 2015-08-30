@@ -248,7 +248,7 @@ MATCH TemplateDeclaration::matchWithInstance(Scope *sc, ::TemplateInstance *ti,
             for (unsigned i = 0; i < dedtypes->dim; i++)
             {
                 const clang::NamedDecl *Param = (i < ParamList->size()) ? ParamList->getParam(i) : nullptr;
-                auto atype = TypeMapper::FromType(tymap).fromTemplateArgument(&Deduced[i], Param);
+                auto atype = TypeMapper::FromType(tymap, loc).fromTemplateArgument(&Deduced[i], Param);
                 assert(atype);
                 (*dedtypes)[i] = atype;
             }
@@ -264,7 +264,7 @@ MATCH TemplateDeclaration::matchWithInstance(Scope *sc, ::TemplateInstance *ti,
     else
     {
         auto InstArgs = getTemplateInstantiationArgs(c_ti->Inst)->asArray();
-        auto tdtypes = TypeMapper::FromType(tymap).fromTemplateArguments(InstArgs.begin(), InstArgs.end(),
+        auto tdtypes = TypeMapper::FromType(tymap, loc).fromTemplateArguments(InstArgs.begin(), InstArgs.end(),
                         Temp->getTemplateParameters());
 
         SpecValue spec(tymap);
@@ -308,8 +308,13 @@ clang::RedeclarableTemplateDecl *TemplateDeclaration::getPrimaryTemplate()
     if (auto RTD = dyn_cast<clang::RedeclarableTemplateDecl>(TempOrSpec))
         return const_cast<clang::RedeclarableTemplateDecl*>(RTD);
 
-    auto CTSD = cast<clang::ClassTemplateSpecializationDecl>(TempOrSpec);
-    return CTSD->getSpecializedTemplate();
+    if (auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(TempOrSpec))
+        return CTSD->getSpecializedTemplate();
+
+    if (auto FD = dyn_cast<clang::FunctionDecl>(TempOrSpec))
+        return FD->getPrimaryTemplate();
+
+    llvm_unreachable("Unhandled primary template");
 }
 
 bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
@@ -317,7 +322,7 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
     if (tempinsts.empty())
         return true;
 
-    auto ti = tempinsts.top();
+//     auto ti = tempinsts.top();
 
 //     for (auto I = DG.begin(), E = DG.end(); I != E; ++I)
 //         ti->Dependencies.push_back(*I);
@@ -378,7 +383,7 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
                 continue;
 
             auto e = isExpression(
-                    TypeMapper::FromType(tymap).fromTemplateArgument(Arg, *Param));
+                    TypeMapper::FromType(tymap, loc).fromTemplateArgument(Arg, *Param));
             assert(e);
             tiargs[i] = e->semantic(globalScope(sc->instantiatingModule()));
         }
@@ -512,16 +517,20 @@ LcorrectTempDecl:
 void TemplateDeclaration::correctTempDecl(TemplateInstance *ti)
 {
     auto Inst = ti->Inst;
-    auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(Inst);
+    auto ClassSpec = dyn_cast<clang::ClassTemplateSpecializationDecl>(Inst);
+    auto FuncSpec = dyn_cast<clang::FunctionDecl>(Inst);
 
-    if (isa<clang::TypeAliasTemplateDecl>(TempOrSpec) || // FIXME, any way to retrieve the template decl for alias templates?
-        !CTSD)
+    if (isa<clang::TypeAliasTemplateDecl>(TempOrSpec)) // FIXME, any way to retrieve the template decl for alias templates?
     {
         ti->tempdecl = this;
         return;
     }
 
-    auto RealTemp = getTemplateSpecializedDecl(CTSD)->getCanonicalDecl();
+    const clang::Decl *Spec = ClassSpec;
+    if (FuncSpec)
+        Spec = FuncSpec;
+
+    auto RealTemp = getSpecializedDeclOrExplicit(Spec)->getCanonicalDecl();
 
     ::TemplateDeclaration *td = this;
     if (td->overroot)
@@ -657,7 +666,7 @@ void TemplateInstance::correctTiargs()
         tymap.addImplicitDecls = false;
         tymap.substsyms = collectSymbols(origTiargs);
 
-        tiargs = TypeMapper::FromType(tymap).fromTemplateArguments(Args.begin(), Args.end(),
+        tiargs = TypeMapper::FromType(tymap, loc).fromTemplateArguments(Args.begin(), Args.end(),
                         Partial->getTemplateParameters());
         semantictiargsdone = false;
     }

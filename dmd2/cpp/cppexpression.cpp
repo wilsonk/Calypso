@@ -52,7 +52,7 @@ RootObject *typeQualifiedRoot(TypeQualified *tqual)
     llvm_unreachable("FIXME TypeOf");
 }
 
-Objects *fromASTTemplateArgumentListInfo(
+Objects *fromASTTemplateArgumentListInfo(Loc loc,
             const clang::ASTTemplateArgumentListInfo &Args,
             TypeMapper &tymap)
 {
@@ -61,7 +61,7 @@ Objects *fromASTTemplateArgumentListInfo(
     for (unsigned i = 0; i < Args.NumTemplateArgs; i++)
     {
         auto Arg = &Args[i].getArgument();
-        tiargs->push(TypeMapper::FromType(tymap).fromTemplateArgument(Arg));
+        tiargs->push(TypeMapper::FromType(tymap, loc).fromTemplateArgument(Arg));
     }
 
     return tiargs;
@@ -216,12 +216,11 @@ Expression *ExprMapper::fromCastExpr(Loc loc, const clang::CastExpr *E)
     assert(SubExpr->getType().getCanonicalType()
                     != CastDestTy.getCanonicalType()); // we should be ignoring all casts that do not alter the type
 
-    return new CastExp(loc, e, tymap.fromType(CastDestTy));
+    return new CastExp(loc, e, tymap.fromType(CastDestTy, loc));
 }
 
 Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  // TODO implement interpret properly
 {
-    auto& Context = calypso.pch.AST->getASTContext();
     auto loc = fromLoc(E->getLocStart());
 
     Expression *e = nullptr;
@@ -256,7 +255,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  //
     {
         auto Val = IL->getValue();
         Ty = E->getType();
-        t = tymap.fromType(Ty);
+        t = tymap.fromType(Ty, loc);
 
         e = new IntegerExp(loc, Ty->hasSignedIntegerRepresentation() ?
                         Val.getSExtValue() : Val.getZExtValue(), t);
@@ -352,7 +351,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  //
     }
     else if (auto UEOTT = dyn_cast<clang::UnaryExprOrTypeTraitExpr>(E))
     {
-        auto t = tymap.fromType(UEOTT->getTypeOfArgument());
+        auto t = tymap.fromType(UEOTT->getTypeOfArgument(), loc);
         auto e1 = new TypeExp(loc, t);
 
         switch (UEOTT->getKind())
@@ -371,7 +370,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  //
     else if (auto DR = dyn_cast<clang::DeclRefExpr>(E))
     {
         Ty = DR->getType();
-        t = tymap.fromType(Ty);
+        t = tymap.fromType(Ty, loc);
 
         e = fromExpressionDeclRef(loc, const_cast<clang::ValueDecl*>(DR->getDecl()),
                         DR->getQualifier());
@@ -403,7 +402,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  //
 
             auto tempinst = new TemplateInstance(loc,
                             static_cast<Identifier*>(member));
-            tempinst->tiargs = fromASTTemplateArgumentListInfo(
+            tempinst->tiargs = fromASTTemplateArgumentListInfo(loc,
                         CDSM->getExplicitTemplateArgs(), tymap);
 
             member = tempinst;
@@ -411,7 +410,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  //
 
         if (auto NNS = CDSM->getQualifier())
         {
-            auto tqual = TypeMapper::FromType(tymap).fromNestedNameSpecifier(NNS);
+            auto tqual = TypeMapper::FromType(tymap, loc).fromNestedNameSpecifier(NNS);
             e1 = dotIdentOrInst(loc, e1, typeQualifiedRoot(tqual));
 
             for (auto id: tqual->idents)
@@ -428,7 +427,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  //
 
         if (auto NNS = DSDR->getQualifier())
         {
-            auto tqual = TypeMapper::FromType(tymap).fromNestedNameSpecifier(NNS);
+            auto tqual = TypeMapper::FromType(tymap, loc).fromNestedNameSpecifier(NNS);
             e1 = new TypeExp(loc, tqual);
         }
 
@@ -439,7 +438,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  //
 
         if (DSDR->hasExplicitTemplateArgs())
         {
-            auto tiargs = fromASTTemplateArgumentListInfo(
+            auto tiargs = fromASTTemplateArgumentListInfo(loc,
                               DSDR->getExplicitTemplateArgs(), tymap);
 
             tempinst = new ::TemplateInstance(loc, ident);
@@ -514,7 +513,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  //
             auto& ExplicitTempArgs = UL->getExplicitTemplateArgs();
 
             auto tempinst = new ::TemplateInstance(loc, id);
-            tempinst->tiargs = fromASTTemplateArgumentListInfo(ExplicitTempArgs, tymap);
+            tempinst->tiargs = fromASTTemplateArgumentListInfo(loc, ExplicitTempArgs, tymap);
             e = new ScopeExp(loc, tempinst);
         }
         else
@@ -525,7 +524,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  //
         if (E->getType()->getAs<clang::ReferenceType>())
             return new NullExp(loc);
 
-        t = tymap.fromType(E->getType().withoutLocalFastQualifiers());
+        t = tymap.fromType(E->getType().withoutLocalFastQualifiers(), loc);
         e = new CallExp(loc, new TypeExp(loc, t));
     }
     else if (auto MT = dyn_cast<clang::MaterializeTemporaryExpr>(E))
@@ -553,7 +552,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  //
             }
             else
             {
-                t = tymap.fromType(Ty.withoutLocalFastQualifiers());
+                t = tymap.fromType(Ty.withoutLocalFastQualifiers(), loc);
 
                 auto args = new Expressions;
                 args->push(e);
@@ -574,7 +573,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  //
             e = fromExpression(CCE->getArg(0));
         else
         {
-            t = tymap.fromType(E->getType().withoutLocalFastQualifiers());
+            t = tymap.fromType(E->getType().withoutLocalFastQualifiers(), loc);
 
             auto args = new Expressions;
             for (auto Arg: CCE->arguments())
@@ -586,7 +585,7 @@ Expression* ExprMapper::fromExpression(const clang::Expr *E, bool interpret)  //
     else if (auto CNE = dyn_cast<clang::CXXNewExpr>(E))
     {
         auto Ty = CNE->getAllocatedType();
-        t = tymap.fromType(Ty.withoutLocalFastQualifiers());
+        t = tymap.fromType(Ty.withoutLocalFastQualifiers(), loc);
 
         Expressions *args = nullptr;
         auto Construct = CNE->getConstructExpr();
@@ -689,7 +688,7 @@ Expression* ExprMapper::fromExpressionDeclRef(Loc loc, clang::NamedDecl *D,
     TypeQualifiedBuilderOptions tqualOpts;
     tqualOpts.overOpFullIdent = true;
 
-    auto tqual = TypeMapper::FromType(tymap).typeQualifiedFor(D, nullptr, nullptr, &tqualOpts);
+    auto tqual = TypeMapper::FromType(tymap, loc).typeQualifiedFor(D, nullptr, nullptr, &tqualOpts);
     assert(tqual && "DeclRefExpr decl without a DeclarationName");
 
     // Convert the TypeQualified path to DotXXXExp because
