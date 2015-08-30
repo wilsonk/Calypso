@@ -308,8 +308,13 @@ clang::RedeclarableTemplateDecl *TemplateDeclaration::getPrimaryTemplate()
     if (auto RTD = dyn_cast<clang::RedeclarableTemplateDecl>(TempOrSpec))
         return const_cast<clang::RedeclarableTemplateDecl*>(RTD);
 
-    auto CTSD = cast<clang::ClassTemplateSpecializationDecl>(TempOrSpec);
-    return CTSD->getSpecializedTemplate();
+    if (auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(TempOrSpec))
+        return CTSD->getSpecializedTemplate();
+
+    if (auto FD = dyn_cast<clang::FunctionDecl>(TempOrSpec))
+        return FD->getPrimaryTemplate();
+
+    llvm_unreachable("Unhandled primary template");
 }
 
 bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
@@ -512,16 +517,20 @@ LcorrectTempDecl:
 void TemplateDeclaration::correctTempDecl(TemplateInstance *ti)
 {
     auto Inst = ti->Inst;
-    auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(Inst);
+    auto ClassSpec = dyn_cast<clang::ClassTemplateSpecializationDecl>(Inst);
+    auto FuncSpec = dyn_cast<clang::FunctionDecl>(Inst);
 
-    if (isa<clang::TypeAliasTemplateDecl>(TempOrSpec) || // FIXME, any way to retrieve the template decl for alias templates?
-        !CTSD)
+    if (isa<clang::TypeAliasTemplateDecl>(TempOrSpec)) // FIXME, any way to retrieve the template decl for alias templates?
     {
         ti->tempdecl = this;
         return;
     }
 
-    auto RealTemp = getTemplateSpecializedDecl(CTSD)->getCanonicalDecl();
+    const clang::Decl *Spec = ClassSpec;
+    if (FuncSpec)
+        Spec = FuncSpec;
+
+    auto RealTemp = getSpecializedDeclOrExplicit(Spec)->getCanonicalDecl();
 
     ::TemplateDeclaration *td = this;
     if (td->overroot)

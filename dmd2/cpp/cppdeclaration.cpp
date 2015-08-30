@@ -308,7 +308,7 @@ bool DeclReferencer::Reference(const clang::NamedDecl *D)
 
     auto Func = dyn_cast<clang::FunctionDecl>(D);
     if (Func && Func->getPrimaryTemplate())
-        D = Func->getPrimaryTemplate()->getCanonicalDecl();
+        D = cast<clang::NamedDecl>(getSpecializedDeclOrExplicit(Func)->getCanonicalDecl());
 
     // HACK FIXME
     if (Func && Func->isOutOfLine() &&

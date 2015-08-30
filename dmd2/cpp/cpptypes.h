@@ -181,7 +181,7 @@ bool isNonPODRecord(const clang::QualType T);
 bool isNonSupportedType(clang::QualType T);
 const clang::DeclContext *getDeclContextNonLinkSpec(const clang::Decl *D);
 const clang::DeclContext *getDeclContextNamedOrTU(const clang::Decl *D); // skipping transparent (i.e anonymous) decl contexts too
-const clang::NamedDecl *getTemplateSpecializedDecl(const clang::ClassTemplateSpecializationDecl *Spec);
+const clang::Decl *getSpecializedDeclOrExplicit(const clang::Decl *Spec);
 const clang::TagDecl *isAnonTagTypedef(const clang::TypedefNameDecl* D);
 bool isSameNameTagTypedef(const clang::TypedefNameDecl* D);
 

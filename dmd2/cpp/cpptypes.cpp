@@ -574,7 +574,7 @@ public:
         auto Func = dyn_cast<clang::FunctionDecl>(D);
         if (ClassSpec && !ClassSpec->isExplicitSpecialization())
         {
-            auto Temp = getTemplateSpecializedDecl(ClassSpec);
+            auto Temp = getSpecializedDeclOrExplicit(ClassSpec);
             if (auto ClassTemp = dyn_cast<clang::ClassTemplateDecl>(Temp))
                 Result = ClassTemp->getTemplatedDecl();
             else
@@ -1994,7 +1994,7 @@ void TypeMapper::pushTempParamList(const clang::Decl *D)
     if (auto ClassSpec = dyn_cast<clang::ClassTemplateSpecializationDecl>(D))
     {
         if (!ClassSpec->isExplicitSpecialization())
-            pushTempParamList(getTemplateSpecializedDecl(ClassSpec));
+            pushTempParamList(getSpecializedDeclOrExplicit(ClassSpec));
     }
     else if (auto Func = dyn_cast<clang::FunctionDecl>(D))
     {
@@ -2190,17 +2190,31 @@ const clang::Decl *getParent(const clang::Decl *D)
     return cast<clang::Decl>(D->getDeclContext());
 }
 
-const clang::NamedDecl *getTemplateSpecializedDecl(const clang::ClassTemplateSpecializationDecl *Spec)
+const clang::Decl *getSpecializedDeclOrExplicit(const clang::Decl *Spec)
 {
-    if (Spec->isExplicitSpecialization())
-        return Spec;
+    if (auto ClassSpec = dyn_cast<clang::ClassTemplateSpecializationDecl>(Spec))
+    {
+        if (ClassSpec->isExplicitSpecialization())
+            return Spec;
 
-    auto U = Spec->getSpecializedTemplateOrPartial();
+        auto U = ClassSpec->getSpecializedTemplateOrPartial();
 
-    if (U.is<clang::ClassTemplateDecl*>())
-        return U.get<clang::ClassTemplateDecl*>();
-    else
-        return U.get<clang::ClassTemplatePartialSpecializationDecl*>();
+        if (U.is<clang::ClassTemplateDecl*>())
+            return U.get<clang::ClassTemplateDecl*>();
+        else
+            return U.get<clang::ClassTemplatePartialSpecializationDecl*>();
+    }
+    else if (auto FuncSpec = dyn_cast<clang::FunctionDecl>(Spec))
+    {
+        assert(FuncSpec->getPrimaryTemplate());
+
+        if (FuncSpec->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization)
+            return Spec;
+
+        return FuncSpec->getPrimaryTemplate();
+    }
+
+    llvm_unreachable("Not a template spec?");
 }
 
 }
