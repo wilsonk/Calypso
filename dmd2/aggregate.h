@@ -106,6 +106,7 @@ public:
     void semantic2(Scope *sc);
     void semantic3(Scope *sc);
     virtual unsigned size(Loc loc); // CALYPSO
+    virtual bool mayBeAnonymous(); // CALYPSO
     static void alignmember(structalign_t salign, unsigned size, unsigned *poffset);
     static unsigned placeField(unsigned *nextoffset,
         unsigned memsize, unsigned memalignsize, structalign_t memalign,

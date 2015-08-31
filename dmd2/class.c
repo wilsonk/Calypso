@@ -304,7 +304,7 @@ void ClassDeclaration::semantic(Scope *sc)
             ident = Identifier::generateId(id);
         }
     }
-    assert(parent && !isAnonymous());
+    assert(parent && (!isAnonymous() || mayBeAnonymous())); // CALYPSO
     type = type->semantic(loc, sc);
 
     if (type->ty == Tclass && ((TypeClass *)type)->sym != this)
@@ -1423,7 +1423,7 @@ void InterfaceDeclaration::semantic(Scope *sc)
         assert(sc->parent && sc->func);
         parent = sc->parent;
     }
-    assert(parent && !isAnonymous());
+    assert(parent && (!isAnonymous() || mayBeAnonymous())); // CALYPSO
     type = type->semantic(loc, sc);
 
     if (type->ty == Tclass && ((TypeClass *)type)->sym != this)

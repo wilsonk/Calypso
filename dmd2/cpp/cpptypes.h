@@ -182,6 +182,7 @@ bool isNonSupportedType(clang::QualType T);
 const clang::DeclContext *getDeclContextNonLinkSpec(const clang::Decl *D);
 const clang::DeclContext *getDeclContextNamedOrTU(const clang::Decl *D); // skipping transparent (i.e anonymous) decl contexts too
 const clang::Decl *getSpecializedDeclOrExplicit(const clang::Decl *Spec);
+clang::QualType withoutNonAliasSugar(clang::QualType Ty);
 const clang::TagDecl *isAnonTagTypedef(const clang::TypedefNameDecl* D);
 bool isSameNameTagTypedef(const clang::TypedefNameDecl* D);
 

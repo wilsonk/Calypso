@@ -176,6 +176,11 @@ unsigned int StructDeclaration::size(Loc loc)
     return structsize;
 }
 
+bool StructDeclaration::mayBeAnonymous()
+{
+    return true;
+}
+
 void ClassDeclaration::semantic(Scope *sc)
 {
     if (semanticRun >= PASSsemanticdone)
@@ -212,6 +217,11 @@ unsigned int ClassDeclaration::size(Loc loc)
         buildLayout();
 
     return structsize;
+}
+
+bool ClassDeclaration::mayBeAnonymous()
+{
+    return true;
 }
 
 bool ClassDeclaration::isBaseOf(::ClassDeclaration *cd, int *poffset)
