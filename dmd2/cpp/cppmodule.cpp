@@ -345,7 +345,7 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
 
         if (D->isUnion())
         {
-            a = new UnionDeclaration(loc, id);
+            a = new UnionDeclaration(loc, id, D);
         }
         else if (isPOD)
         {

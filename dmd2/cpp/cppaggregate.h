@@ -71,6 +71,21 @@ public:
     inline ::FuncDeclaration *findMethod(const clang::CXXMethodDecl *MD);
 };
 
+class UnionDeclaration : public ::UnionDeclaration
+{
+public:
+    CALYPSO_LANGPLUGIN
+
+    const clang::RecordDecl *RD;
+    bool layoutQueried = false;
+
+    UnionDeclaration(Loc loc, Identifier* id, const clang::RecordDecl* RD);
+    UnionDeclaration(const UnionDeclaration&);
+    Dsymbol *syntaxCopy(Dsymbol *s) override;
+    unsigned size(Loc loc) override;
+    bool mayBeAnonymous() override;
+};
+
 template<typename AggTy> void buildAggLayout(AggTy *ad);
 const clang::RecordDecl *getRecordDecl(::AggregateDeclaration *ad);
 const clang::RecordDecl *getRecordDecl(::Type *t);
