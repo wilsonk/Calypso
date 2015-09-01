@@ -56,18 +56,65 @@ void LangPlugin::enterModule(::Module *, llvm::Module *lm)
 
     auto& Context = getASTContext();
 
-    auto CGO = new clang::CodeGenOptions;
+    auto Opts = new clang::CodeGenOptions;
+    if (global.params.symdebug)
+        Opts->setDebugInfo(clang::CodeGenOptions::FullDebugInfo);
+
     CGM.reset(new clangCG::CodeGenModule(Context,
-                            *CGO, *lm, *gDataLayout, *pch.Diags));
+                            *Opts, *lm, *gDataLayout, *pch.Diags));
 }
 
-void LangPlugin::leaveModule(::Module *m, llvm::Module *)
+void removeDuplicateModuleFlags(llvm::Module *lm)
+{
+    auto ModFlags = lm->getModuleFlagsMetadata();
+    if (!ModFlags)
+        return;
+
+    // Before erasing, check that module flags with the same name are the same value
+    for (unsigned I = 0; I < ModFlags->getNumOperands(); I++)
+        for (unsigned J = 0; J < ModFlags->getNumOperands(); J++)
+    {
+        if (I == J)
+            continue;
+
+        auto Op1 = ModFlags->getOperand(I);
+        auto Op2 = ModFlags->getOperand(J);
+        auto ID1 = cast<llvm::MDString>(Op1->getOperand(1));
+        auto ID2 = cast<llvm::MDString>(Op2->getOperand(1));
+
+        if (Op1 != Op2 &&
+                ID1->getString().compare(ID2->getString()) == 0)
+        {
+            ::error(Loc(), "Two module flags named '%s', yet different values", ID1->getString().str().c_str());
+            fatal();
+        }
+    }
+
+    llvm::SmallVector<llvm::Module::ModuleFlagEntry, 3> Flags;
+    lm->getModuleFlagsMetadata(Flags);
+    ModFlags->dropAllReferences();
+
+    llvm::DenseSet<const llvm::MDString *> SeenIDs;
+    for (auto Flag: Flags)
+    {
+        if (SeenIDs.count(Flag.Key))
+            continue;
+        SeenIDs.insert(Flag.Key);
+
+        lm->addModuleFlag(Flag.Behavior, Flag.Key->getString(), Flag.Val);
+    }
+}
+
+void LangPlugin::leaveModule(::Module *m, llvm::Module *lm)
 {
     if (!getASTUnit())
         return;
 
     CGM->Release();
     CGM.reset();
+
+    // HACK Check and remove duplicate module flags such as "Debug Info Version" created by both Clang and LDC
+    removeDuplicateModuleFlags(lm);
 
     if (!global.errors && isCPP(m))
         calypso.genModSet.add(m);
