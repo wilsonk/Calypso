@@ -8000,7 +8000,10 @@ Type *TypeStruct::semantic(Loc loc, Scope *sc)
     // instead, parent should be set correctly
     assert(sym->parent);
 
-    return merge();
+    Type *t = merge();
+    if (sym->isAnonymous()) // CALYPSO acceptable?
+        return this;
+    return t;
 }
 
 d_uns64 TypeStruct::size(Loc loc)
@@ -8548,7 +8551,10 @@ Type *TypeClass::semantic(Loc loc, Scope *sc)
     // instead, parent should be set correctly
     assert(sym->parent);
 
-    return merge();
+    Type *t = merge();
+    if (sym->isAnonymous()) // CALYPSO acceptable?
+        return this;
+    return t;
 }
 
 unsigned int TypeClass::alignsize() // CALYPSO
