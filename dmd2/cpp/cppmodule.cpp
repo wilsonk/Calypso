@@ -209,33 +209,37 @@ Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
         return nullptr;
 
     auto loc = fromLoc(D->getLocation());
-    auto Ty = D->getType().getDesugaredType(Context);
+    auto decldefs = new Dsymbols;
 
-    if (Ty->isUnionType() || Ty->isStructureType())
+    if (auto Field = dyn_cast<clang::FieldDecl>(D))
+        if (Field->isAnonymousStructOrUnion() || Field->isUnnamedBitfield())
+            return nullptr; // "true" anonymous structs/unions are already mapped by VisitRecordDecl
+                            // NOTE: in union {...} myUnion isAnonymousStructOrUnion() will be false
+
+    auto id = fromIdentifier(D->getIdentifier());
+    Type *t = nullptr;
+
+    auto Ty = withoutNonAliasSugar(D->getType());
+    if (auto RT = dyn_cast<clang::RecordType>(Ty.getTypePtr()))
     {
-        if (auto RT = Ty->getAs<clang::RecordType>()) // dyn_cast because it can also be a typedeftype, which always have names
+        auto RD = RT->getDecl();
+        if (!RD->getIdentifier())
         {
-            auto RD = RT->getDecl();
-
-            // NOTE: in union {...} myUnion isAnonymousStructOrUnion() will be false, see Decl.h
-            if (RD->isAnonymousStructOrUnion() || !RD->getIdentifier())
+            // Special case of union {...} myUnion; without D equivalment
+            auto r = VisitRecordDecl(RD, NamedValueWithAnonRecord);
+            if (!r)
                 return nullptr;
 
-            // TODO how to handle union {...} myUnion?
-            // We could try adding the aggregate without an id, and assign a TypeClass/TypeStruct straightaway.
-            // Ignore them for now.
+            assert(r->dim == 1 && r->data[0]->isAggregateDeclaration());
+            auto ad = static_cast<AggregateDeclaration*>(r->data[0]);
+
+            t = ad->type;
+            decldefs->push(ad);
         }
     }
 
-    if (!D->getIdentifier())
-    {
-        auto FD = cast<clang::FieldDecl>(D);
-        assert(FD->isBitField());
-        return nullptr; // unnamed bitfield
-    }
-
-    auto id = fromIdentifier(D->getIdentifier());
-    auto t = fromType(D->getType(), loc);
+    if (!t)
+        t = fromType(D->getType(), loc);
 
     if (!t)
         return nullptr;
@@ -278,7 +282,8 @@ Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
         }
     }
 
-    return oneSymbol(a);
+    decldefs->push(a);
+    return decldefs;
 }
 
 static void MarkFunctionForEmit(const clang::FunctionDecl *D)
@@ -305,7 +310,7 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
     auto loc = fromLoc(D->getLocation());
 
     if (!D->isCompleteDefinition() && D->getDefinition())
-        D = D->getDefinition();  // WARNING: if the definition isn't in the PCH this is going to submit an empty aggregate decl, there could be conflicts if several PCH or modules are used
+        D = D->getDefinition();
     bool isDefined = D->isCompleteDefinition();
 
     auto TND = D->getTypedefNameForAnonDecl();
@@ -321,11 +326,9 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
             anon = 2;
     }
 
-    if (!anon && !getIdentifierOrNull(D))
-    {
-        ::warning(loc, "Value with anon record type, no D equivalent (needs workaround), discarding");
-        return nullptr;
-    }
+    if (!anon && !getIdentifierOrNull(D) &&
+                !(flags & NamedValueWithAnonRecord))
+        return nullptr; // special case for union {} myUnion; which has no D equivalent
 
     auto CRD = dyn_cast<clang::CXXRecordDecl>(D);
         // NOTE: CXXRecordDecl will disappear in a future version of Clang and only
@@ -338,11 +341,11 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
     AggregateDeclaration *a;
     if (!anon)
     {
-        auto id = getIdentifier(D);
+        auto id = getIdentifierOrNull(D);
 
         if (D->isUnion())
         {
-            a = new UnionDeclaration(loc, id);
+            a = new UnionDeclaration(loc, id, D);
         }
         else if (isPOD)
         {

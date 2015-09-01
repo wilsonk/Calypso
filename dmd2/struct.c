@@ -374,6 +374,11 @@ unsigned AggregateDeclaration::size(Loc loc)
     return structsize;
 }
 
+bool AggregateDeclaration::mayBeAnonymous() // CALYPSO
+{
+    return false;
+}
+
 Type *AggregateDeclaration::getType()
 {
     return type;
@@ -676,7 +681,7 @@ void StructDeclaration::semantic(Scope *sc)
         assert(sc->parent && sc->func);
         parent = sc->parent;
     }
-    assert(parent && !isAnonymous());
+    assert(parent && (!isAnonymous() || mayBeAnonymous())); // CALYPSO
     type = type->semantic(loc, sc);
 
     if (type->ty == Tstruct && ((TypeStruct *)type)->sym != this)

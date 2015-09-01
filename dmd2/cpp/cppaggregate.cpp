@@ -134,8 +134,21 @@ ClassDeclaration::ClassDeclaration(const ClassDeclaration& o)
 { // NOTE: baseclasses will be duplicated by syntaxCopy, but this makes the copy constructor not doing what it should be doing
 }
 
+UnionDeclaration::UnionDeclaration(Loc loc, Identifier* id,
+                                     const clang::RecordDecl* RD)
+    : ::UnionDeclaration(loc, id)
+{
+    this->RD = RD;
+}
+
+UnionDeclaration::UnionDeclaration(const UnionDeclaration& o)
+    : UnionDeclaration(o.loc, o.ident, o.RD)
+{
+}
+
 IMPLEMENT_syntaxCopy(StructDeclaration, RD)
 IMPLEMENT_syntaxCopy(ClassDeclaration, RD)
+IMPLEMENT_syntaxCopy(UnionDeclaration, RD)
 
 void StructDeclaration::semantic(Scope *sc)
 {
@@ -176,6 +189,11 @@ unsigned int StructDeclaration::size(Loc loc)
     return structsize;
 }
 
+bool StructDeclaration::mayBeAnonymous()
+{
+    return true;
+}
+
 void ClassDeclaration::semantic(Scope *sc)
 {
     if (semanticRun >= PASSsemanticdone)
@@ -212,6 +230,11 @@ unsigned int ClassDeclaration::size(Loc loc)
         buildLayout();
 
     return structsize;
+}
+
+bool ClassDeclaration::mayBeAnonymous()
+{
+    return true;
 }
 
 bool ClassDeclaration::isBaseOf(::ClassDeclaration *cd, int *poffset)
@@ -335,6 +358,19 @@ void ClassDeclaration::finalizeVtbl()
 void ClassDeclaration::buildLayout()
 {
     buildAggLayout(this);
+}
+
+unsigned int UnionDeclaration::size(Loc loc)
+{
+    if (sizeok != SIZEOKdone)
+        buildAggLayout(this);
+
+    return structsize;
+}
+
+bool UnionDeclaration::mayBeAnonymous()
+{
+    return true;
 }
 
 // NOTE: we need to adjust every "this" pointer when accessing fields from bases

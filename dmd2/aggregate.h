@@ -106,6 +106,7 @@ public:
     void semantic2(Scope *sc);
     void semantic3(Scope *sc);
     virtual unsigned size(Loc loc); // CALYPSO
+    virtual bool mayBeAnonymous(); // CALYPSO
     static void alignmember(structalign_t salign, unsigned size, unsigned *poffset);
     static unsigned placeField(unsigned *nextoffset,
         unsigned memsize, unsigned memalignsize, structalign_t memalign,
@@ -195,7 +196,7 @@ class UnionDeclaration : public StructDeclaration
 {
 public:
     UnionDeclaration(Loc loc, Identifier *id);
-    Dsymbol *syntaxCopy(Dsymbol *s);
+    virtual Dsymbol *syntaxCopy(Dsymbol *s); // CALYPSO
     const char *kind();
 
     UnionDeclaration *isUnionDeclaration() { return this; }

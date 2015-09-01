@@ -37,6 +37,7 @@ public:
     Dsymbol *syntaxCopy(Dsymbol *s) override;
     void semantic(Scope *sc) override;
     unsigned size(Loc loc) override;
+    bool mayBeAnonymous() override;
 };
 
 // The rest, i.e anything involving inheritance, virtual functions.
@@ -53,6 +54,7 @@ public:
     ClassDeclaration(const ClassDeclaration&);
     Dsymbol *syntaxCopy(Dsymbol *s) override;
     void semantic(Scope *sc) override;
+    bool mayBeAnonymous() override;
     unsigned size(Loc loc) override;
     
     bool isBaseOf(::ClassDeclaration* cd, int* poffset) override;
@@ -67,6 +69,21 @@ public:
     void buildLayout() override; // determine the agg size and field offsets
 
     inline ::FuncDeclaration *findMethod(const clang::CXXMethodDecl *MD);
+};
+
+class UnionDeclaration : public ::UnionDeclaration
+{
+public:
+    CALYPSO_LANGPLUGIN
+
+    const clang::RecordDecl *RD;
+    bool layoutQueried = false;
+
+    UnionDeclaration(Loc loc, Identifier* id, const clang::RecordDecl* RD);
+    UnionDeclaration(const UnionDeclaration&);
+    Dsymbol *syntaxCopy(Dsymbol *s) override;
+    unsigned size(Loc loc) override;
+    bool mayBeAnonymous() override;
 };
 
 template<typename AggTy> void buildAggLayout(AggTy *ad);

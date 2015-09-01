@@ -1825,14 +1825,11 @@ Module::RootKey TypeMapper::GetImplicitImportKeyForDecl(const clang::NamedDecl* 
     return Key;
 }
 
-// typedef class/struct/enum { ...anon record... } SymbolName
-// are special cases, they're mapped to D aggregates instead of aliases
-const clang::TagDecl *isAnonTagTypedef(const clang::TypedefNameDecl* D)
+// Remove sugar other than aliases
+clang::QualType withoutNonAliasSugar(clang::QualType Ty)
 {
     auto& Context = calypso.getASTContext();
 
-    // Remove sugar other than aliases
-    auto Ty = D->getUnderlyingType();
     auto OneStepDesugar = Ty.getSingleStepDesugaredType(Context);
     while ((isa<clang::ElaboratedType>(*Ty) ||
                 isa<clang::ParenType>(*Ty) ||
@@ -1842,6 +1839,15 @@ const clang::TagDecl *isAnonTagTypedef(const clang::TypedefNameDecl* D)
         Ty = OneStepDesugar;
         OneStepDesugar = Ty.getSingleStepDesugaredType(Context);
     }
+
+    return Ty;
+}
+
+// typedef class/struct/enum { ...anon record... } SymbolName
+// are special cases, they're mapped to D aggregates instead of aliases
+const clang::TagDecl *isAnonTagTypedef(const clang::TypedefNameDecl* D)
+{
+    auto Ty = withoutNonAliasSugar(D->getUnderlyingType());
 
     if (auto TagTy = dyn_cast<clang::TagType>(Ty.getTypePtr()))
     {
