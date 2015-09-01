@@ -715,6 +715,9 @@ void LangPlugin::toDefineStruct(::StructDeclaration* sd)
 {
     auto& S = pch.AST->getSema();
 
+    if (sd->isUnionDeclaration())
+        return;
+
     auto c_sd = static_cast<cpp::StructDeclaration*>(sd);
     auto RD = dyn_cast<clang::CXXRecordDecl>(c_sd->RD);
 
