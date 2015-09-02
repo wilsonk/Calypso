@@ -186,6 +186,7 @@ public:
     // settings
     const char *cachePrefix = "calypso_cache"; // prefix of cached files (list of headers, PCH)
 
+    llvm::SmallVector<const clang::VarDecl*, 4> EmittedStaticVars; // static variables emitted at CodeGenModule::Release that need their linkage fixed
     std::unique_ptr<clangCG::CodeGenModule> CGM;  // selectively emit external C++ declarations, template instances, ...
 
     LangPlugin();

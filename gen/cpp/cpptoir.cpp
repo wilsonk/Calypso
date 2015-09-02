@@ -62,6 +62,7 @@ void LangPlugin::enterModule(::Module *, llvm::Module *lm)
 
     CGM.reset(new clangCG::CodeGenModule(Context,
                             *Opts, *lm, *gDataLayout, *pch.Diags));
+    EmittedStaticVars.clear();
 }
 
 void removeDuplicateModuleFlags(llvm::Module *lm)
@@ -111,10 +112,19 @@ void LangPlugin::leaveModule(::Module *m, llvm::Module *lm)
         return;
 
     CGM->Release();
-    CGM.reset();
+
+    // HACK to set the linkage of static variables to External, D modules being more fragmented than C++ translation unit
+    // This is done here since most decls are emitted by CodeGenModule::Release()
+    for (auto VD: EmittedStaticVars)
+    {
+        auto GV = cast<llvm::GlobalValue>(CGM->GetAddrOfGlobalVar(VD));
+        GV->setLinkage(llvm::GlobalValue::ExternalLinkage);
+    }
 
     // HACK Check and remove duplicate module flags such as "Debug Info Version" created by both Clang and LDC
     removeDuplicateModuleFlags(lm);
+
+    CGM.reset();
 
     if (!global.errors && isCPP(m))
         calypso.genModSet.add(m);
@@ -429,7 +439,6 @@ public:
     InternalDeclEmitter(clang::ASTContext &Context,
                         clangCG::CodeGenModule &CGM) : Context(Context), CGM(CGM) {}
     bool Emit(const clang::FunctionDecl *Callee);
-    bool Emit(const clang::VarDecl *Var);
     void Traverse(const clang::FunctionDecl *Def);
 
     bool VisitDeclRef(const clang::Decl *D);
@@ -466,31 +475,10 @@ bool InternalDeclEmitter::Emit(const clang::FunctionDecl *Func)
     return true;
 }
 
-bool InternalDeclEmitter::Emit(const clang::VarDecl *Var)
-{
-    if (!Var || !Var->getDefinition(Context))
-        return true;
-
-    Var = Var->getDefinition(Context);
-
-    if (!Var->isFileVarDecl() || Var->hasExternalFormalLinkage() ||
-            !Var->hasGlobalStorage() || Var->hasExternalStorage())
-        return true;
-
-    if (Emitted.count(Var))
-        return true;
-    Emitted.insert(Var);
-
-    CGM.EmitTopLevelDecl(const_cast<clang::VarDecl*>(Var));
-    return true;
-}
-
 bool InternalDeclEmitter::VisitDeclRef(const clang::Decl *D)
 {
     if (auto Func = dyn_cast<clang::FunctionDecl>(D))
         return Emit(Func);
-    else if (auto Var = dyn_cast<clang::VarDecl>(D))
-        return Emit(Var);
 
     return true;
 }
@@ -692,19 +680,15 @@ void LangPlugin::toDeclareVariable(::VarDeclaration* vd)
 
 //     updateCGFInsertPoint();
 
-    LLValue *v;
+    LLValue *V;
 
     // If it's thread_local, emit a call to its wrapper function instead.
 //     if (VD->getTLSKind() == clang::VarDecl::TLS_Dynamic)
 //         v = CGM.getCXXABI().EmitThreadLocalVarDeclLValue(*CGF, VD, VD->getType()).getAddress();
 //     else
-        v = CGM->GetAddrOfGlobalVar(VD);
+        V = CGM->GetAddrOfGlobalVar(VD);
 
-    getIrGlobal(vd)->value = v;
-
-    // If this is a static variable, it needs to be emitted in every module using it
-    if (!VD->hasExternalFormalLinkage())
-        toDefineVariable(vd);
+    getIrGlobal(vd)->value = V;
 }
 
 void LangPlugin::toDefineVariable(::VarDeclaration* vd)
@@ -716,7 +700,14 @@ void LangPlugin::toDefineVariable(::VarDeclaration* vd)
 
     VD = VD->getDefinition(Context);
     if (VD && VD->hasGlobalStorage() && !VD->hasExternalStorage())
+    {
         CGM->EmitTopLevelDecl(const_cast<clang::VarDecl*>(VD));
+
+        EmittedStaticVars.push_back(VD);
+        // NOTE: We need to dishonor internal linkages, which will be done after deferred decls get emitted at CGM->Release()
+        // In C++ static variables are emitted for each translation unit, but since Calypso modules are more fragmented,
+        // in D they need to be unique and available to other modules relying on them.
+    }
 }
 
 void LangPlugin::toDefaultInitVarDeclaration(::VarDeclaration* vd)
