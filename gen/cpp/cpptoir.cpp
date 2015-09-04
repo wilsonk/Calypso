@@ -36,6 +36,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/Transforms/Utils/ModuleUtils.h"
 #include <memory>
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -111,7 +112,54 @@ void LangPlugin::leaveModule(::Module *m, llvm::Module *lm)
     if (!getASTUnit())
         return;
 
+    // HACK temporarily rename the @llvm.global_ctors and @llvm.global_dtors variables created by LDC,
+    // because CodeGenModule::Release will assume that they do not exist and use the same name, which LLVM will change to an unused one.
+    auto ldcCtor = lm->getNamedGlobal("llvm.global_ctors"),
+        ldcDtor = lm->getNamedGlobal("llvm.global_dtors");
+    assert(ldcCtor && ldcDtor);
+    ldcCtor->setName("llvm.global_ctors__d");
+    ldcDtor->setName("llvm.global_dtors__d");
+
     CGM->Release();
+
+    // Then swap them back and append the Clang global structors to the LDC ones.
+    // NOTE: the Clang created ones have a slightly different struct type, with an additional "key" that may be null or used for COMDAT stuff
+    auto clangCtor = lm->getNamedGlobal("llvm.global_ctors"),
+        clangDtor = lm->getNamedGlobal("llvm.global_dtors");
+
+    auto MergeGlobalStors = [&] (llvm::GlobalVariable *ldcStor, llvm::GlobalVariable *clangStor,
+                          const char *ArrayName, decltype(llvm::appendToGlobalCtors) &appendToGlobalStors)
+    {
+        if (!clangStor)
+        {
+            ldcStor->setName(ArrayName);
+            return;
+        }
+
+        std::string suffix("__c");
+
+        clangStor->setName(llvm::Twine(ArrayName, suffix));
+        ldcStor->setName(ArrayName);
+
+        if (auto Init = clangCtor->getInitializer())
+        {
+            unsigned n = Init->getNumOperands();
+            for (unsigned i = 0; i != n; ++i)
+            {
+                auto Stor = cast<llvm::User>(Init->getOperand(i));
+
+                auto Priority = static_cast<uint32_t>(
+                        cast<llvm::ConstantInt>(Stor->getOperand(0))->getSExtValue());
+                auto Fn = cast<llvm::Function>(Stor->getOperand(1));
+                appendToGlobalStors(*lm, Fn, Priority);
+            }
+        }
+
+        clangStor->eraseFromParent();
+    };
+
+    MergeGlobalStors(ldcCtor, clangCtor, "llvm.global_ctors", llvm::appendToGlobalCtors);
+    MergeGlobalStors(ldcDtor, clangDtor, "llvm.global_dtors", llvm::appendToGlobalDtors);
 
     // HACK to set the linkage of static variables to External, D modules being more fragmented than C++ translation unit
     // This is done here since most decls are emitted by CodeGenModule::Release()
