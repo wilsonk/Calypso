@@ -274,39 +274,6 @@ void ClassDeclaration::interfaceSemantic(Scope *sc)
 {
 }
 
-::FuncDeclaration *ClassDeclaration::findMethod(const clang::CXXMethodDecl* MD)
-{
-    TypeMapper tmap;
-    tmap.addImplicitDecls = false;
-
-    auto ident = getExtendedIdentifier(MD, tmap);
-
-    auto s = ScopeDsymbol::search(loc, ident);
-    if (s && s->isFuncDeclaration())
-    {
-        assert(isCPP(s));
-        auto fd = static_cast<::FuncDeclaration*>(s);
-        fd = FuncDeclaration::overloadCppMatch(fd, MD);
-        if (fd)
-            return fd;
-    }
-
-    // search in base classes
-    for (auto *b: *baseclasses)
-    {
-        if (!b->base->isClassDeclaration() || !isCPP(b->base)) // skip Object
-            continue;
-
-        auto base = static_cast<ClassDeclaration*>(b->base);
-
-        auto result = base->findMethod(MD);
-        if (result)
-            return result;
-    }
-
-    return nullptr;
-}
-
 Expression *ClassDeclaration::defaultInit(Loc loc)
 {
     if (!defaultCtor)
@@ -343,7 +310,7 @@ void ClassDeclaration::finalizeVtbl()
         if (inVtbl.count(OverMD))
             continue;
 
-        auto md = findMethod(OverMD);
+        auto md = findMethod(this, OverMD);
         if (!md)
             continue;
 
@@ -484,6 +451,38 @@ const clang::RecordDecl *getRecordDecl(::Type *t)
     }
 
     return getRecordDecl(ad);
+}
+
+::FuncDeclaration *findMethod(::AggregateDeclaration *ad, const clang::FunctionDecl* FD)
+{
+    TypeMapper tmap;
+    tmap.addImplicitDecls = false;
+
+    auto ident = getExtendedIdentifier(FD, tmap);
+
+    auto s = ad->ScopeDsymbol::search(ad->loc, ident);
+    if (s && s->isFuncDeclaration())
+    {
+        assert(isCPP(s));
+        auto fd = static_cast<::FuncDeclaration*>(s);
+        fd = FuncDeclaration::overloadCppMatch(fd, FD);
+        if (fd)
+            return fd;
+    }
+
+    // search in base classes
+    if (auto cd = ad->isClassDeclaration())
+        for (auto *b: *cd->baseclasses)
+        {
+            if (!isCPP(b->base)) // skip Object
+                continue;
+
+            auto result = findMethod(b->base, FD);
+            if (result)
+                return result;
+        }
+
+    return nullptr;
 }
 
 }

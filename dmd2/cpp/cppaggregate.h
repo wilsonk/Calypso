@@ -67,8 +67,6 @@ public:
     void makeNested() override;
     void finalizeVtbl() override;
     void buildLayout() override; // determine the agg size and field offsets
-
-    inline ::FuncDeclaration *findMethod(const clang::CXXMethodDecl *MD);
 };
 
 class UnionDeclaration : public ::UnionDeclaration
@@ -89,6 +87,7 @@ public:
 template<typename AggTy> void buildAggLayout(AggTy *ad);
 const clang::RecordDecl *getRecordDecl(::AggregateDeclaration *ad);
 const clang::RecordDecl *getRecordDecl(::Type *t);
+::FuncDeclaration *findMethod(::AggregateDeclaration *ad, const clang::FunctionDecl *FD);
 
 }
 
