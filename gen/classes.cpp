@@ -108,6 +108,39 @@ void DtoResolveAggregate(AggregateDeclaration* ad) // CALYPSO
     }
 }
 
+void DtoDefineClass(ClassDeclaration* cd) // CALYPSO
+{
+    DtoResolveClass(cd);
+    cd->ir.setDefined();
+
+    if (auto lp = cd->langPlugin())  // CALYPSO
+        lp->codegen()->toDefineClass(cd);
+
+    IrAggr *ir = getIrAggr(cd);
+    llvm::GlobalValue::LinkageTypes const linkage = DtoLinkage(cd);
+
+    llvm::GlobalVariable *initZ = ir->getInitSymbol();
+    initZ->setInitializer(ir->getDefaultInit());
+    initZ->setLinkage(linkage);
+
+    if (!cd->langPlugin()) // CALYPSO FIXME
+    {
+        llvm::GlobalVariable *vtbl = ir->getVtblSymbol();
+        vtbl->setInitializer(ir->getVtblInit());
+        vtbl->setLinkage(linkage);
+    }
+
+    llvm::GlobalVariable *classZ = ir->getClassInfoSymbol();
+    classZ->setInitializer(ir->getClassInfoInit());
+    classZ->setLinkage(linkage);
+
+    // CALYPSO
+    for (auto lp: global.langPlugins)
+        lp->codegen()->emitAdditionalClassSymbols(cd);
+
+    // No need to do TypeInfo here, it is <name>__classZ for classes in D2.
+}
+
 LLType* DtoClassHandleType(TypeClass *tc) // CALYPSO
 {
     auto Ty = DtoType(tc);

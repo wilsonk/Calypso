@@ -190,6 +190,10 @@ Lneed:
 
 FuncDeclaration *buildOpAssign(StructDeclaration *sd, Scope *sc)
 {
+    // CALYPSO
+    if (auto lp = sd->langPlugin())
+        return lp->buildOpAssign(sd, sc);
+
     if (FuncDeclaration *f = hasIdentityOpAssign(sd, sc))
     {
         sd->hasIdentityAssign = true;
@@ -980,8 +984,7 @@ FuncDeclaration *buildDtor(AggregateDeclaration *ad, Scope *sc)
 {
     // CALYPSO
     if (auto lp = ad->langPlugin())
-        if (auto dtor = lp->buildDtor(ad, sc))
-            return dtor;
+        return lp->buildDtor(ad, sc);
 
     //printf("AggregateDeclaration::buildDtor() %s\n", ad->toChars());
     StorageClass stc = STCsafe | STCnothrow | STCpure | STCnogc;

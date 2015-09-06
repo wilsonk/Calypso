@@ -216,6 +216,7 @@ static Identifier *fullConversionMapIdent(Identifier *baseIdent,
                                        const clang::CXXConversionDecl *D)
 {
     auto& Context = calypso.getASTContext();
+    auto MangleCtx = calypso.pch.MangleCtx;
 
     TypeMapper mapper;
     mapper.addImplicitDecls = false;
@@ -235,7 +236,6 @@ static Identifier *fullConversionMapIdent(Identifier *baseIdent,
     }
     else // use the mangled name, rare occurrence and not a big deal if unreadable (only ever matters for virtual conversion operators)
     {
-        auto MangleCtx = Context.createMangleContext();
         llvm::raw_string_ostream OS(fullName);
         MangleCtx->mangleTypeName(T, OS);
         OS.flush();
@@ -402,6 +402,70 @@ Loc fromLoc(clang::SourceLocation L)
     loc.linnum = ast()->getSourceManager().getSpellingLineNumber(L);
 
     return loc;
+}
+
+const clang::Decl *getDecl(Dsymbol *s)
+{
+    assert(isCPP(s));
+
+#define RETRIEVE(DECL, MEMBER) \
+    if (s->is##DECL()) return static_cast<cpp::DECL*>(s)->MEMBER;
+
+    RETRIEVE(StructDeclaration, RD)
+    RETRIEVE(ClassDeclaration, RD)
+    RETRIEVE(EnumDeclaration, ED)
+    RETRIEVE(CtorDeclaration, CCD)
+    RETRIEVE(DtorDeclaration, CDD)
+    RETRIEVE(FuncDeclaration, FD)
+    RETRIEVE(VarDeclaration, VD)
+
+#undef RETRIEVE
+    llvm_unreachable("Unhandled getDecl");
+}
+
+// see CodeGenModule::getMangledName()
+const char *LangPlugin::mangle(Dsymbol *s)
+{
+    assert(isCPP(s));
+
+    if (s->isModule())
+        return ::mangleImpl(s);
+
+    auto ND = cast<clang::NamedDecl>(getDecl(s));
+
+    auto &FoundStr = MangledDeclNames[ND->getCanonicalDecl()];
+    if (!FoundStr.empty())
+        return FoundStr.c_str();
+
+    auto& Context = calypso.getASTContext();
+    auto MangleCtx = pch.MangleCtx;
+
+    llvm::SmallString<256> Buffer;
+    llvm::StringRef Str;
+    if (auto Tag = dyn_cast<clang::TagDecl>(ND)) {
+        auto TagTy = Context.getTagDeclType(Tag);
+
+        llvm::raw_svector_ostream Out(Buffer);
+        MangleCtx->mangleTypeName(TagTy, Out);
+//         Out << "_D"; // WARNING: mangleTypeName returns the RTTI typeinfo mangling
+        Str = Out.str();
+    } else if (MangleCtx->shouldMangleDeclName(ND)) {
+        llvm::raw_svector_ostream Out(Buffer);
+        if (const auto *D = dyn_cast<clang::CXXConstructorDecl>(ND))
+            MangleCtx->mangleCXXCtor(D, clang::Ctor_Complete, Out);
+        else if (const auto *D = dyn_cast<clang::CXXDestructorDecl>(ND))
+            MangleCtx->mangleCXXDtor(D, clang::Dtor_Complete, Out);
+        else
+            MangleCtx->mangleName(ND, Out);
+        Str = Out.str();
+    } else {
+        auto II = ND->getIdentifier();
+        assert(II && "Attempt to mangle unnamed decl.");
+        Str = II->getName();
+    }
+
+    Str.str().swap(FoundStr);
+    return FoundStr.c_str();
 }
 
 #define MAX_FILENAME_SIZE 4096
@@ -639,6 +703,9 @@ void PCH::update()
 
     // Build the builtin type map
     calypso.builtinTypes.build(AST->getASTContext());
+
+    // Initialize the mangling context
+    MangleCtx = AST->getASTContext().createMangleContext();
 }
 
 void LangPlugin::GenModSet::parse()

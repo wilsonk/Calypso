@@ -24,6 +24,7 @@
 #include "template.h"
 #include "id.h"
 #include "module.h"
+#include "import.h"
 
 char *toCppMangle(Dsymbol *s);
 void toBuffer(OutBuffer *buf, const char *id, Dsymbol *s);
@@ -379,6 +380,14 @@ public:
 };
 
 const char *mangle(Dsymbol *s)
+{
+    if (LangPlugin *lp = s->langPlugin()) // CALYPSO
+        return lp->mangle(s);
+
+    return mangleImpl(s);
+}
+
+const char *mangleImpl(Dsymbol *s)
 {
     Mangler v;
     s->accept(&v);

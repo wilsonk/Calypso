@@ -39,6 +39,7 @@ namespace llvm
  */
 void DtoResolveStruct(StructDeclaration* sd);
 void DtoResolveStruct(StructDeclaration* sd, Loc& callerLoc);
+void DtoDefineStruct(StructDeclaration* sd); // CALYPSO
 
 
 /// Returns a boolean=true if the two structs are equal.

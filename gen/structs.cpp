@@ -9,10 +9,12 @@
 
 #include "aggregate.h"
 #include "declaration.h"
+#include "import.h"
 #include "init.h"
 #include "module.h"
 #include "mtype.h"
 #include "gen/arrays.h"
+#include "gen/cgforeign.h"
 #include "gen/dvalue.h"
 #include "gen/functions.h"
 #include "gen/irstate.h"
@@ -67,6 +69,24 @@ void DtoResolveStruct(StructDeclaration* sd, Loc& callerLoc)
         }
         getIrField(vd, true);
     }
+}
+
+void DtoDefineStruct(StructDeclaration *sd) // CALYPSO
+{
+    DtoResolveStruct(sd);
+    sd->ir.setDefined();
+
+    if (auto lp = sd->langPlugin())  // CALYPSO
+        lp->codegen()->toDefineStruct(sd);
+
+    // Define the __initZ symbol.
+    IrAggr *ir = getIrAggr(sd);
+    llvm::GlobalVariable *initZ = ir->getInitSymbol();
+    initZ->setInitializer(ir->getDefaultInit());
+    initZ->setLinkage(DtoLinkage(sd));
+
+    // emit typeinfo
+    DtoTypeInfoOf(sd->type);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////

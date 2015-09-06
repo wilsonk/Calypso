@@ -111,12 +111,7 @@ public:
 
         if (decl->members && decl->symtab)
         {
-            DtoResolveStruct(decl);
-            decl->ir.setDefined();
-
-            // CALYPSO: the following code should be put into its own DtoDefineStruct function
-            if (auto lp = decl->langPlugin())  // CALYPSO
-                lp->codegen()->toDefineStruct(decl);
+            DtoDefineStruct(decl);
 
             for (Dsymbols::iterator I = decl->members->begin(),
                                     E = decl->members->end();
@@ -124,15 +119,6 @@ public:
             {
                 (*I)->accept(this);
             }
-
-            // Define the __initZ symbol.
-            IrAggr *ir = getIrAggr(decl);
-            llvm::GlobalVariable *initZ = ir->getInitSymbol();
-            initZ->setInitializer(ir->getDefaultInit());
-            initZ->setLinkage(DtoLinkage(decl));
-
-            // emit typeinfo
-            DtoTypeInfoOf(decl->type);
 
             // Emit __xopEquals/__xopCmp/__xtoHash.
             if (decl->xeq && decl->xeq != decl->xerreq)
@@ -161,12 +147,7 @@ public:
 
         if (decl->members && decl->symtab)
         {
-            DtoResolveClass(decl);
-            decl->ir.setDefined();
-
-            // CALYPSO: the following code should be put into its own DtoDefineStruct function
-            if (auto lp = decl->langPlugin())  // CALYPSO
-                lp->codegen()->toDefineClass(decl);
+            DtoDefineClass(decl);
 
             for (Dsymbols::iterator I = decl->members->begin(),
                                     E = decl->members->end();
@@ -174,32 +155,6 @@ public:
             {
                 (*I)->accept(this);
             }
-
-            IrAggr *ir = getIrAggr(decl);
-            llvm::GlobalValue::LinkageTypes const linkage = DtoLinkage(decl);
-
-            llvm::GlobalVariable *initZ = ir->getInitSymbol();
-            initZ->setInitializer(ir->getDefaultInit());
-            initZ->setLinkage(linkage);
-
-            // CALYPSO TODO
-            if (!decl->langPlugin())
-            {
-                llvm::GlobalVariable *vtbl = ir->getVtblSymbol();
-                vtbl->setInitializer(ir->getVtblInit());
-                vtbl->setLinkage(linkage);
-            }
-
-            llvm::GlobalVariable *classZ = ir->getClassInfoSymbol();
-            classZ->setInitializer(ir->getClassInfoInit());
-            classZ->setLinkage(linkage);
-
-            // CALYPSO
-            for (auto L = global.langPlugins.begin(), LE = global.langPlugins.end();
-                    L != LE; L++)
-                (*L)->codegen()->emitAdditionalClassSymbols(decl);
-
-            // No need to do TypeInfo here, it is <name>__classZ for classes in D2.
         }
     }
 
