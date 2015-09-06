@@ -101,6 +101,7 @@ struct Ungag
 };
 
 const char *mangle(Dsymbol *s);
+const char *mangleImpl(Dsymbol *s);
 const char *mangleExact(FuncDeclaration *fd);
 
 enum PROT

@@ -88,6 +88,8 @@ struct PCH
             // TODO: it's currently pretty basic and dumb and doesn't check whether the same header might be named differently or is already included by another
     bool needEmit = false;
     ASTUnit *AST = nullptr;
+    clang::MangleContext *MangleCtx = nullptr;
+
     InstantiationCollector instCollector;
     clang::IntrusiveRefCntPtr<clang::DiagnosticsEngine> Diags;
     
@@ -117,6 +119,8 @@ public:
     ::Import *createImport(int treeId,
         Loc loc, Identifiers *packages, Identifier *id,
         Identifier *aliasId, int isstatic) override;
+
+    const char *mangle(Dsymbol *s) override;
 
     Expression *getRightThis(Loc loc, Scope *sc, ::AggregateDeclaration *ad,
         Expression *e1, Declaration *var, int flag = 0) override;
@@ -172,6 +176,7 @@ public:
          
     // ==== ==== ====
     PCH pch;
+    llvm::MapVector<const clang::Decl*, std::string> MangledDeclNames;
 
     BuiltinTypes &builtinTypes;
     DeclReferencer &declReferencer;
