@@ -110,6 +110,7 @@ public:
 
     virtual FuncDeclaration *buildDtor(AggregateDeclaration *ad, Scope *sc) = 0;
     virtual FuncDeclaration *buildCpCtor(StructDeclaration *sd, Scope *sc) = 0;
+    virtual FuncDeclaration *buildOpAssign(StructDeclaration *sd, Scope *sc) = 0;
 
     // ===== - - - - - ===== //
 

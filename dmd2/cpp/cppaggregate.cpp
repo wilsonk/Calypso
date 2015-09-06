@@ -363,14 +363,7 @@ Expression *LangPlugin::getRightThis(Loc loc, Scope *sc, ::AggregateDeclaration 
     return e1;
 }
 
-::FuncDeclaration *LangPlugin::buildCpCtor(::StructDeclaration *sd,
-                                           Scope *sc)
-{
-    return nullptr;
-}
-
-::FuncDeclaration *LangPlugin::buildDtor(::AggregateDeclaration *ad,
-                                         Scope *sc)
+::FuncDeclaration *LangPlugin::buildDtor(::AggregateDeclaration *ad, Scope *sc)
 {
     assert(ad->dtors.dim < 2);
 
@@ -378,6 +371,29 @@ Expression *LangPlugin::getRightThis(Loc loc, Scope *sc, ::AggregateDeclaration 
         return nullptr; // forward reference
 
     return ad->dtors[0];
+}
+
+::FuncDeclaration *LangPlugin::buildCpCtor(::StructDeclaration *sd, Scope *sc)
+{
+    return nullptr; // TODO
+}
+
+::FuncDeclaration *LangPlugin::buildOpAssign(::StructDeclaration *sd, Scope *sc)
+{
+    auto& S = calypso.pch.AST->getSema();
+    auto RD = getRecordDecl(sd);
+
+    if (sd->isUnionDeclaration() || !RD->getDefinition())
+        return nullptr;
+
+    auto CRD = const_cast<clang::CXXRecordDecl*>(
+                cast<clang::CXXRecordDecl>(RD));
+    auto MD = S.LookupCopyingAssignment(CRD, clang::Qualifiers::Const, false, 0);
+
+    if (!MD || MD->isDeleted())
+        return nullptr;
+
+    return findMethod(sd, MD);
 }
 
 template <typename AggTy>

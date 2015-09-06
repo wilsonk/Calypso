@@ -123,6 +123,7 @@ public:
 
     ::FuncDeclaration *buildDtor(::AggregateDeclaration *ad, Scope *sc) override;
     ::FuncDeclaration *buildCpCtor(::StructDeclaration *sd, Scope *sc) override;
+    ::FuncDeclaration *buildOpAssign(StructDeclaration *sd, Scope *sc) override;
 
     // ==== CodeGen ====
     ForeignCodeGen *codegen() override { return this; }
