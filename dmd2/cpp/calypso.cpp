@@ -470,13 +470,9 @@ const char *LangPlugin::mangle(Dsymbol *s)
 
 #define MAX_FILENAME_SIZE 4096
 
-#define CACHE_SUFFIXED_FILENAME(fn_var, suffix) \
-    std::string fn_var(calypso.cachePrefix); \
-    fn_var.append(suffix);
 
 void PCH::init()
 {
-//     CACHE_SUFFIXED_FILENAME(headerList, ".list");
     auto& headerList = calypso.cachePrefix;
 
     auto fheaderList = fopen(headerList, "r"); // ordered list of headers
@@ -538,25 +534,26 @@ void PCH::update()
     // FIXME
     assert(!(needEmit && AST) && "Need AST merging FIXME");
 
-#define ADD_SUFFIX_THEN_CHECK(fn_var, suffix) \
-    CACHE_SUFFIXED_FILENAME(fn_var, suffix); \
-    { \
-        using namespace llvm::sys::fs; \
-        file_status result; \
-        status(fn_var, result); \
-        if (is_directory(result)) \
-        { \
-            ::error(Loc(), "%s is a directory\n", fn_var.c_str()); \
-            fatal(); \
-        } \
-        else if (!exists(result)) \
-            needEmit = true; \
-    }
+    auto AddSuffixThenCheck = [&] (const char *suffix) {
+        std::string fn_var(calypso.cachePrefix);
+        fn_var += suffix;
+
+        using namespace llvm::sys::fs;
+        file_status result;
+        status(fn_var, result);
+        if (is_directory(result)) {
+            ::error(Loc(), "%s is a directory\n", fn_var.c_str());
+            fatal();
+        }
+        else if (!exists(result))
+            needEmit = true;
+
+        return fn_var;
+    };
     // NOTE: there's File::exists but it is incomplete and unused, hence llvm::sys::fs
 
-    ADD_SUFFIX_THEN_CHECK(pchHeader, ".h");
-    ADD_SUFFIX_THEN_CHECK(pchFilename, ".h.pch");
-#undef ADD_SUFFIX_THEN_CHECK
+    auto pchHeader = AddSuffixThenCheck(".h");
+    auto pchFilename = AddSuffixThenCheck(".h.pch");
 
     if (needEmit)
     {
@@ -772,7 +769,6 @@ bool LangPlugin::needsCodegen(::Module *m)
     return !genModSet.count(objName);
 }
 
-#undef CACHE_SUFFIXED_FILENAME
 #undef MAX_FILENAME_SIZE
 
 int LangPlugin::doesHandleImport(const utf8_t* tree)

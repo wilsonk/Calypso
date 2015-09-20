@@ -84,7 +84,7 @@ struct InstantiationCollector : public clang::ASTConsumer
 struct PCH
 {
     Strings headers; // array of all C/C++ header names with the "" or <>, required as long as we're using a PCH
-            // the array is initialized at the first Modmap::semantic and kept in sync with a cache file named 'fringed_cache.list'
+            // the array is initialized at the first Modmap::semantic and kept in sync with a cache file named 'calypso_cache.list'
             // TODO: it's currently pretty basic and dumb and doesn't check whether the same header might be named differently or is already included by another
     bool needEmit = false;
     ASTUnit *AST = nullptr;
