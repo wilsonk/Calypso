@@ -23,8 +23,14 @@
 #include "clang/AST/DeclTemplate.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
+#include "clang/Driver/Compilation.h"
+#include "clang/Driver/Driver.h"
+#include "clang/Driver/Tool.h"
 #include "clang/Lex/ModuleMap.h"
+#include "clang/Frontend/CompilerInstance.h"
+#include "clang/Frontend/FrontendActions.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
+#include "llvm/Support/Host.h"
 #include "llvm/Support/Program.h"
 #include "llvm/IR/LLVMContext.h"
 
@@ -473,6 +479,12 @@ const char *LangPlugin::mangle(Dsymbol *s)
 
 void PCH::init()
 {
+    clang::IntrusiveRefCntPtr<clang::DiagnosticOptions> DiagOpts(new clang::DiagnosticOptions);
+    clang::IntrusiveRefCntPtr<clang::DiagnosticIDs> DiagID(new clang::DiagnosticIDs);
+    auto DiagClient = new clang::TextDiagnosticPrinter(llvm::errs(), &*DiagOpts);
+    Diags = new clang::DiagnosticsEngine(DiagID,
+                                         &*DiagOpts, DiagClient);
+
     auto& headerList = calypso.cachePrefix;
 
     auto fheaderList = fopen(headerList, "r"); // ordered list of headers
@@ -557,17 +569,6 @@ void PCH::update()
 
     if (needEmit)
     {
-//         const char *compiler = getenv("CC");
-//         if (!strlen(compiler))
-//             compiler = "clang";
-
-        auto compiler = llvm::sys::findProgramByName("clang");
-        if (!compiler)
-        {
-            ::error(Loc(), "Clang compiler not found");
-            fatal();
-        }
-
         /* PCH generation */
 
         // Re-emit the source file with #include directives
@@ -588,26 +589,65 @@ void PCH::update()
 
         fclose(fmono);
 
-        // Compiler flags
-        std::vector<std::string> Argv;
-        Argv.reserve(opts::cppArgs.size() + 7);
-        unsigned i = 0;
-#define ARGV_ADD(a) { Argv.emplace_back(a); i++; }
-        for (unsigned j = 0; j < opts::cppArgs.size(); ++j)
-            ARGV_ADD(opts::cppArgs[j]);
-        ARGV_ADD("-x");
-        ARGV_ADD("c++-header");
-        ARGV_ADD("-Xclang");
-        ARGV_ADD("-emit-pch");
-        ARGV_ADD("-o");
-        ARGV_ADD(pchFilename);
-        ARGV_ADD(pchHeader);
-#undef ARGV_ADD
-
-        if (executeToolAndWait(*compiler, Argv,
-                global.params.verbose) == -1)
+        // Compiler flags, we use a hack from clang-interpreter to extract -cc1 flags from "puny human" flags
+        // The driver doesn't do anything except computing the flags.
+        auto Path = llvm::sys::findProgramByName("clang");
+        if (!Path)
         {
-            ::error(Loc(), "execv Error!");
+            ::error(Loc(), "Clang installation not found (needed for builtin headers)");
+            fatal();
+        }
+        std::string TripleStr = llvm::sys::getProcessTriple();
+        llvm::Triple T(TripleStr);
+
+        clang::driver::Driver TheDriver(Path.get(), T.str(), *Diags);
+        TheDriver.setTitle("Calypso PCH");
+
+        llvm::SmallVector<const char *, 16> Argv;
+        Argv.push_back("clang");
+        for (auto cppArg: opts::cppArgs)
+            Argv.push_back(cppArg.c_str());
+        Argv.push_back("-x");
+        Argv.push_back("c++-header");
+        Argv.push_back("-Xclang");
+        Argv.push_back("-emit-pch");
+        Argv.push_back("-o");
+        Argv.push_back(pchFilename.c_str());
+        Argv.push_back(pchHeader.c_str());
+
+        std::unique_ptr<clang::driver::Compilation> C(TheDriver.BuildCompilation(Argv));
+        assert(C);
+
+        // We expect to get back exactly one command job, if we didn't something
+        // failed. Extract that job from the compilation.
+        const clang::driver::JobList &Jobs = C->getJobs();
+        assert(Jobs.size() == 1 && isa<clang::driver::Command>(*Jobs.begin()));
+        const clang::driver::Command &Cmd = cast<clang::driver::Command>(*Jobs.begin());
+        assert(llvm::StringRef(Cmd.getCreator().getName()) == "clang");
+
+        // Initialize a compiler invocation object from the clang (-cc1) arguments.
+        const clang::driver::ArgStringList &CCArgs = Cmd.getArguments();
+        std::unique_ptr<clang::CompilerInvocation> CI(new clang::CompilerInvocation);
+        clang::CompilerInvocation::CreateFromArgs(*CI,
+                                            const_cast<const char **>(CCArgs.data()),
+                                            const_cast<const char **>(CCArgs.data()) +
+                                            CCArgs.size(),
+                                            *Diags);
+
+        clang::CompilerInstance Clang;
+        Clang.setInvocation(CI.release());
+        Clang.setDiagnostics(Diags.get());
+
+        // Infer the builtin include path if unspecified.
+        if (Clang.getHeaderSearchOpts().UseBuiltinIncludes &&
+                Clang.getHeaderSearchOpts().ResourceDir.empty())
+            Clang.getHeaderSearchOpts().ResourceDir = TheDriver.ResourceDir;
+
+        // Create and execute the frontend to generate a PCH
+        std::unique_ptr<clang::GeneratePCHAction> Act(new clang::GeneratePCHAction);
+        if (!Clang.ExecuteAction(*Act))
+        {
+            ::error(Loc(), "PCH generation failed!");
             fatal();
         }
 
@@ -636,12 +676,6 @@ void PCH::update()
     /* PCH was generated successfully, let's load it */
 
     clang::FileSystemOptions FileSystemOpts;
-
-    clang::IntrusiveRefCntPtr<clang::DiagnosticOptions> DiagOpts(new clang::DiagnosticOptions);
-    auto DiagClient = new clang::TextDiagnosticPrinter(llvm::errs(), &*DiagOpts);
-    clang::IntrusiveRefCntPtr<clang::DiagnosticIDs> DiagID(new clang::DiagnosticIDs);
-    Diags = new clang::DiagnosticsEngine(DiagID,
-                                         &*DiagOpts, DiagClient);
 
     AST = ASTUnit::LoadFromASTFile(pchFilename,
                                 Diags, FileSystemOpts, &instCollector);
