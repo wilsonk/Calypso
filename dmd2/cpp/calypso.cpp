@@ -26,10 +26,12 @@
 #include "clang/Driver/Compilation.h"
 #include "clang/Driver/Driver.h"
 #include "clang/Driver/Tool.h"
+#include "clang/Lex/HeaderSearch.h"
 #include "clang/Lex/ModuleMap.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
+#include "clang/Serialization/ASTWriter.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/Program.h"
 #include "llvm/IR/LLVMContext.h"
@@ -564,11 +566,14 @@ void PCH::update()
     };
     // NOTE: there's File::exists but it is incomplete and unused, hence llvm::sys::fs
 
-    auto pchHeader = AddSuffixThenCheck(".h");
-    auto pchFilename = AddSuffixThenCheck(".h.pch");
+    pchHeader = AddSuffixThenCheck(".h");
+    pchFilename = AddSuffixThenCheck(".h.pch");
+    pchFilenameNew = AddSuffixThenCheck(".new.pch");
 
     if (needEmit)
     {
+        llvm::sys::fs::remove(pchFilenameNew, true);
+
         /* PCH generation */
 
         // Re-emit the source file with #include directives
@@ -675,6 +680,14 @@ void PCH::update()
 
     /* PCH was generated successfully, let's load it */
 
+    // If the PCH was updated by Calypso to avoid redoing implicit instantiations, replace the old PCH
+    // It cannot be overridden if loaded by an ASTContext, hence we're only doing it now.
+    if (llvm::sys::fs::exists(pchFilenameNew))
+    {
+        llvm::sys::fs::remove(pchFilename, true);
+        llvm::sys::fs::rename(pchFilenameNew, pchFilename);
+    }
+
     clang::FileSystemOptions FileSystemOpts;
 
     AST = ASTUnit::LoadFromASTFile(pchFilename,
@@ -737,6 +750,23 @@ void PCH::update()
 
     // Initialize the mangling context
     MangleCtx = AST->getASTContext().createMangleContext();
+}
+
+void PCH::save()
+{
+    if (!needSaving)
+        return;
+
+    std::error_code EC;
+    llvm::raw_fd_ostream OS(pchFilenameNew, EC, llvm::sys::fs::F_None);
+
+    auto& Sysroot = AST->getHeaderSearch().getHeaderSearchOpts().Sysroot;
+    auto GenPCH = llvm::make_unique<clang::PCHGenerator>(AST->getPreprocessor(), pchFilenameNew,
+                                         nullptr, Sysroot, &OS, true);
+    GenPCH->InitializeSema(AST->getSema());
+    GenPCH->HandleTranslationUnit(AST->getASTContext());
+
+    needSaving = false;
 }
 
 void LangPlugin::GenModSet::parse()

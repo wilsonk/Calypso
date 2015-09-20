@@ -99,6 +99,13 @@ struct PCH
     void add(StringRef header);
 
     void update(); // re-emit the PCH if needed, and update the cached list
+
+    bool needSaving = false;
+    void save();
+
+    std::string pchHeader;
+    std::string pchFilename;
+    std::string pchFilenameNew; // the PCH may be updated by Calypso, but into a different file since the original PCH is still opened as external source for the ASTContext
 };
 
 class LangPlugin : public ::LangPlugin, public ::ForeignCodeGen

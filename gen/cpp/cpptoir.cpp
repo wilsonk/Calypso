@@ -55,6 +55,8 @@ void LangPlugin::enterModule(::Module *, llvm::Module *lm)
     if (!getASTUnit())
         return;
 
+    pch.save(); // save the numerous instantiations done by DMD back into the PCH
+
     auto& Context = getASTContext();
 
     auto Opts = new clang::CodeGenOptions;
