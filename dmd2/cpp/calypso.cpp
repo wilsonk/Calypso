@@ -596,16 +596,10 @@ void PCH::update()
 
         // Compiler flags, we use a hack from clang-interpreter to extract -cc1 flags from "puny human" flags
         // The driver doesn't do anything except computing the flags.
-        auto Path = llvm::sys::findProgramByName("clang");
-        if (!Path)
-        {
-            ::error(Loc(), "Clang installation not found (needed for builtin headers)");
-            fatal();
-        }
         std::string TripleStr = llvm::sys::getProcessTriple();
         llvm::Triple T(TripleStr);
 
-        clang::driver::Driver TheDriver(Path.get(), T.str(), *Diags);
+        clang::driver::Driver TheDriver(calypso.executablePath, T.str(), *Diags);
         TheDriver.setTitle("Calypso PCH");
 
         llvm::SmallVector<const char *, 16> Argv;
@@ -866,14 +860,23 @@ int LangPlugin::doesHandleModmap(const utf8_t* lang)
                 static_cast<StringExp*>(arg));
 }
 
+std::string GetExecutablePath(const char *Argv0) {
+  // This just needs to be some symbol in the binary; C++ doesn't
+  // allow taking the address of ::main however.
+  void *MainAddr = (void*) (intptr_t) GetExecutablePath;
+  return llvm::sys::fs::getMainExecutable(Argv0, MainAddr);
+}
+
 LangPlugin::LangPlugin()
     : builtinTypes(cpp::builtinTypes),
       declReferencer(cpp::declReferencer)
 {
 }
 
-void LangPlugin::init()
+void LangPlugin::init(const char *Argv0)
 {
+    executablePath = GetExecutablePath(Argv0);
+
     Module::init();
     pch.init();
 }

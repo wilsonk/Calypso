@@ -188,6 +188,8 @@ public:
     BuiltinTypes &builtinTypes;
     DeclReferencer &declReferencer;
 
+    std::string executablePath; // from argv[0] to locate Clang builtin headers
+
     struct GenModSet : public llvm::StringSet<> // already compiled modules
     {
         bool parsed = false;
@@ -203,7 +205,7 @@ public:
     std::unique_ptr<clangCG::CodeGenModule> CGM;  // selectively emit external C++ declarations, template instances, ...
 
     LangPlugin();
-    void init();
+    void init(const char *Argv0);
     ASTUnit *getASTUnit() { return pch.AST; }
     clang::ASTContext &getASTContext();
     
