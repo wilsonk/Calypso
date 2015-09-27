@@ -772,10 +772,7 @@ void TypeQualifiedBuilder::pushInst(TypeQualified *&tqual,
     // i.e when the template instance is already declared or defined in the PCH. If it's only declared, we tell Sema to
     // complete its instantiation and determine whether it is POD or not.
     if (Spec)
-    {
         tempinst->Inst = Spec;
-        tempinst->completeInst();
-    }
 
     addInst(tqual, tempinst);
 }
@@ -1332,8 +1329,6 @@ Type* TypeMapper::FromType::fromTypeTemplateSpecialization(const clang::Template
                 auto ti = static_cast<cpp::TemplateInstance*>(s);
 
                 ti->Inst = RT->getDecl();
-                if (!ti->completeInst(true))
-                    return nullptr;
             }
         }
     }

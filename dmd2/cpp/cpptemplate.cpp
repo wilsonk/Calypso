@@ -627,16 +627,6 @@ bool TemplateInstance::completeInst(bool mayFail)
         }
     }
 
-    // Force instantiation of method definitions
-    if (CTSD)
-        for (auto *D : CTSD->decls())
-        {
-            if (auto Function = dyn_cast<clang::FunctionDecl>(D))
-                if (!Function->isDefined() && Function->getInstantiatedFromMemberFunction())
-                    S.InstantiateFunctionDefinition(CTSD->getLocation(),
-                                                    Function, true);
-        }
-
     instCollector.tempinsts.pop();
     Diags.setSuppressAllDiagnostics(false);
     return true;
