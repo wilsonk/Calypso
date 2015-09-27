@@ -7,3 +7,7 @@
 [submodule "tests/d2/dmd-testsuite"]
 	path = tests/d2/dmd-testsuite
 	url = git://github.com/ldc-developers/dmd-testsuite.git
+[submodule "clang"]
+	path = deps/clang
+	url = https://github.com/Syniurge/clang.git
+	branch = release_36
