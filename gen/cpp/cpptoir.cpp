@@ -810,6 +810,9 @@ void LangPlugin::toDefineClass(::ClassDeclaration* cd)
     auto c_cd = static_cast<cpp::ClassDeclaration*>(cd);
     auto RD = cast<clang::CXXRecordDecl>(c_cd->RD);
 
+    if (RD->isInvalidDecl() || !RD->getDefinition())
+        return;
+
     EmitInternalDeclsForFields(RD);
 }
 
