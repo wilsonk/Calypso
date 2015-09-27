@@ -357,31 +357,6 @@ void LangPlugin::addFieldInitializers(llvm::SmallVectorImpl<llvm::Constant*>& co
     offset += gDataLayout->getTypeStoreSize(C->getType());
 }
 
-void LangPlugin::buildGEPIndices(IrTypeAggr *irTyAgrr,
-                                 VarGEPIndices &varGEPIndices)
-{
-//     auto& CGTypes = CGM->getTypes();
-//
-//     auto t = irTyAgrr->getDType();
-//     AggregateDeclaration *ad;
-//
-//     if (t->ty == Tstruct)
-//         ad = static_cast<TypeStruct*>(t)->sym;
-//     else if (t->ty == Tclass)
-//         ad = static_cast<TypeClass*>(t)->sym;
-//
-//     auto RD = getRecordDecl(ad);
-//     assert(RD->getDefinition());
-//
-//     auto& CGRL = CGTypes.getCGRecordLayout(RD);
-//
-//     for (auto vd: ad->fields)
-//     {
-//         auto VD = static_cast<cpp::VarDeclaration*>(vd)->VD;
-//         varGEPIndices[vd] = CGRL.getLLVMFieldNo(llvm::cast<clang::FieldDecl>(VD));
-//     }
-}
-
 LLValue* LangPlugin::toIndexAggregate(LLValue* src, ::AggregateDeclaration* ad,
                                       ::VarDeclaration* vd)
 {

@@ -112,13 +112,11 @@ IrTypeClass* IrTypeClass::get(ClassDeclaration* cd)
 
     // CALYPSO
     if (auto lp = cd->langPlugin())
-        if (auto ty = lp->codegen()->toType(cd->type))
-        {
-            t->type = ty;
-            t->packed = llvm::cast<LLStructType>(ty)->isPacked();
-            lp->codegen()->buildGEPIndices(t, t->varGEPIndices);
-            return t;
-        }
+    {
+        t->type = lp->codegen()->toType(cd->type);
+        t->packed = llvm::cast<LLStructType>(t->type)->isPacked();
+        return t;
+    }
 
     // This class may contain an align declaration. See issue 726.
     t->packed = false;

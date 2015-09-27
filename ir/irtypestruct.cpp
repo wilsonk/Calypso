@@ -54,14 +54,12 @@ IrTypeStruct* IrTypeStruct::get(StructDeclaration* sd)
 
     // CALYPSO
     if (auto lp = sd->langPlugin())
-        if (auto ty = lp->codegen()->toType(sd->type))
-        {
-            t->type = ty;
-            t->packed = llvm::cast<LLStructType>(ty)->isPacked();
-                    // what about default_fields
-            lp->codegen()->buildGEPIndices(t, t->varGEPIndices);
-            return t;
-        }
+    {
+        t->type = lp->codegen()->toType(sd->type);
+        t->packed = llvm::cast<LLStructType>(t->type)->isPacked();
+                // what about default_fields
+        return t;
+    }
 
     t->packed = sd->alignment == 1;
     if (!t->packed)
