@@ -265,7 +265,7 @@ llvm::Type *LangPlugin::toType(::Type *t)
     auto RD = getRecordDecl(t);
 
     if (RD->isInvalidDecl() || !RD->getDefinition())
-        return nullptr;
+        return llvm::StructType::get(gIR->context());
     else
         return CGM->getTypes().ConvertTypeForMem(
                     Context.getRecordType(RD));
