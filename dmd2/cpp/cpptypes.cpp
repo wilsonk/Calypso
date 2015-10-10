@@ -1619,6 +1619,7 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
         const clang::FunctionDecl *FD)
 {
     auto& S = calypso.pch.AST->getSema();
+    auto& Diags = calypso.pch.AST->getDiagnostics();
 
     auto params = new Parameters;
     params->reserve(T->getNumParams());
@@ -1674,6 +1675,9 @@ TypeFunction *TypeMapper::FromType::fromTypeFunction(const clang::FunctionProtoT
 
                 if (DefaultArgExpr) // might be null if BuildCXXDefaultArgExpr returned ExprError
                     defaultArg = ExprMapper(tm).fromExpression(DefaultArgExpr);
+
+                if (Diags.hasErrorOccurred())
+                    Diags.Reset();
             }
 
             PI++;
