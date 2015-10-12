@@ -566,8 +566,11 @@ public:
 bool FunctionReferencer::Reference(const clang::FunctionDecl *D)
 {
     auto Callee = const_cast<clang::FunctionDecl*>(D);
-    if (!Callee || Callee->getBuiltinID() || Referenced.count(Callee->getCanonicalDecl()))
+    if (!Callee || Callee->isDeleted() ||
+            Callee->getBuiltinID() || Referenced.count(Callee->getCanonicalDecl()))
         return true;
+    if (Callee->isInvalidDecl())
+        return false;
     Referenced.insert(Callee->getCanonicalDecl());
 
     Callee->setTrivial(false);  // force its definition and Sema to resolve its exception spec
