@@ -599,7 +599,13 @@ void PCH::update()
         std::string TripleStr = llvm::sys::getProcessTriple();
         llvm::Triple T(TripleStr);
 
-        clang::driver::Driver TheDriver(calypso.executablePath, T.str(), *Diags);
+        clang::IntrusiveRefCntPtr<clang::DiagnosticOptions> CC1DiagOpts(new clang::DiagnosticOptions);
+        clang::IntrusiveRefCntPtr<clang::DiagnosticIDs> CC1DiagID(new clang::DiagnosticIDs);
+        auto CC1DiagClient = new clang::TextDiagnosticPrinter(llvm::errs(), &*CC1DiagOpts);
+        clang::IntrusiveRefCntPtr<clang::DiagnosticsEngine> CC1Diags = new clang::DiagnosticsEngine(CC1DiagID,
+                                            &*CC1DiagOpts, CC1DiagClient);
+
+        clang::driver::Driver TheDriver(calypso.executablePath, T.str(), *CC1Diags);
         TheDriver.setTitle("Calypso PCH");
 
         llvm::SmallVector<const char *, 16> Argv;
@@ -631,11 +637,11 @@ void PCH::update()
                                             const_cast<const char **>(CCArgs.data()),
                                             const_cast<const char **>(CCArgs.data()) +
                                             CCArgs.size(),
-                                            *Diags);
+                                            *CC1Diags);
 
         clang::CompilerInstance Clang;
         Clang.setInvocation(CI.release());
-        Clang.setDiagnostics(Diags.get());
+        Clang.setDiagnostics(CC1Diags.get());
 
         // Infer the builtin include path if unspecified.
         if (Clang.getHeaderSearchOpts().UseBuiltinIncludes &&
