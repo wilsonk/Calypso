@@ -55,7 +55,7 @@ public:
     Dsymbol *syntaxCopy(Dsymbol *) override;
     Identifier *getIdent() override;
 
-    bool completeInst(bool mayFail = false);
+    bool completeInst();
     void correctTiargs();
 };
 

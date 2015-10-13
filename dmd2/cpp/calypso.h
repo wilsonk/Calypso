@@ -14,6 +14,7 @@
 #include <memory>
 #include "llvm/ADT/StringSet.h"
 #include "llvm/IR/DataLayout.h"
+#include "clang/AST/ASTMutationListener.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Sema/DeclSpec.h"
 #include "clang/CodeGen/ModuleBuilder.h"
@@ -73,12 +74,13 @@ const clang::TagDecl *isOverloadedOperatorWithTagOperand(const clang::Decl *D,
 
 Loc fromLoc(clang::SourceLocation L);
 
-// This collects the *new* function instances that a template instance depends upon, they need to be emitted
-struct InstantiationCollector : public clang::ASTConsumer
+class InstantiationChecker : public clang::ASTConsumer, public clang::ASTMutationListener
 {
-    std::stack<TemplateInstance *> tempinsts;
+public:
+    clang::ASTMutationListener *GetASTMutationListener() override { return this; }
 
-    bool HandleTopLevelDecl(clang::DeclGroupRef DG) override;
+    void CompletedImplicitDefinition(const clang::FunctionDecl *D) override;
+    void FunctionDefinitionInstantiated(const clang::FunctionDecl *D) override;
 };
 
 struct PCH
@@ -90,7 +92,7 @@ struct PCH
     ASTUnit *AST = nullptr;
     clang::MangleContext *MangleCtx = nullptr;
 
-    InstantiationCollector instCollector;
+    InstantiationChecker instChecker;
     clang::IntrusiveRefCntPtr<clang::DiagnosticsEngine> Diags;
     
     ModuleMap *MMap = nullptr;

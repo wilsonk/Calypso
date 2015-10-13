@@ -289,12 +289,25 @@ Dsymbols *DeclMapper::VisitValueDecl(const clang::ValueDecl *D)
 static void MarkFunctionForEmit(const clang::FunctionDecl *D)
 {
     auto& S = calypso.pch.AST->getSema();
+    auto& Diags = calypso.pch.AST->getDiagnostics();
 
     if (!D->getDeclContext()->isDependentContext())
     {
         auto D_ = const_cast<clang::FunctionDecl*>(D);
         D_->setTrivial(false);  // force its definition and Sema to resolve its exception spec
-        S.MarkFunctionReferenced(clang::SourceLocation(), D_);
+
+        S.MarkFunctionReferenced(D->getLocation(), D_);
+        if (Diags.hasErrorOccurred())
+        {
+            assert(D->isInvalidDecl());
+            Diags.Reset();
+        }
+        S.PerformPendingInstantiations();
+
+        // MarkFunctionReferenced won't instantiate some implicitly instantiable functions
+        // Not fully understanding why, but here's a second attempt
+        if (!D->hasBody() && D->isImplicitlyInstantiable())
+            S.InstantiateFunctionDefinition(D->getLocation(), D_);
     }
 }
 
@@ -395,7 +408,7 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
 
     if (CRD && !D->isUnion())
     {
-        if (!CRD->isDependentType() && !CRD->isInvalidDecl())
+        if (!CRD->isDependentType())
         {
             auto _CRD = const_cast<clang::CXXRecordDecl *>(CRD);
 
@@ -410,14 +423,23 @@ Dsymbols *DeclMapper::VisitRecordDecl(const clang::RecordDecl *D, unsigned flags
             for (int i = 0; i < 2; i++)
                 MarkEmit(S.LookupCopyingConstructor(_CRD, i ? clang::Qualifiers::Const : 0));
             
-            S.LookupDestructor(_CRD);
+            MarkEmit(S.LookupDestructor(_CRD));
 
             for (int i = 0; i < 2; i++)
                 for (int j = 0; j < 2; j++)
                     for (int k = 0; k < 2; k++)
-                        S.LookupCopyingAssignment(_CRD, i ? clang::Qualifiers::Const : 0, j ? true : false,
-                                                  k ? clang::Qualifiers::Const : 0);
+                        MarkEmit(S.LookupCopyingAssignment(_CRD, i ? clang::Qualifiers::Const : 0, j ? true : false,
+                                                  k ? clang::Qualifiers::Const : 0));
         }
+    }
+
+    if (CRD && D->isInvalidDecl())
+    {
+        // Despite being invalid themselves methods of invalid records are not always marked invalid for some reason.
+        // We need to mark everyone invalid, because if we don't emitting debug info for them will trigger an assert.
+        for (auto MD: CRD->methods())
+            if (!MD->isStatic())
+                MD->setInvalidDecl();
     }
 
     // Add specific decls: vars, tags, templates, typedefs
@@ -524,23 +546,6 @@ TemplateParameters *initTempParams(Loc loc, SpecValue &spec)
     return tpl;
 }
 
-struct IdleTypeDiagnoser : public clang::Sema::TypeDiagnoser
-{
-    IdleTypeDiagnoser(bool Suppressed = false) : clang::Sema::TypeDiagnoser(Suppressed) {}
-    void diagnose(clang::Sema &S, clang::SourceLocation Loc, clang::QualType T) override {}
-};
-
-static bool RequireCompleteType(clang::SourceLocation Loc, clang::QualType T)
-{
-    auto& S = calypso.pch.AST->getSema();
-    IdleTypeDiagnoser Diagnoser;
-
-    if (!T->getAs<clang::TagType>())
-        return false;
-
-    return S.RequireCompleteType(Loc, T, Diagnoser);
-}
-
 namespace {
 class FunctionReferencer : public clang::RecursiveASTVisitor<FunctionReferencer>
 {
@@ -573,11 +578,10 @@ bool FunctionReferencer::Reference(const clang::FunctionDecl *D)
         return false;
     Referenced.insert(Callee->getCanonicalDecl());
 
-    Callee->setTrivial(false);  // force its definition and Sema to resolve its exception spec
-    S.MarkFunctionReferenced(SLoc, Callee);
+    MarkFunctionForEmit(Callee);
 
-    if (Callee->isImplicitlyInstantiable())
-        S.InstantiateFunctionDefinition(SLoc, Callee);
+    if (Callee->isInvalidDecl())
+        return false;
 
     mapper.AddImplicitImportForDecl(loc, Callee);
 
@@ -676,23 +680,18 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     if (!instantiating && D->isTemplateInstantiation())
         return nullptr;
 
-    auto loc = fromLoc(D->getLocation());
-
     auto FPT = D->getType()->castAs<clang::FunctionProtoType>();
+
+    auto loc = fromLoc(D->getLocation());
     auto MD = dyn_cast<clang::CXXMethodDecl>(D);
 
-    // Since Sema never got the chance, do a final check that every type is complete
-    // on functions that will be emitted.
-    if (!D->getDescribedFunctionTemplate()
-            && !D->getDeclContext()->isDependentContext())
-    {
-        if (RequireCompleteType(D->getLocation(), D->getReturnType()))
-            return nullptr;
+    MarkFunctionForEmit(D);
+    if (D->isInvalidDecl())
+        return nullptr;
 
-        for (auto Param: FPT->getParamTypes())
-            if (RequireCompleteType(D->getLocation(), Param))
-                return nullptr;
-    }
+    const clang::FunctionDecl *Def;
+    if (D->hasBody(Def))
+        FunctionReferencer(*this, S, clang::SourceLocation()).TraverseStmt(Def->getBody());
 
     auto tf = FromType(*this, loc).fromTypeFunction(FPT, D);
     if (!tf)
@@ -702,14 +701,6 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
         return nullptr;
     }
     assert(tf->ty == Tfunction);
-
-    MarkFunctionForEmit(D);
-
-    const clang::FunctionDecl *Def;
-    if (D->hasBody(Def))
-        FunctionReferencer(*this, S, clang::SourceLocation()).TraverseStmt(Def->getBody());
-
-    S.PerformPendingInstantiations();
 
     StorageClass stc = STCundefined;
     if (MD)

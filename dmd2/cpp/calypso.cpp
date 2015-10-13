@@ -431,6 +431,8 @@ const clang::Decl *getDecl(Dsymbol *s)
     llvm_unreachable("Unhandled getDecl");
 }
 
+/***********************/
+
 // see CodeGenModule::getMangledName()
 const char *LangPlugin::mangle(Dsymbol *s)
 {
@@ -476,8 +478,41 @@ const char *LangPlugin::mangle(Dsymbol *s)
     return FoundStr.c_str();
 }
 
-#define MAX_FILENAME_SIZE 4096
+/***********************/
 
+void InstantiationChecker::CompletedImplicitDefinition(const clang::FunctionDecl *D)
+{
+    auto& Diags = calypso.pch.AST->getDiagnostics();
+
+    calypso.pch.needSaving = true;
+
+    if (Diags.hasErrorOccurred())
+    {
+//         if (!D->isInvalidDecl())
+//             fprintf(stderr, "Marking %s invalid", D->getNameAsString().c_str());
+//         const_cast<clang::FunctionDecl*>(D)->setInvalidDecl();
+        Diags.Reset();
+    }
+}
+
+void InstantiationChecker::FunctionDefinitionInstantiated(const clang::FunctionDecl *D)
+{
+    auto& Diags = calypso.pch.AST->getDiagnostics();
+
+    calypso.pch.needSaving = true;
+
+    if (Diags.hasErrorOccurred())
+    {
+//         if (!D->isInvalidDecl())
+//             fprintf(stderr, "Marking %s invalid", D->getNameAsString().c_str());
+//         const_cast<clang::FunctionDecl*>(D)->setInvalidDecl();
+        Diags.Reset();
+    }
+}
+
+/***********************/
+
+#define MAX_FILENAME_SIZE 4096
 
 void PCH::init()
 {
@@ -691,7 +726,7 @@ void PCH::update()
     clang::FileSystemOptions FileSystemOpts;
 
     AST = ASTUnit::LoadFromASTFile(pchFilename,
-                                Diags, FileSystemOpts, &instCollector);
+                                Diags, FileSystemOpts, &instChecker);
 
     // WORKAROUND for https://llvm.org/bugs/show_bug.cgi?id=24420
     // « RecordDecl::LoadFieldsFromExternalStorage() expels existing decls from the DeclContext linked list »
