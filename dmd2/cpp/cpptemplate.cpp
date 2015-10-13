@@ -467,10 +467,9 @@ clang::RedeclarableTemplateDecl *TemplateDeclaration::getPrimaryTemplate()
                             S.SubstDecl(FuncTemp->getTemplatedDecl(),
                                         Temp->getDeclContext(), MultiList));
 
-            assert(!Diags.hasErrorOccurred());
-
             if (!FuncInst)
             {
+                Diags.Reset();
                 ti->errors = true; // probably an attempt from functionResolve()
                 return ti;
             }
