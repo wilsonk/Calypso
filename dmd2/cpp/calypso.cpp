@@ -790,7 +790,7 @@ void PCH::update()
 
 void PCH::save()
 {
-    if (0 || !needSaving) // disabled for now, Clang makes it hard to save a new PCH when an external source like another PCH is loaded by the ASTContext
+    if (1 || !needSaving) // disabled for now, Clang makes it hard to save a new PCH when an external source like another PCH is loaded by the ASTContext
         return;
 
     std::error_code EC;
