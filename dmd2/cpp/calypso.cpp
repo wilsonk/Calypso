@@ -583,7 +583,7 @@ void PCH::update()
     // FIXME
     assert(!(needEmit && AST) && "Need AST merging FIXME");
 
-    auto AddSuffixThenCheck = [&] (const char *suffix) {
+    auto AddSuffixThenCheck = [&] (const char *suffix, bool dirtyPCH = true) {
         std::string fn_var(calypso.cachePrefix);
         fn_var += suffix;
 
@@ -594,7 +594,8 @@ void PCH::update()
             ::error(Loc(), "%s is a directory\n", fn_var.c_str());
             fatal();
         }
-        else if (!exists(result))
+
+        if (dirtyPCH && !exists(result))
             needEmit = true;
 
         return fn_var;
@@ -603,7 +604,7 @@ void PCH::update()
 
     pchHeader = AddSuffixThenCheck(".h");
     pchFilename = AddSuffixThenCheck(".h.pch");
-    pchFilenameNew = AddSuffixThenCheck(".new.pch");
+    pchFilenameNew = AddSuffixThenCheck(".new.pch", false);
 
     if (needEmit)
     {
