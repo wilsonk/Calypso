@@ -259,9 +259,6 @@ DValue* DtoCallFunction(Loc& loc, Type* resulttype, DValue* fnval, Expressions* 
     // the callee D type
     Type* calleeType = fnval->getType();
 
-    // make sure the callee type has been processed
-    DtoType(calleeType);
-
     // get func value if any
     DFuncValue* dfnval = fnval->isFunc();
 
@@ -269,6 +266,9 @@ DValue* DtoCallFunction(Loc& loc, Type* resulttype, DValue* fnval, Expressions* 
     if (dfnval)
         if (auto lp = dfnval->func->langPlugin())
             return lp->codegen()->toCallFunction(loc, resulttype, fnval, arguments, retvar);
+
+    // make sure the callee type has been processed
+    DtoType(calleeType);
 
     // handle intrinsics
     bool intrinsic = (dfnval && dfnval->func && dfnval->func->llvmInternal == LLVMintrinsic);
