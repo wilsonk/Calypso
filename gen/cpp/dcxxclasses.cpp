@@ -260,7 +260,7 @@ void LangPlugin::emitAdditionalClassSymbols(::ClassDeclaration *cd)
             NewThunk.Return.NonVirtual = 2 * Target::ptrsize;
 
             for (auto T = VTLayout->vtable_thunk_begin(),
-                    TE = VTLayout->vtable_thunk_begin(); T != TE; T++)
+                    TE = VTLayout->vtable_thunk_end(); T != TE; T++)
             {
                 if (T->first != I)
                     continue;
