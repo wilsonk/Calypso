@@ -238,12 +238,21 @@ void LangPlugin::emitAdditionalClassSymbols(::ClassDeclaration *cd)
         for (unsigned I = 0; I != VTLayout->getNumVTableComponents(); ++I)
         {
             auto& Component = Components[I];
+            const clang::CXXMethodDecl *CompMD;;
 
-            if (Component.getKind() !=
-                    clang::VTableComponent::CK_FunctionPointer)
-                continue;
+            switch (Component.getKind())
+            {
+                case clang::VTableComponent::CK_FunctionPointer:
+                    CompMD = Component.getFunctionDecl()->getCanonicalDecl();
+                    break;
+                case clang::VTableComponent::CK_CompleteDtorPointer:
+                    CompMD = Component.getDestructorDecl()->getCanonicalDecl();
+                    break;
+                default:
+                    CompMD = nullptr;
+            }
 
-            if (Component.getFunctionDecl()->getCanonicalDecl() != MD)
+            if (!CompMD || CompMD != MD)
                 continue;
 
             clang::ThunkInfo NewThunk;
