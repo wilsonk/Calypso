@@ -92,6 +92,61 @@ static void mangleNumber(llvm::raw_ostream &Out,
   Out << Number;
 }
 
+static clang::BaseOffset
+ComputeReturnAdjustmentBaseOffset(clang::ASTContext &Context,
+                                  const ::FuncDeclaration *overmd,
+                                  const clang::CXXMethodDecl *BaseMD) {
+    return clang::BaseOffset(); // FIXME
+//   const clang::FunctionType *BaseFT = BaseMD->getType()->getAs<clang::FunctionType>();
+//   const FunctionType *DerivedFT = DerivedMD->getType()->getAs<FunctionType>();
+//
+//   // Canonicalize the return types.
+//   clang::CanQualType CanDerivedReturnType =
+//       Context.getCanonicalType(DerivedFT->getReturnType());
+//   clang::CanQualType CanBaseReturnType =
+//       Context.getCanonicalType(BaseFT->getReturnType());
+//
+//   assert(CanDerivedReturnType->getTypeClass() ==
+//          CanBaseReturnType->getTypeClass() &&
+//          "Types must have same type class!");
+//
+//   if (CanDerivedReturnType == CanBaseReturnType) {
+//     // No adjustment needed.
+//     return clang::BaseOffset();
+//   }
+//
+//   if (isa<clang::ReferenceType>(CanDerivedReturnType)) {
+//     CanDerivedReturnType =
+//       CanDerivedReturnType->getAs<ReferenceType>()->getPointeeType();
+//     CanBaseReturnType =
+//       CanBaseReturnType->getAs<ReferenceType>()->getPointeeType();
+//   } else if (isa<clang::PointerType>(CanDerivedReturnType)) {
+//     CanDerivedReturnType =
+//       CanDerivedReturnType->getAs<PointerType>()->getPointeeType();
+//     CanBaseReturnType =
+//       CanBaseReturnType->getAs<PointerType>()->getPointeeType();
+//   } else {
+//     llvm_unreachable("Unexpected return type!");
+//   }
+//
+//   // We need to compare unqualified types here; consider
+//   //   const T *Base::foo();
+//   //   T *Derived::foo();
+//   if (CanDerivedReturnType.getUnqualifiedType() ==
+//       CanBaseReturnType.getUnqualifiedType()) {
+//     // No adjustment needed.
+//     return clang::BaseOffset();
+//   }
+//
+//   const clang::CXXRecordDecl *DerivedRD =
+//     cast<clang::CXXRecordDecl>(cast<clang::RecordType>(CanDerivedReturnType)->getDecl());
+//
+//   const clang::CXXRecordDecl *BaseRD =
+//     cast<clang::CXXRecordDecl>(cast<clang::RecordType>(CanBaseReturnType)->getDecl());
+//
+//   return clang::ItaniumVTableBuilder::ComputeBaseOffset(Context, BaseRD, DerivedRD);
+}
+
 // HACK? We're taking advantage of DMD semantic caps to generate C++ thunk-like functions
 // except at codegen time! Since they are final they shouldn't affect the aggregate they're member of, but still...
 //
@@ -177,7 +232,6 @@ void LangPlugin::emitAdditionalClassSymbols(::ClassDeclaration *cd)
     if (!getASTUnit())
         return; // no C++ class around
 
-
     if (!isDCXX(cd))
         return;
     auto dcxxInfo = DCXXVTableInfo::get(cd);
@@ -200,7 +254,7 @@ void LangPlugin::emitAdditionalClassSymbols(::ClassDeclaration *cd)
     // the C++ class vtable by the DCXX one.
     std::vector<llvm::Constant*> Inits(OldVTableInit->getNumOperands());
     for (unsigned i = 0; i < OldVTableInit->getNumOperands(); i++)
-        Inits[i] = llvm::cast<llvm::Constant>(OldVTableInit->getOperand(i));  // std::copy fails because the cast is required
+        Inits[i] = llvm::cast<llvm::Constant>(OldVTableInit->getOperand(i));
 
     // search for virtual C++ methods overriden by the D class
     for (auto s: cd->vtbl)
@@ -259,15 +313,29 @@ void LangPlugin::emitAdditionalClassSymbols(::ClassDeclaration *cd)
             NewThunk.This.NonVirtual = -2 * Target::ptrsize;
             NewThunk.Return.NonVirtual = 2 * Target::ptrsize;
 
-            for (auto T = VTLayout->vtable_thunk_begin(),
-                    TE = VTLayout->vtable_thunk_end(); T != TE; T++)
+            if (MD->getParent()->getCanonicalDecl() != dcxxInfo->MostDerivedBase)
             {
-                if (T->first != I)
-                    continue;
+                // NOTE: we can't rely on existing thunks, because methods that aren't overridden by the most derived C++ class
+                // won't have the proper thunk offsets (sometimes no thunk at all).
+                clang::ItaniumVTableBuilder Builder(*static_cast<clang::ItaniumVTableContext *>(Context.getVTableContext()),
+                                dcxxInfo->MostDerivedBase, clang::CharUnits::Zero(),
+                                /*MostDerivedClassIsVirtual=*/false, dcxxInfo->MostDerivedBase);
 
-                auto& OldThunk = T->second;
-                NewThunk.This.NonVirtual += OldThunk.This.NonVirtual;
-                NewThunk.Return.NonVirtual += OldThunk.Return.NonVirtual;
+                // This adjustment.
+                clang::BaseSubobject OverriddenBaseSubobject(MD->getParent(),
+                                    clang::ComputeBaseOffset(Context, MD->getParent(), dcxxInfo->MostDerivedBase).NonVirtualOffset);
+                clang::BaseSubobject OverriderBaseSubobject(dcxxInfo->MostDerivedBase, clang::CharUnits::Zero());
+
+                clang::BaseOffset ThisOffset = Builder.ComputeThisAdjustmentBaseOffset(OverriddenBaseSubobject,
+                                                                    OverriderBaseSubobject);
+                NewThunk.This.NonVirtual += ThisOffset.NonVirtualOffset.getQuantity();
+
+                // Return adjustment.
+                clang::BaseOffset ReturnAdjustmentOffset;
+                ReturnAdjustmentOffset = ComputeReturnAdjustmentBaseOffset(Context, md, MD);
+                NewThunk.Return.NonVirtual += Builder.ComputeReturnAdjustment(ReturnAdjustmentOffset).NonVirtual;
+
+//                 NewThunk.This.Virtual.Itanium.VCallOffsetOffset = ; TODO
             }
 
             auto thunkFd = getDCXXThunk(md, NewThunk);
