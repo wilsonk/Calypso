@@ -240,6 +240,10 @@ void LangPlugin::emitAdditionalClassSymbols(::ClassDeclaration *cd)
 
     auto& Context = getASTContext();
     auto& CGVT = CGM->getVTables();
+    
+    clang::ItaniumVTableBuilder Builder(*static_cast<clang::ItaniumVTableContext *>(Context.getVTableContext()),
+                    dcxxInfo->MostDerivedBase, clang::CharUnits::Zero(),
+                    /*MostDerivedClassIsVirtual=*/false, dcxxInfo->MostDerivedBase);
 
     auto RTTI = CGM->GetAddrOfRTTIDescriptor(
         Context.getTagDeclType(dcxxInfo->MostDerivedBase));
@@ -317,9 +321,6 @@ void LangPlugin::emitAdditionalClassSymbols(::ClassDeclaration *cd)
             {
                 // NOTE: we can't rely on existing thunks, because methods that aren't overridden by the most derived C++ class
                 // won't have the proper thunk offsets (sometimes no thunk at all).
-                clang::ItaniumVTableBuilder Builder(*static_cast<clang::ItaniumVTableContext *>(Context.getVTableContext()),
-                                dcxxInfo->MostDerivedBase, clang::CharUnits::Zero(),
-                                /*MostDerivedClassIsVirtual=*/false, dcxxInfo->MostDerivedBase);
 
                 // This adjustment.
                 clang::BaseSubobject OverriddenBaseSubobject(MD->getParent(),
