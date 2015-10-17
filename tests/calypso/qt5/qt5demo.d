@@ -72,7 +72,7 @@ public:
         this.aboutFileAction.connect(&this.about);
 
         // Pretty much the same as the Qt example from here down for the constructor
-        setCentralWidget(cast(QWidget *) textEdit);
+        setCentralWidget(textEdit);
 
         createMenus();
         createToolBars();
@@ -138,7 +138,7 @@ public:
     {
         if(maybeSave())
         {
-            QString fileName = QFileDialog.getOpenFileName(cast(QWidget *)parentWin);
+            QString fileName = QFileDialog.getOpenFileName(parentWin);
             if (!fileName.isEmpty())
                 loadFile(fileName);
         }
@@ -160,7 +160,7 @@ public:
 
     void saveAs(bool a)
     {
-        QString fileName = QFileDialog.getSaveFileName(cast(QWidget *)parentWin);
+        QString fileName = QFileDialog.getSaveFileName(parentWin);
         if (fileName.isEmpty())
         {
             saved = false;
@@ -276,44 +276,40 @@ public:
         auto FString = QString("&File");
             fileMenu = (cast(QMenuBar*)menuBar()).addMenu(FString);
 
-        alias QWP = QWidget*;
-
         // ERROR: with statement doesn't work. LLVM code gen error
         /*
-        with (cast(QWP)fMenu) {
+        with (fileMenu) {
             addAction(newAct);
                 addAction(openAct);
                 addAction(saveAct);
                 addAction(saveAsAct);
         }
         */
-        (cast(QWP)fileMenu).addAction(newAct);
-        (cast(QWP)fileMenu).addAction(openAct);
-        (cast(QWP)fileMenu).addAction(saveAct);
-        (cast(QWP)fileMenu).addAction(saveAsAct);
+        fileMenu.QWidget.addAction(newAct);
+        fileMenu.QWidget.addAction(openAct);
+        fileMenu.QWidget.addAction(saveAct);
+        fileMenu.QWidget.addAction(saveAsAct);
         fileMenu.addSeparator();
-        (cast(QWP)fileMenu).addAction(exitAct);
+        fileMenu.QWidget.addAction(exitAct);
 
         auto EString = QString("&Edit");
             editMenu = (cast(QMenuBar*)menuBar()).addMenu(EString);
-        (cast(QWP)editMenu).addAction(cutAct);
-        (cast(QWP)editMenu).addAction(copyAct);
-        (cast(QWP)editMenu).addAction(pasteAct);
+        editMenu.QWidget.addAction(cutAct);
+        editMenu.QWidget.addAction(copyAct);
+        editMenu.QWidget.addAction(pasteAct);
 
         menuBar.addSeparator();
 
         auto AString = QString("&Help");
             helpMenu = (cast(QMenuBar*)menuBar()).addMenu(AString);
-        (cast(QWP)helpMenu).addAction(aboutAct);
-        (cast(QWP)helpMenu).addAction(aboutQtAct);
+        helpMenu.QWidget.addAction(aboutAct);
+        helpMenu.QWidget.addAction(aboutQtAct);
     }
 
     void createToolBars()
     {
         auto FString = QString("File");
         fileToolBar = addToolBar(FString);
-
-        alias QWP = QWidget*;
 
         // OPTION:  We could set up an action with the following four lines manually, if needed
         // auto IString = QString("images/new.png");
@@ -323,16 +319,16 @@ public:
         // have the '1' in front of it to trick Qt into thinking it is a slot.
         // fileToolBar.addAction(Icon, NString, cast(QObject*)this, cast(char*)"1DLangNewFile(bool)");
 
-        (cast(QWP)fileToolBar).addAction(newAct);
-        (cast(QWP)fileToolBar).addAction(openAct);
-        (cast(QWP)fileToolBar).addAction(saveAct);
+        fileToolBar.QWidget.addAction(newAct);
+        fileToolBar.QWidget.addAction(openAct);
+        fileToolBar.QWidget.addAction(saveAct);
 
         auto EString = QString("Edit");
         editToolBar = addToolBar(EString);
 
-        (cast(QWP)editToolBar).addAction(cutAct);
-        (cast(QWP)editToolBar).addAction(copyAct);
-        (cast(QWP)editToolBar).addAction(pasteAct);
+        editToolBar.QWidget.addAction(cutAct);
+        editToolBar.QWidget.addAction(copyAct);
+        editToolBar.QWidget.addAction(pasteAct);
     }
 
     void createStatusBar()
@@ -453,7 +449,7 @@ public:
         super.statusBar().showMessage(FLString, 2000);
     }
 
-    bool saveFile(const    QString fileName)
+    bool saveFile(const QString fileName)
     {
         // Write file out in D instead of Qt. Error check in Qt, though.
         QString str = textEdit.toPlainText();
