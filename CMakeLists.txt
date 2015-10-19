@@ -500,7 +500,7 @@ endif()
 
 ### CALYPSO
 
-add_dependencies(${LDC_EXE} clang)
+add_dependencies(${LDC_LIB} clang)
 
 ### CALYPSO
 
