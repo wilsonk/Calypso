@@ -464,9 +464,11 @@ ExternalProject_Add(clang
 )
 
 ExternalProject_Add_Step(clang rtcopy
-   COMMAND ${CMAKE_COMMAND} -E copy_directory ${CLANG_BINARY_DIR}/lib/clang ${CMAKE_CURRENT_BINARY_DIR}/lib/clang
+   COMMAND ${CMAKE_COMMAND} -E copy_directory ${CLANG_BINARY_DIR}/lib/clang ${CMAKE_CURRENT_BINARY_DIR}/lib/clang-ldc
    DEPENDEES build
 )
+
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/lib/clang-ldc DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 
 ### CALYPSO
 
