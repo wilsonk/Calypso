@@ -709,7 +709,8 @@ void PCH::update()
         /* Mark every C++ module object file dirty */
 
         llvm::Twine genListFilename(llvm::StringRef(cachePrefix), ".gen");
-        llvm::sys::fs::remove(genListFilename, true);
+        if (llvm::sys::fs::exists(genListFilename)) // WORKAROUND for MingW, fs::remove segfaults if it doesn't exist
+            llvm::sys::fs::remove(genListFilename, true);
     }
 
     needEmit = false;
