@@ -708,7 +708,8 @@ void PCH::update()
 
         /* Mark every C++ module object file dirty */
 
-        llvm::Twine genListFilename(llvm::StringRef(cachePrefix), ".gen");
+        std::string genListFilename(cachePrefix);
+        genListFilename += ".gen";
         llvm::sys::fs::remove(genListFilename, true);
     }
 
