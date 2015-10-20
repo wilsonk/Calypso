@@ -814,12 +814,13 @@ void LangPlugin::GenModSet::parse()
     parsed = true;
     clear();
 
-    llvm::Twine genFilename(llvm::StringRef(calypso.cachePrefix), ".gen");
+	std::string genFilename(calypso.cachePrefix);
+	genFilename += ".gen";
 
     if (!llvm::sys::fs::exists(genFilename))
         return;
 
-    auto fgenList = fopen(genFilename.str().c_str(), "r"); // ordered list of headers
+    auto fgenList = fopen(genFilename.c_str(), "r"); // ordered list of headers
     if (!fgenList)
     {
         ::error(Loc(), "Reading .gen file failed");
@@ -845,9 +846,10 @@ void LangPlugin::GenModSet::add(::Module *m)
     auto& objName = m->objfile->name->str;
     assert(parsed && !count(objName));
 
-    llvm::Twine genFilename(llvm::StringRef(calypso.cachePrefix), ".gen");
+	std::string genFilename(calypso.cachePrefix);
+	genFilename += ".gen";
 
-    auto fgenList = fopen(genFilename.str().c_str(), "a");
+    auto fgenList = fopen(genFilename.c_str(), "a");
     if (!fgenList)
     {
         ::error(Loc(), "Writing .gen file failed");
