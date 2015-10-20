@@ -24,26 +24,14 @@ Although Calypso is currently soldered to LDC, separating the two and placing Ca
 Installation notes
 -------
 
-First you need a LLVM + Clang 3.6 source tree, built libraries and the Clang binaries. Installing binary packages from your distribution isn't enough since the include/ files aren't exposing many symbols Calypso requires, so the source packages are needed as well. Or if you want or need to build Clang yourself, make sure to get the 3.6 branch:
+A Clang 3.6 fork makes its appearance as a submodule, it's therefore recommended to build Calypso against LLVM 3.6 (it hasn't been tested with any other version actually).
 
-    $ svn co http://llvm.org/svn/llvm-project/llvm/branches/release_36 llvm-3.6
-    $ cd llvm-3.6/tools
-    $ svn co http://llvm.org/svn/llvm-project/cfe/branches/release_36 clang
-    $ cd ../projects
-    $ svn co http://llvm.org/svn/llvm-project/compiler-rt/branches/release_36 compiler-rt
-
-Then build and install Clang as described in the rest of:
-http://clang.llvm.org/get_started.html
-
-Finally the rest of the build process is identical to LDC but while building Calypso you need to tell CMake where to find the LLVM source tree:
-
-    $ cd build
-    $ cmake .. -DLLVM_SOURCE_PATH="/path/to/llvm/source/tree"
+Please note that to build Calypso in ```Debug``` mode LLVM needs to be built in ```Debug``` mode as well.
 
 Specific flags and building the [showcase](tests/calypso/showcase.d) example
 -------
 
-Calypso adds the -cpp-flags option to LDC to pass arguments to Clang during the PCH generation, e.g to enable C++11 required to build [tests/calypso/showcase.d](tests/calypso/showcase.d):
+Calypso adds the -cpp-flags option to LDC to pass arguments to Clang during the PCH generation, e.g to enable C++11 while building [tests/calypso/showcase.d](tests/calypso/showcase.d):
 
     $ clang++ -std=c++11 -c showcase.cpp -o showcase.cpp.o
     $ ar rcs libshowcase.a showcase.cpp.o
