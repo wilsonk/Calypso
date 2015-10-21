@@ -3,7 +3,7 @@
  *
  * Build with:
  *   $ clang++ -I/usr/local/include/OGRE -I/usr/local/include/OGRE/Overlay -I/usr/include/OIS -c BaseApplication.cpp -o BaseApplication.cpp.o
- *   $ ldc2 -g -wi -v -cpp-args -I/usr/local/include/OGRE -cpp-args -I/usr/local/include/OGRE/Overlay -cpp-args -I/usr/include/OIS -LBaseApplication.cpp.o -L-lOgreOverlay -L-lOgreMain -L-lOIS -L-lboost_system -L-lboost_thread -L-lstdc++ demo.d
+ *   $ ldc2 -wi -v -cpp-args -I/usr/local/include/OGRE -cpp-args -I/usr/local/include/OGRE/Overlay -cpp-args -I/usr/include/OIS -LBaseApplication.cpp.o -L-lOgreOverlay -L-lOgreMain -L-lOIS -L-lboost_system -L-lboost_thread -L-lstdc++ demo.d
  */
 
 modmap (C++) "OGRE/Ogre.h";
@@ -138,12 +138,12 @@ protected:
         mixin(cppstr!"QueryVisible");
 
         // Create the materials to be used by the objects used fo the occlusion query
-        MaterialPtr matBase = MaterialManager.getSingleton().getByName(s_BaseWhiteNoLighting);
-        MaterialPtr matQueryArea = matBase.get().clone(s_QueryArea);
+        auto matBase = MaterialManager.getSingleton().getByName(s_BaseWhiteNoLighting);
+        auto matQueryArea = matBase.get().clone(s_QueryArea);
         matQueryArea.get().setDepthWriteEnabled(false);
         matQueryArea.get().setColourWriteEnabled(false);
         matQueryArea.get().setDepthCheckEnabled(false); // Not occluded by objects
-        MaterialPtr matQueryVisible = matBase.get().clone(s_QueryVisible);
+        auto matQueryVisible = matBase.get().clone(s_QueryVisible);
         matQueryVisible.get().setDepthWriteEnabled(false);
         matQueryVisible.get().setColourWriteEnabled(false);
         matQueryVisible.get().setDepthCheckEnabled(true); // Occluded by objects
@@ -164,14 +164,14 @@ protected:
 
         auto track = anim.createNodeTrack(1, node);  // Create a node track for our animation
 
-        auto vec3_kf0tr = Vector3(50, 30, 0);
-        auto vec3_kf2tr = Vector3(100, -30, 0);
-        auto vec3_kf4tr = Vector3(120, -80, 150);
-        auto vec3_kf6tr = Vector3(30, -80, 50);
-        auto vec3_kf8tr = Vector3(-50, 30, -50);
-        auto vec3_kf10tr = Vector3(-150, -20, -100);
-        auto vec3_kf12tr = Vector3(-50, -30, 0);
-        auto vec3_kf14tr = Vector3(50, 30, 0);
+        auto vec3_kf0tr = Vector3(50, 30, -40);
+        auto vec3_kf2tr = Vector3(100, -30, -40);
+        auto vec3_kf4tr = Vector3(120, -80, 110);
+        auto vec3_kf6tr = Vector3(30, -80, 10);
+        auto vec3_kf8tr = Vector3(-50, 30, -90);
+        auto vec3_kf10tr = Vector3(-150, -20, -140);
+        auto vec3_kf12tr = Vector3(-50, -30, -40);
+        auto vec3_kf14tr = Vector3(50, 30, -40);
 
         // Enter keyframes for our track to define a path for the light to follow
         track.createNodeKeyFrame(0).setTranslate(vec3_kf0tr);
