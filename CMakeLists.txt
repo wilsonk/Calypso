@@ -454,13 +454,24 @@ add_clang_lib(clangSema)
 add_clang_lib(clangLex)
 add_clang_lib(clangBasic)
 
+set(CLANG_STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/clang-prefix/src/clang-stamp)
+
 ExternalProject_Add(clang
     SOURCE_DIR ${CLANG_SOURCE_DIR}
     BINARY_DIR ${CLANG_BINARY_DIR}
+    STAMP_DIR ${CLANG_STAMP_DIR}
     CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
     BUILD_COMMAND $(MAKE) ${CLANG_TARGETS}
     INSTALL_COMMAND ""
     STEP_TARGETS rtcopy
+)
+
+# Always trigger a rebuild of Clang in case there were changes.
+# NOTE: CMake 3.2 introduces BUILD_ALWAYS for this.
+ExternalProject_Add_Step(clang rebuild
+   COMMAND ${CMAKE_COMMAND} -E remove "${CLANG_STAMP_DIR}/clang-build"
+   DEPENDERS build
+   ALWAYS 1
 )
 
 ExternalProject_Add_Step(clang rtcopy
