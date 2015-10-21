@@ -878,9 +878,9 @@ int LangPlugin::doesHandleImport(const utf8_t* tree)
 {
     if (strcmp((const char *) tree, "C") == 0
         || strcmp((const char *) tree, "C++") == 0)
-        return true;
+        return 0;
 
-    return false;
+    return -1;
 }
 
 ::Import* LangPlugin::createImport(int treeId, Loc loc, Identifiers* packages,
@@ -894,9 +894,9 @@ int LangPlugin::doesHandleModmap(const utf8_t* lang)
 {
     if (strcmp((const char *) lang, "C") == 0
         || strcmp((const char *) lang, "C++") == 0)
-        return true;
+        return 0;
 
-    return false;
+    return -1;
 }
 
 ::Modmap* LangPlugin::createModmap(int langId, Loc loc, Expression* arg)
