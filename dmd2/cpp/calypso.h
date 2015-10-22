@@ -14,6 +14,7 @@
 #include <memory>
 #include "llvm/ADT/StringSet.h"
 #include "llvm/IR/DataLayout.h"
+#include "clang/AST/ASTMutationListener.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Sema/DeclSpec.h"
 #include "clang/CodeGen/ModuleBuilder.h"
@@ -73,24 +74,25 @@ const clang::TagDecl *isOverloadedOperatorWithTagOperand(const clang::Decl *D,
 
 Loc fromLoc(clang::SourceLocation L);
 
-// This collects the *new* function instances that a template instance depends upon, they need to be emitted
-struct InstantiationCollector : public clang::ASTConsumer
+class InstantiationChecker : public clang::ASTConsumer, public clang::ASTMutationListener
 {
-    std::stack<TemplateInstance *> tempinsts;
+public:
+    clang::ASTMutationListener *GetASTMutationListener() override { return this; }
 
-    bool HandleTopLevelDecl(clang::DeclGroupRef DG) override;
+    void CompletedImplicitDefinition(const clang::FunctionDecl *D) override;
+    void FunctionDefinitionInstantiated(const clang::FunctionDecl *D) override;
 };
 
 struct PCH
 {
     Strings headers; // array of all C/C++ header names with the "" or <>, required as long as we're using a PCH
-            // the array is initialized at the first Modmap::semantic and kept in sync with a cache file named 'fringed_cache.list'
+            // the array is initialized at the first Modmap::semantic and kept in sync with a cache file named 'calypso_cache.list'
             // TODO: it's currently pretty basic and dumb and doesn't check whether the same header might be named differently or is already included by another
     bool needEmit = false;
     ASTUnit *AST = nullptr;
     clang::MangleContext *MangleCtx = nullptr;
 
-    InstantiationCollector instCollector;
+    InstantiationChecker instChecker;
     clang::IntrusiveRefCntPtr<clang::DiagnosticsEngine> Diags;
     
     ModuleMap *MMap = nullptr;
@@ -99,6 +101,13 @@ struct PCH
     void add(StringRef header);
 
     void update(); // re-emit the PCH if needed, and update the cached list
+
+    bool needSaving = false;
+    void save();
+
+    std::string pchHeader;
+    std::string pchFilename;
+    std::string pchFilenameNew; // the PCH may be updated by Calypso, but into a different file since the original PCH is still opened as external source for the ASTContext
 };
 
 class LangPlugin : public ::LangPlugin, public ::ForeignCodeGen
@@ -165,7 +174,6 @@ public:
     DValue* toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
                                    Expressions* arguments, llvm::Value *retvar) override;
 
-    void buildGEPIndices(IrTypeAggr *irTyAgrr, VarGEPIndices &varGEPIndices) override;
     LLValue* toIndexAggregate(LLValue* src, ::AggregateDeclaration* ad, ::VarDeclaration* vd) override;
     void addBaseClassData(AggrTypeBuilder &builder, ::AggregateDeclaration *base) override;
     void emitAdditionalClassSymbols(::ClassDeclaration *cd) override;
@@ -180,6 +188,8 @@ public:
 
     BuiltinTypes &builtinTypes;
     DeclReferencer &declReferencer;
+
+    std::string executablePath; // from argv[0] to locate Clang builtin headers
 
     struct GenModSet : public llvm::StringSet<> // already compiled modules
     {
@@ -196,7 +206,7 @@ public:
     std::unique_ptr<clangCG::CodeGenModule> CGM;  // selectively emit external C++ declarations, template instances, ...
 
     LangPlugin();
-    void init();
+    void init(const char *Argv0);
     ASTUnit *getASTUnit() { return pch.AST; }
     clang::ASTContext &getASTContext();
     

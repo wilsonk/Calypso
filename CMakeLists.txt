@@ -422,17 +422,64 @@ set_target_properties(
 
 ### CALYPSO
 
-find_package(Clang 3.6 REQUIRED)
-include_directories("${CLANG_INCLUDE_DIRS}")
+include(ExternalProject)
 
-set(LLVM_SOURCE_PATH "" CACHE PATH
-        "Path to LLVM (with Clang) source code tree.")
+set(CLANG_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/deps/clang)
+set(CLANG_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/deps/clang)
 
-if (EXISTS "${LLVM_SOURCE_PATH}/tools/clang/lib")
-        include_directories("${LLVM_SOURCE_PATH}/tools")
-else()
-        message(FATAL_ERROR "A Clang source code tree is required, since many CodeGen symbols aren't exposed in include/clang.")
-endif()
+include_directories(
+    "${CLANG_BINARY_DIR}/include" 
+    "${CMAKE_CURRENT_SOURCE_DIR}/deps"
+    "${CLANG_SOURCE_DIR}/include"
+)
+
+set(CLANG_TARGETS "clang-headers")
+
+macro(add_clang_lib _libname_)
+    set(CLANG_${_libname_}_LIB ${CLANG_BINARY_DIR}/lib/lib${_libname_}.a)
+    set(CLANG_LIBS ${CLANG_LIBS} ${CLANG_${_libname_}_LIB})
+    set(CLANG_TARGETS ${CLANG_TARGETS} ${_libname_})
+endmacro(add_clang_lib)
+
+add_clang_lib(clangFrontend)
+add_clang_lib(clangDriver)
+add_clang_lib(clangCodeGen)
+add_clang_lib(clangSerialization)
+add_clang_lib(clangSema)
+add_clang_lib(clangEdit)
+add_clang_lib(clangAnalysis)
+add_clang_lib(clangAST)
+add_clang_lib(clangParse)
+add_clang_lib(clangSema)
+add_clang_lib(clangLex)
+add_clang_lib(clangBasic)
+
+set(CLANG_STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/clang-prefix/src/clang-stamp)
+
+ExternalProject_Add(clang
+    SOURCE_DIR ${CLANG_SOURCE_DIR}
+    BINARY_DIR ${CLANG_BINARY_DIR}
+    STAMP_DIR ${CLANG_STAMP_DIR}
+    CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+    BUILD_COMMAND $(MAKE) ${CLANG_TARGETS}
+    INSTALL_COMMAND ""
+    STEP_TARGETS rtcopy
+)
+
+# Always trigger a rebuild of Clang in case there were changes.
+# NOTE: CMake 3.2 introduces BUILD_ALWAYS for this.
+ExternalProject_Add_Step(clang rebuild
+   COMMAND ${CMAKE_COMMAND} -E remove "${CLANG_STAMP_DIR}/clang-build"
+   DEPENDERS build
+   ALWAYS 1
+)
+
+ExternalProject_Add_Step(clang rtcopy
+   COMMAND ${CMAKE_COMMAND} -E copy_directory ${CLANG_BINARY_DIR}/lib/clang ${CMAKE_CURRENT_BINARY_DIR}/lib/clang-ldc
+   DEPENDEES build
+)
+
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/lib/clang-ldc DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 
 ### CALYPSO
 
@@ -461,6 +508,12 @@ if(MSVC_IDE)
     add_custom_command(TARGET ${LDC_EXE} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_BINARY_DIR}/bin/${LDC_EXE}.conf $<TARGET_FILE_DIR:${LDC_EXE}> COMMENT "Copy config file ${LDC_EXE}.conf")
 endif()
 
+
+### CALYPSO
+
+add_dependencies(${LDC_LIB} clang)
+
+### CALYPSO
 
 #
 # Intrinsics module generation tools.

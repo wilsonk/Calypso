@@ -1014,7 +1014,7 @@ int main(int argc, char **argv)
     builtin_init();
     initTraitsStringTable();
 
-    cpp::calypso.init(); // CALYPSO HACK
+    cpp::calypso.init(argv[0]); // CALYPSO HACK
 
     // Build import search path
     if (global.params.imppath)

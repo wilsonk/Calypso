@@ -2805,7 +2805,9 @@ Dsymbols *Parser::parseModmap()
     {
      L1:
         loc = token.loc;
-        arg = static_cast<StringExp*>(parsePrimaryExp()); // TODO: split into parseStringExp() to avoid the cast?
+        arg = parsePrimaryExp()->toStringExp();
+        if (!arg)
+            error("Expected a string expression following modmap");
 
         Modmap *s = global.langPlugins[plugin]->createModmap(langId, loc, arg);
         decldefs->push(s);

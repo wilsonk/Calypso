@@ -23,8 +23,16 @@
 #include "clang/AST/DeclTemplate.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
+#include "clang/Driver/Compilation.h"
+#include "clang/Driver/Driver.h"
+#include "clang/Driver/Tool.h"
+#include "clang/Lex/HeaderSearch.h"
 #include "clang/Lex/ModuleMap.h"
+#include "clang/Frontend/CompilerInstance.h"
+#include "clang/Frontend/FrontendActions.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
+#include "clang/Serialization/ASTWriter.h"
+#include "llvm/Support/Host.h"
 #include "llvm/Support/Program.h"
 #include "llvm/IR/LLVMContext.h"
 
@@ -423,6 +431,8 @@ const clang::Decl *getDecl(Dsymbol *s)
     llvm_unreachable("Unhandled getDecl");
 }
 
+/***********************/
+
 // see CodeGenModule::getMangledName()
 const char *LangPlugin::mangle(Dsymbol *s)
 {
@@ -468,15 +478,50 @@ const char *LangPlugin::mangle(Dsymbol *s)
     return FoundStr.c_str();
 }
 
-#define MAX_FILENAME_SIZE 4096
+/***********************/
 
-#define CACHE_SUFFIXED_FILENAME(fn_var, suffix) \
-    std::string fn_var(calypso.cachePrefix); \
-    fn_var.append(suffix);
+void InstantiationChecker::CompletedImplicitDefinition(const clang::FunctionDecl *D)
+{
+    auto& Diags = calypso.pch.AST->getDiagnostics();
+
+    calypso.pch.needSaving = true;
+
+    if (Diags.hasErrorOccurred())
+    {
+//         if (!D->isInvalidDecl())
+//             fprintf(stderr, "Marking %s invalid", D->getNameAsString().c_str());
+//         const_cast<clang::FunctionDecl*>(D)->setInvalidDecl();
+        Diags.Reset();
+    }
+}
+
+void InstantiationChecker::FunctionDefinitionInstantiated(const clang::FunctionDecl *D)
+{
+    auto& Diags = calypso.pch.AST->getDiagnostics();
+
+    calypso.pch.needSaving = true;
+
+    if (Diags.hasErrorOccurred())
+    {
+//         if (!D->isInvalidDecl())
+//             fprintf(stderr, "Marking %s invalid", D->getNameAsString().c_str());
+//         const_cast<clang::FunctionDecl*>(D)->setInvalidDecl();
+        Diags.Reset();
+    }
+}
+
+/***********************/
+
+#define MAX_FILENAME_SIZE 4096
 
 void PCH::init()
 {
-//     CACHE_SUFFIXED_FILENAME(headerList, ".list");
+    clang::IntrusiveRefCntPtr<clang::DiagnosticOptions> DiagOpts(new clang::DiagnosticOptions);
+    clang::IntrusiveRefCntPtr<clang::DiagnosticIDs> DiagID(new clang::DiagnosticIDs);
+    auto DiagClient = new clang::TextDiagnosticPrinter(llvm::errs(), &*DiagOpts);
+    Diags = new clang::DiagnosticsEngine(DiagID,
+                                         &*DiagOpts, DiagClient);
+
     auto& headerList = calypso.cachePrefix;
 
     auto fheaderList = fopen(headerList, "r"); // ordered list of headers
@@ -538,38 +583,32 @@ void PCH::update()
     // FIXME
     assert(!(needEmit && AST) && "Need AST merging FIXME");
 
-#define ADD_SUFFIX_THEN_CHECK(fn_var, suffix) \
-    CACHE_SUFFIXED_FILENAME(fn_var, suffix); \
-    { \
-        using namespace llvm::sys::fs; \
-        file_status result; \
-        status(fn_var, result); \
-        if (is_directory(result)) \
-        { \
-            ::error(Loc(), "%s is a directory\n", fn_var.c_str()); \
-            fatal(); \
-        } \
-        else if (!exists(result)) \
-            needEmit = true; \
-    }
+    auto AddSuffixThenCheck = [&] (const char *suffix, bool dirtyPCH = true) {
+        std::string fn_var(calypso.cachePrefix);
+        fn_var += suffix;
+
+        using namespace llvm::sys::fs;
+        file_status result;
+        status(fn_var, result);
+        if (is_directory(result)) {
+            ::error(Loc(), "%s is a directory\n", fn_var.c_str());
+            fatal();
+        }
+
+        if (dirtyPCH && !exists(result))
+            needEmit = true;
+
+        return fn_var;
+    };
     // NOTE: there's File::exists but it is incomplete and unused, hence llvm::sys::fs
 
-    ADD_SUFFIX_THEN_CHECK(pchHeader, ".h");
-    ADD_SUFFIX_THEN_CHECK(pchFilename, ".h.pch");
-#undef ADD_SUFFIX_THEN_CHECK
+    pchHeader = AddSuffixThenCheck(".h");
+    pchFilename = AddSuffixThenCheck(".h.pch");
+    pchFilenameNew = AddSuffixThenCheck(".new.pch", false);
 
     if (needEmit)
     {
-//         const char *compiler = getenv("CC");
-//         if (!strlen(compiler))
-//             compiler = "clang";
-
-        auto compiler = llvm::sys::findProgramByName("clang");
-        if (!compiler)
-        {
-            ::error(Loc(), "Clang compiler not found");
-            fatal();
-        }
+        llvm::sys::fs::remove(pchFilenameNew, true);
 
         /* PCH generation */
 
@@ -591,26 +630,65 @@ void PCH::update()
 
         fclose(fmono);
 
-        // Compiler flags
-        std::vector<std::string> Argv;
-        Argv.reserve(opts::cppArgs.size() + 7);
-        unsigned i = 0;
-#define ARGV_ADD(a) { Argv.emplace_back(a); i++; }
-        for (unsigned j = 0; j < opts::cppArgs.size(); ++j)
-            ARGV_ADD(opts::cppArgs[j]);
-        ARGV_ADD("-x");
-        ARGV_ADD("c++-header");
-        ARGV_ADD("-Xclang");
-        ARGV_ADD("-emit-pch");
-        ARGV_ADD("-o");
-        ARGV_ADD(pchFilename);
-        ARGV_ADD(pchHeader);
-#undef ARGV_ADD
+        // Compiler flags, we use a hack from clang-interpreter to extract -cc1 flags from "puny human" flags
+        // The driver doesn't do anything except computing the flags.
+        std::string TripleStr = llvm::sys::getProcessTriple();
+        llvm::Triple T(TripleStr);
 
-        if (executeToolAndWait(*compiler, Argv,
-                global.params.verbose) == -1)
+        clang::IntrusiveRefCntPtr<clang::DiagnosticOptions> CC1DiagOpts(new clang::DiagnosticOptions);
+        clang::IntrusiveRefCntPtr<clang::DiagnosticIDs> CC1DiagID(new clang::DiagnosticIDs);
+        auto CC1DiagClient = new clang::TextDiagnosticPrinter(llvm::errs(), &*CC1DiagOpts);
+        clang::IntrusiveRefCntPtr<clang::DiagnosticsEngine> CC1Diags = new clang::DiagnosticsEngine(CC1DiagID,
+                                            &*CC1DiagOpts, CC1DiagClient);
+
+        clang::driver::Driver TheDriver(calypso.executablePath, T.str(), *CC1Diags);
+        TheDriver.setTitle("Calypso PCH");
+
+        llvm::SmallVector<const char *, 16> Argv;
+        Argv.push_back("clang");
+        for (auto cppArg: opts::cppArgs)
+            Argv.push_back(cppArg.c_str());
+        Argv.push_back("-x");
+        Argv.push_back("c++-header");
+        Argv.push_back("-Xclang");
+        Argv.push_back("-emit-pch");
+        Argv.push_back("-o");
+        Argv.push_back(pchFilename.c_str());
+        Argv.push_back(pchHeader.c_str());
+
+        std::unique_ptr<clang::driver::Compilation> C(TheDriver.BuildCompilation(Argv));
+        assert(C);
+
+        // We expect to get back exactly one command job, if we didn't something
+        // failed. Extract that job from the compilation.
+        const clang::driver::JobList &Jobs = C->getJobs();
+        assert(Jobs.size() == 1 && isa<clang::driver::Command>(*Jobs.begin()));
+        const clang::driver::Command &Cmd = cast<clang::driver::Command>(*Jobs.begin());
+        assert(llvm::StringRef(Cmd.getCreator().getName()) == "clang");
+
+        // Initialize a compiler invocation object from the clang (-cc1) arguments.
+        const clang::driver::ArgStringList &CCArgs = Cmd.getArguments();
+        std::unique_ptr<clang::CompilerInvocation> CI(new clang::CompilerInvocation);
+        clang::CompilerInvocation::CreateFromArgs(*CI,
+                                            const_cast<const char **>(CCArgs.data()),
+                                            const_cast<const char **>(CCArgs.data()) +
+                                            CCArgs.size(),
+                                            *CC1Diags);
+
+        clang::CompilerInstance Clang;
+        Clang.setInvocation(CI.release());
+        Clang.setDiagnostics(CC1Diags.get());
+
+        // Infer the builtin include path if unspecified.
+        if (Clang.getHeaderSearchOpts().UseBuiltinIncludes &&
+                Clang.getHeaderSearchOpts().ResourceDir.empty())
+            Clang.getHeaderSearchOpts().ResourceDir = TheDriver.ResourceDir;
+
+        // Create and execute the frontend to generate a PCH
+        std::unique_ptr<clang::GeneratePCHAction> Act(new clang::GeneratePCHAction);
+        if (!Clang.ExecuteAction(*Act))
         {
-            ::error(Loc(), "execv Error!");
+            ::error(Loc(), "PCH generation failed!");
             fatal();
         }
 
@@ -630,7 +708,8 @@ void PCH::update()
 
         /* Mark every C++ module object file dirty */
 
-        llvm::Twine genListFilename(llvm::StringRef(cachePrefix), ".gen");
+        std::string genListFilename(cachePrefix);
+        genListFilename += ".gen";
         llvm::sys::fs::remove(genListFilename, true);
     }
 
@@ -638,16 +717,18 @@ void PCH::update()
 
     /* PCH was generated successfully, let's load it */
 
+    // If the PCH was updated by Calypso to avoid redoing implicit instantiations, replace the old PCH
+    // It cannot be overridden if loaded by an ASTContext, hence we're only doing it now.
+    if (llvm::sys::fs::exists(pchFilenameNew))
+    {
+        llvm::sys::fs::remove(pchFilename, true);
+        llvm::sys::fs::rename(pchFilenameNew, pchFilename);
+    }
+
     clang::FileSystemOptions FileSystemOpts;
 
-    clang::IntrusiveRefCntPtr<clang::DiagnosticOptions> DiagOpts(new clang::DiagnosticOptions);
-    auto DiagClient = new clang::TextDiagnosticPrinter(llvm::errs(), &*DiagOpts);
-    clang::IntrusiveRefCntPtr<clang::DiagnosticIDs> DiagID(new clang::DiagnosticIDs);
-    Diags = new clang::DiagnosticsEngine(DiagID,
-                                         &*DiagOpts, DiagClient);
-
     AST = ASTUnit::LoadFromASTFile(pchFilename,
-                                Diags, FileSystemOpts, &instCollector);
+                                Diags, FileSystemOpts, &instChecker);
 
     // WORKAROUND for https://llvm.org/bugs/show_bug.cgi?id=24420
     // « RecordDecl::LoadFieldsFromExternalStorage() expels existing decls from the DeclContext linked list »
@@ -708,6 +789,23 @@ void PCH::update()
     MangleCtx = AST->getASTContext().createMangleContext();
 }
 
+void PCH::save()
+{
+    if (1 || !needSaving) // disabled for now, Clang makes it hard to save a new PCH when an external source like another PCH is loaded by the ASTContext
+        return;
+
+    std::error_code EC;
+    llvm::raw_fd_ostream OS(pchFilenameNew, EC, llvm::sys::fs::F_None);
+
+    auto& Sysroot = AST->getHeaderSearch().getHeaderSearchOpts().Sysroot;
+    auto GenPCH = llvm::make_unique<clang::PCHGenerator>(AST->getPreprocessor(), pchFilenameNew,
+                                         nullptr, Sysroot, &OS, true);
+    GenPCH->InitializeSema(AST->getSema());
+    GenPCH->HandleTranslationUnit(AST->getASTContext());
+
+    needSaving = false;
+}
+
 void LangPlugin::GenModSet::parse()
 {
     if (parsed)
@@ -716,12 +814,13 @@ void LangPlugin::GenModSet::parse()
     parsed = true;
     clear();
 
-    llvm::Twine genFilename(llvm::StringRef(calypso.cachePrefix), ".gen");
+	std::string genFilename(calypso.cachePrefix);
+	genFilename += ".gen";
 
     if (!llvm::sys::fs::exists(genFilename))
         return;
 
-    auto fgenList = fopen(genFilename.str().c_str(), "r"); // ordered list of headers
+    auto fgenList = fopen(genFilename.c_str(), "r"); // ordered list of headers
     if (!fgenList)
     {
         ::error(Loc(), "Reading .gen file failed");
@@ -747,9 +846,10 @@ void LangPlugin::GenModSet::add(::Module *m)
     auto& objName = m->objfile->name->str;
     assert(parsed && !count(objName));
 
-    llvm::Twine genFilename(llvm::StringRef(calypso.cachePrefix), ".gen");
+	std::string genFilename(calypso.cachePrefix);
+	genFilename += ".gen";
 
-    auto fgenList = fopen(genFilename.str().c_str(), "a");
+    auto fgenList = fopen(genFilename.c_str(), "a");
     if (!fgenList)
     {
         ::error(Loc(), "Writing .gen file failed");
@@ -772,16 +872,15 @@ bool LangPlugin::needsCodegen(::Module *m)
     return !genModSet.count(objName);
 }
 
-#undef CACHE_SUFFIXED_FILENAME
 #undef MAX_FILENAME_SIZE
 
 int LangPlugin::doesHandleImport(const utf8_t* tree)
 {
     if (strcmp((const char *) tree, "C") == 0
         || strcmp((const char *) tree, "C++") == 0)
-        return true;
+        return 0;
 
-    return false;
+    return -1;
 }
 
 ::Import* LangPlugin::createImport(int treeId, Loc loc, Identifiers* packages,
@@ -795,9 +894,9 @@ int LangPlugin::doesHandleModmap(const utf8_t* lang)
 {
     if (strcmp((const char *) lang, "C") == 0
         || strcmp((const char *) lang, "C++") == 0)
-        return true;
+        return 0;
 
-    return false;
+    return -1;
 }
 
 ::Modmap* LangPlugin::createModmap(int langId, Loc loc, Expression* arg)
@@ -806,14 +905,23 @@ int LangPlugin::doesHandleModmap(const utf8_t* lang)
                 static_cast<StringExp*>(arg));
 }
 
+std::string GetExecutablePath(const char *Argv0) {
+  // This just needs to be some symbol in the binary; C++ doesn't
+  // allow taking the address of ::main however.
+  void *MainAddr = (void*) (intptr_t) GetExecutablePath;
+  return llvm::sys::fs::getMainExecutable(Argv0, MainAddr);
+}
+
 LangPlugin::LangPlugin()
     : builtinTypes(cpp::builtinTypes),
       declReferencer(cpp::declReferencer)
 {
 }
 
-void LangPlugin::init()
+void LangPlugin::init(const char *Argv0)
 {
+    executablePath = GetExecutablePath(Argv0);
+
     Module::init();
     pch.init();
 }

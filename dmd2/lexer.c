@@ -1786,7 +1786,6 @@ TOK Lexer::parenthesedSpecialToken(Token *t)
     Loc start = scanloc;
     bool pendingSpace = false;
 
-    p++;
     stringbuffer.reset();
     while (1)
     {
@@ -1799,7 +1798,7 @@ TOK Lexer::parenthesedSpecialToken(Token *t)
             case '\f':
                 if (stringbuffer.data)
                     pendingSpace = true;
-                break;                       // skip white space
+                break;                       // skip heading and trailing white space
 
             case '\n':
                 scanloc.linnum++;
@@ -1818,7 +1817,8 @@ TOK Lexer::parenthesedSpecialToken(Token *t)
                 t->ustring = (unsigned char *)mem.malloc(stringbuffer.offset);
                 memcpy(t->ustring, stringbuffer.data, stringbuffer.offset);
                 stringPostfix(t);
-                return TOKstring;
+                t->value = TOKstring;
+                return t->value;
 
             case 0:
             case 0x1A:
@@ -1830,6 +1830,11 @@ TOK Lexer::parenthesedSpecialToken(Token *t)
                 return TOKstring;
 
             default:
+                if (pendingSpace)
+                {
+                    stringbuffer.writeByte(' ');
+                    pendingSpace = false;
+                }
                 if (c & 0x80)
                 {
                     p--;
@@ -1839,11 +1844,6 @@ TOK Lexer::parenthesedSpecialToken(Token *t)
                         scanloc.linnum++;
                     }
                     p++;
-                    if (pendingSpace)
-                    {
-                        stringbuffer.writeByte(' ');
-                        pendingSpace = false;
-                    }
                     stringbuffer.writeUTF8(c);
                     continue;
                 }

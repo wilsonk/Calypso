@@ -43,7 +43,6 @@ public:
     virtual DValue* toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
                                    Expressions* arguments, llvm::Value *retvar) = 0;
 
-    virtual void buildGEPIndices(IrTypeAggr *irTyAgrr, VarGEPIndices &varGEPIndices) = 0;
     virtual LLValue* toIndexAggregate(LLValue* src, AggregateDeclaration* ad, VarDeclaration* vd) = 0;
     virtual void addBaseClassData(AggrTypeBuilder &builder, AggregateDeclaration *base) = 0;
     virtual void emitAdditionalClassSymbols(ClassDeclaration *cd) = 0;

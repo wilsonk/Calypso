@@ -55,6 +55,8 @@ void LangPlugin::enterModule(::Module *, llvm::Module *lm)
     if (!getASTUnit())
         return;
 
+    pch.save(); // save the numerous instantiations done by DMD back into the PCH
+
     auto& Context = getASTContext();
 
     auto Opts = new clang::CodeGenOptions;
@@ -116,9 +118,9 @@ void LangPlugin::leaveModule(::Module *m, llvm::Module *lm)
     // because CodeGenModule::Release will assume that they do not exist and use the same name, which LLVM will change to an unused one.
     auto ldcCtor = lm->getNamedGlobal("llvm.global_ctors"),
         ldcDtor = lm->getNamedGlobal("llvm.global_dtors");
-    assert(ldcCtor && ldcDtor);
-    ldcCtor->setName("llvm.global_ctors__d");
-    ldcDtor->setName("llvm.global_dtors__d");
+
+    if (ldcCtor) ldcCtor->setName("llvm.global_ctors__d");
+    if (ldcDtor) ldcDtor->setName("llvm.global_dtors__d");
 
     CGM->Release();
 
@@ -130,6 +132,9 @@ void LangPlugin::leaveModule(::Module *m, llvm::Module *lm)
     auto MergeGlobalStors = [&] (llvm::GlobalVariable *ldcStor, llvm::GlobalVariable *clangStor,
                           const char *ArrayName, decltype(llvm::appendToGlobalCtors) &appendToGlobalStors)
     {
+        if (!ldcStor)
+            return;
+        
         if (!clangStor)
         {
             ldcStor->setName(ArrayName);
@@ -263,7 +268,7 @@ llvm::Type *LangPlugin::toType(::Type *t)
     auto RD = getRecordDecl(t);
 
     if (RD->isInvalidDecl() || !RD->getDefinition())
-        return nullptr;
+        return llvm::StructType::get(gIR->context());
     else
         return CGM->getTypes().ConvertTypeForMem(
                     Context.getRecordType(RD));
@@ -353,31 +358,6 @@ void LangPlugin::addFieldInitializers(llvm::SmallVectorImpl<llvm::Constant*>& co
 
     constants.push_back(C);
     offset += gDataLayout->getTypeStoreSize(C->getType());
-}
-
-void LangPlugin::buildGEPIndices(IrTypeAggr *irTyAgrr,
-                                 VarGEPIndices &varGEPIndices)
-{
-//     auto& CGTypes = CGM->getTypes();
-//
-//     auto t = irTyAgrr->getDType();
-//     AggregateDeclaration *ad;
-//
-//     if (t->ty == Tstruct)
-//         ad = static_cast<TypeStruct*>(t)->sym;
-//     else if (t->ty == Tclass)
-//         ad = static_cast<TypeClass*>(t)->sym;
-//
-//     auto RD = getRecordDecl(ad);
-//     assert(RD->getDefinition());
-//
-//     auto& CGRL = CGTypes.getCGRecordLayout(RD);
-//
-//     for (auto vd: ad->fields)
-//     {
-//         auto VD = static_cast<cpp::VarDeclaration*>(vd)->VD;
-//         varGEPIndices[vd] = CGRL.getLLVMFieldNo(llvm::cast<clang::FieldDecl>(VD));
-//     }
 }
 
 LLValue* LangPlugin::toIndexAggregate(LLValue* src, ::AggregateDeclaration* ad,
@@ -832,6 +812,9 @@ void LangPlugin::toDefineClass(::ClassDeclaration* cd)
 {
     auto c_cd = static_cast<cpp::ClassDeclaration*>(cd);
     auto RD = cast<clang::CXXRecordDecl>(c_cd->RD);
+
+    if (RD->isInvalidDecl() || !RD->getDefinition())
+        return;
 
     EmitInternalDeclsForFields(RD);
 }

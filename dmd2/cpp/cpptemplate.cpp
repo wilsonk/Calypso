@@ -317,25 +317,11 @@ clang::RedeclarableTemplateDecl *TemplateDeclaration::getPrimaryTemplate()
     llvm_unreachable("Unhandled primary template");
 }
 
-bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
-{
-    if (tempinsts.empty())
-        return true;
-
-//     auto ti = tempinsts.top();
-
-//     for (auto I = DG.begin(), E = DG.end(); I != E; ++I)
-//         ti->Dependencies.push_back(*I);
-
-    return true;
-}
-
 ::TemplateInstance* TemplateDeclaration::foreignInstance(::TemplateInstance* tithis,
                                                        Scope* sc)
 {
     auto& Context = calypso.pch.AST->getASTContext();
     auto& S = calypso.pch.AST->getSema();
-    auto& instCollector = calypso.pch.instCollector;
     auto& Diags = calypso.pch.AST->getDiagnostics();
 
     if (isForeignInstance(tithis))
@@ -357,9 +343,6 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
         ti = new cpp::TemplateInstance(tithis->loc, tithis->name);
         tithis->syntaxCopy(ti);
     }
-
-    // Track function instantiations during the mapping of template instantiation (e.g by default arg exprs)
-    instCollector.tempinsts.push(ti);
 
     if (ti->Inst)
     {
@@ -458,7 +441,6 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
             auto RT = Ty->castAs<clang::RecordType>();
             auto CTSD = cast<clang::ClassTemplateSpecializationDecl>(RT->getDecl());
             ti->Inst = CTSD;
-            ti->completeInst();
         }
         else if (auto FuncTemp = dyn_cast<clang::FunctionTemplateDecl>(Temp))
         {
@@ -481,14 +463,13 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
             if (Instantiating.isInvalid())
                 assert(false && "InstantiatingTemplate is invalid");
 
-            Diags.setSuppressAllDiagnostics(true);
             auto FuncInst = llvm::cast_or_null<clang::FunctionDecl>(
                             S.SubstDecl(FuncTemp->getTemplatedDecl(),
                                         Temp->getDeclContext(), MultiList));
-            Diags.setSuppressAllDiagnostics(false);
 
             if (!FuncInst)
             {
+                Diags.Reset();
                 ti->errors = true; // probably an attempt from functionResolve()
                 return ti;
             }
@@ -503,6 +484,8 @@ bool InstantiationCollector::HandleTopLevelDecl(clang::DeclGroupRef DG)
     }
 
 LcorrectTempDecl:
+    ti->completeInst();
+
     correctTempDecl(ti);
     ti->havetempdecl = true;
 
@@ -510,7 +493,6 @@ LcorrectTempDecl:
 
     ti->semanticRun = PASSinit; // WARNING: may disrupt something?
     ti->semantic(sc);
-    instCollector.tempinsts.pop();
     return ti;
 }
 
@@ -602,17 +584,13 @@ Identifier *TemplateInstance::getIdent()
     return result;
 }
 
-bool TemplateInstance::completeInst(bool mayFail)
+bool TemplateInstance::completeInst()
 {
     auto& Context = calypso.pch.AST->getASTContext();
     auto& S = calypso.pch.AST->getSema();
-    auto& instCollector = calypso.pch.instCollector;
     auto& Diags = calypso.pch.AST->getDiagnostics();
 
     auto CTSD = dyn_cast<clang::ClassTemplateSpecializationDecl>(Inst);
-
-    Diags.setSuppressAllDiagnostics(true); // silence failed instantiations (while Clang instantiate lazily DMD tries to instantiate everything)
-    instCollector.tempinsts.push(this);
 
     if (CTSD && !CTSD->hasDefinition() &&
         CTSD->getSpecializedTemplate()->getTemplatedDecl()->hasDefinition()) // unused forward template specialization decls will exist but as empty aggregates
@@ -620,25 +598,9 @@ bool TemplateInstance::completeInst(bool mayFail)
         auto Ty = Context.getRecordType(CTSD);
 
         if (S.RequireCompleteType(CTSD->getLocation(), Ty, 0))
-        {
-            if (mayFail)
-                return false; // there may be template specializations that aren't meant to be evaluated (eg. QVector<void> for QFuture<void>)
-            assert(false && "Sema::RequireCompleteType() failed on template specialization");
-        }
+            Diags.Reset();
     }
 
-    // Force instantiation of method definitions
-    if (CTSD)
-        for (auto *D : CTSD->decls())
-        {
-            if (auto Function = dyn_cast<clang::FunctionDecl>(D))
-                if (!Function->isDefined() && Function->getInstantiatedFromMemberFunction())
-                    S.InstantiateFunctionDefinition(CTSD->getLocation(),
-                                                    Function, true);
-        }
-
-    instCollector.tempinsts.pop();
-    Diags.setSuppressAllDiagnostics(false);
     return true;
 }
 
