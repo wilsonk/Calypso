@@ -285,6 +285,21 @@ llvm::FunctionType *LangPlugin::toFunctionType(::FuncDeclaration *fdecl)
     return Resolved.Ty;
 }
 
+LLConstant *LangPlugin::toConstExpInit(Loc, Type *targetType, Expression *exp)
+{
+    if (exp)
+        return nullptr; // we only handle C++ class values which return a null default init
+
+    if (targetType->ty != Tclass)
+        return nullptr;
+
+    auto& Context = calypso.getASTContext();
+    auto& CGM = calypso.CGM;
+
+    auto DestType = Context.getRecordType(getRecordDecl(targetType)).withConst();
+    return CGM->EmitNullConstant(DestType);
+}
+
 static llvm::Constant *buildAggrNullConstant(::AggregateDeclaration *decl,
         const IrAggr::VarInitMap& explicitInitializers)
 {
@@ -412,7 +427,7 @@ LLValue* LangPlugin::toIndexAggregate(LLValue* src, ::AggregateDeclaration* ad,
     return LV.getAddress();
 }
 
-void LangPlugin::toInitClass(TypeClass* tc, LLValue* dst)
+void LangPlugin::toInitClassForeign(TypeClass* tc, LLValue* dst)
 {
     uint64_t const dataBytes = tc->sym->structsize;
     if (dataBytes == 0)
@@ -738,20 +753,51 @@ void LangPlugin::toDefineVariable(::VarDeclaration* vd)
     }
 }
 
-void LangPlugin::toDefaultInitVarDeclaration(::VarDeclaration* vd)
+void toDefaultInitVar(LLValue *vt, ::VarDeclaration *vd)
 {
-    // HACK-ish, it would be more elegant to add CallExp(TypeExp()) as init and do NRVO
-    // but TypeClass::defaultInit() lacking context causes "recursive" evaluation of the init exp
-    auto irLocal = getIrLocal(vd);
     auto tc = isClassValue(vd->type->toBasetype());
 
     if (tc && tc->sym->defaultCtor)
     {
         auto cf = tc->sym->defaultCtor;
         DtoResolveFunction(cf);
-        DFuncValue dfn(cf, getIrFunc(cf)->func, irLocal->value);
+        DFuncValue dfn(cf, getIrFunc(cf)->func, vt);
         DtoCallFunction(vd->loc, tc, &dfn, new Expressions);
     }
+}
+
+void LangPlugin::toDefaultInitVarDeclaration(::VarDeclaration* vd)
+{
+    // HACK-ish, it would be more elegant to add CallExp(TypeExp()) as init
+    // but TypeClass::defaultInit() lacking context causes "recursive" evaluation of the init exp
+    auto irLocal = getIrLocal(vd);
+    toDefaultInitVar(irLocal->value, vd);
+}
+
+static void toInitAggregate(LLValue *val, AggregateDeclaration *ad)
+{
+    if (ad->langPlugin())
+        return; // we only scan D aggregates for C++ class members
+
+    for (auto field: ad->fields)
+    {
+        if (field->init)
+            continue;
+
+        auto fieldVal = DtoIndexAggregate(val, ad, field);
+        toDefaultInitVar(fieldVal, field);
+    }
+}
+
+// Scan D aggregates for fields with C++ class types, call their default ctor if they don't have an initializer
+void LangPlugin::toPreInitStruct(TypeStruct *ts, LLValue* dst)
+{
+    toInitAggregate(dst, ts->sym);
+}
+
+void LangPlugin::toPreInitClass(TypeClass* tc, LLValue* dst)
+{
+    toInitAggregate(dst, tc->sym);
 }
 
 void LangPlugin::EmitInternalDeclsForFields(const clang::RecordDecl *RD)

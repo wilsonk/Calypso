@@ -229,7 +229,7 @@ void DtoInitClass(TypeClass* tc, LLValue* dst)
     // CALYPSO
     if (auto lp = tc->sym->langPlugin())
     {
-        lp->codegen()->toInitClass(tc, dst);
+        lp->codegen()->toInitClassForeign(tc, dst);
         return;
     }
 

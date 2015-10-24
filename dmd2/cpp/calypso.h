@@ -154,6 +154,8 @@ public:
     LLType *toType(Type *t) override;
     llvm::FunctionType *toFunctionType(::FuncDeclaration *fdecl) override;
 
+    LLConstant *toConstExpInit(Loc loc, Type *targetType, Expression *exp) override;
+
     llvm::Constant *createInitializerConstant(IrAggr *irAggr,
         const IrAggr::VarInitMap& explicitInitializers,
         llvm::StructType* initializerType = 0) override;
@@ -177,7 +179,10 @@ public:
     LLValue* toIndexAggregate(LLValue* src, ::AggregateDeclaration* ad, ::VarDeclaration* vd) override;
     void addBaseClassData(AggrTypeBuilder &builder, ::AggregateDeclaration *base) override;
     void emitAdditionalClassSymbols(::ClassDeclaration *cd) override;
-    void toInitClass(TypeClass* tc, LLValue* dst) override;
+    void toInitClassForeign(TypeClass* tc, LLValue* dst) override;
+
+    void toPreInitStruct(TypeStruct *ts, LLValue* dst) override;
+    void toPreInitClass(TypeClass* tc, LLValue* dst) override;
     void toPostNewClass(Loc& loc, TypeClass* tc, DValue* val) override;
 
     void EmitInternalDeclsForFields(const clang::RecordDecl *RD);
