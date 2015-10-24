@@ -170,7 +170,6 @@ public:
     void toDefineStruct(::StructDeclaration* sd) override;
     void toDefineClass(::ClassDeclaration* cd) override;
     void toDefaultInitVarDeclaration(::VarDeclaration* vd) override;
-    void toDefineTemplateInstance(::TemplateInstance *tempinst) override;
 
     LLValue *toVirtualFunctionPointer(DValue* inst, ::FuncDeclaration* fdecl, char* name) override;
     DValue* toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,

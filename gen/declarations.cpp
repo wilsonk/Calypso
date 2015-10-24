@@ -322,9 +322,6 @@ public:
         // FIXME: This is #673 all over again.
         if (!decl->needsCodegen()) return;
 
-        if (auto lp = decl->langPlugin())  // CALYPSO
-            lp->codegen()->toDefineTemplateInstance(decl);
-
         if (!decl->errors && decl->members)
         {
             for (Dsymbols::iterator I = decl->members->begin(),

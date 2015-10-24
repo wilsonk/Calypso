@@ -39,7 +39,6 @@ public:
     virtual void toDefineStruct(StructDeclaration* sd) = 0;
     virtual void toDefineClass(ClassDeclaration* cd) = 0;
     virtual void toDefaultInitVarDeclaration(VarDeclaration* vd) = 0;
-    virtual void toDefineTemplateInstance(TemplateInstance *tempinst) = 0;
 
     virtual LLValue *toVirtualFunctionPointer(DValue* inst, FuncDeclaration* fdecl, char* name) = 0;
     virtual DValue* toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
