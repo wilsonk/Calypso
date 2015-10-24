@@ -1365,10 +1365,10 @@ bool Expression::checkPostblit(Scope *sc, Type *t)
 Expression *callCpCtor(Scope *sc, Expression *e)
 {
     Type *tv = e->type->baseElemOf();
-    if (tv->ty == Tstruct)
+    if (tv->ty == Tstruct || isClassValue(tv)) // CALYPSO
     {
-        StructDeclaration *sd = ((TypeStruct *)tv)->sym;
-        if (sd->cpctor)
+        AggregateDeclaration *ad = getAggregateSym(tv);
+        if (ad->searchCpCtor())
         {
             /* Create a variable tmp, and replace the argument e with:
              *      (tmp = e),tmp
@@ -1780,10 +1780,7 @@ Type *functionParameters(Loc loc, Scope *sc, TypeFunction *tf,
                 else
                     arg = arg->castTo(sc, ta);
             }
-            if (tb->ty == Tstruct)
-            {
-                arg = callCpCtor(sc, arg);
-            }
+            arg = callCpCtor(sc, arg); // CALYPSO (not just structs)
 #endif
 
             // Give error for overloaded function addresses
@@ -11345,24 +11342,26 @@ Expression *AssignExp::semantic(Scope *sc)
         // If this is an initialization of a reference,
         // do nothing
     }
-    else if (t1->ty == Tstruct)
+    else if (t1->ty == Tstruct || isClassValue(t1)) // CALYPSO
     {
         Expression *e1x = e1;
         Expression *e2x = e2;
-        StructDeclaration *sd = ((TypeStruct *)t1)->sym;
+        auto ad = getAggregateSym(t1);
+        StructDeclaration *sd = ad->isStructDeclaration();
 
         if (op == TOKconstruct)
         {
             Type *t2 = e2x->type->toBasetype();
-            if (t2->ty == Tstruct && sd == ((TypeStruct *)t2)->sym)
+            if (ad == getAggregateSym(t2))
             {
                 CallExp *ce;
                 DotVarExp *dve;
-                if (sd->ctor &&
+                if (ad->ctor &&
                     e2x->op == TOKcall &&
                     (ce = (CallExp *)e2x, ce->e1->op == TOKdotvar) &&
                     (dve = (DotVarExp *)ce->e1, dve->var->isCtorDeclaration()) &&
-                    e2x->type->implicitConvTo(t1))
+                    e2x->type->implicitConvTo(t1)
+                    && sd) // CALYPSO HACK/TODO: since ClassDecl::defaultInit returns null this is no good, we should give it a second look after making it return ConstructExp
                 {
                     /* Look for form of constructor call which is:
                      *    __ctmp.ctor(arguments...)
@@ -11373,9 +11372,9 @@ Expression *AssignExp::semantic(Scope *sc)
                      * initializer
                      */
                     AssignExp *ae = this;
-                    if (sd->zeroInit == 1)
+                    if (sd && sd->zeroInit == 1)
                         ae->e2 = new IntegerExp(loc, 0, Type::tint32);
-                    else if (sd->isNested())
+                    else if (ad->isNested())
                         ae->e2 = t1->defaultInitLiteral(loc);
                     else
                         ae->e2 = t1->defaultInit(loc);
@@ -11395,7 +11394,7 @@ Expression *AssignExp::semantic(Scope *sc)
                     e = e->semantic(sc);
                     return e;
                 }
-                if (sd->cpctor)
+                if (auto cpctor = static_cast<FuncDeclaration*>(ad->searchCpCtor()))
                 {
                     /* We have a copy constructor for this
                      */
@@ -11424,7 +11423,7 @@ Expression *AssignExp::semantic(Scope *sc)
 
                         e1x = e1x->copy();
                         e1x->type = e1x->type->mutableOf();
-                        Expression *e = new DotVarExp(loc, e1x, sd->cpctor, 0);
+                        Expression *e = new DotVarExp(loc, e1x, cpctor, 0);
                         e = new CallExp(loc, e, e2x);
                         return e->semantic(sc);
                     }

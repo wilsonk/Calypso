@@ -803,9 +803,10 @@ FuncDeclaration *buildXtoHash(StructDeclaration *sd, Scope *sc)
 
 FuncDeclaration *buildCpCtor(StructDeclaration *sd, Scope *sc)
 {
-//     // CALYPSO
-//     if (auto lp = sd->langPlugin())
-//         return lp->buildCpCtor(sd, sc);
+    // CALYPSO
+    if (auto lp = sd->langPlugin())
+        if (auto fcp = lp->buildCpCtor(sd, sc))
+            return fcp;
 
     /* Copy constructor is only necessary if there is a postblit function,
      * otherwise the code generator will just do a bit copy.
