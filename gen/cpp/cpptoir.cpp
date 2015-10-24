@@ -753,28 +753,38 @@ void LangPlugin::toDefineVariable(::VarDeclaration* vd)
     }
 }
 
-void toDefaultInitVar(LLValue *vt, ::VarDeclaration *vd)
-{
-    auto tc = isClassValue(vd->type->toBasetype());
+void toDefaultInitVar(LLValue *vt, ::VarDeclaration *vd);
 
-    if (tc && tc->sym->defaultCtor)
+void toDefaultInitClassValue(Loc loc, LLValue *vt, TypeClass *tc)
+{
+    assert(tc->sym->defaultCtor); // TODO error during semantic
+    if (!isCPP(tc->sym))
+        return;
+
+    auto cf = tc->sym->defaultCtor;
+    DtoResolveFunction(cf);
+    DFuncValue dfn(cf, getIrFunc(cf)->func, vt);
+    DtoCallFunction(loc, tc, &dfn, new Expressions);
+}
+
+// FIXME: only call default ctors on uninitialized indices (e.g 0 in cppclass[3] a = [ 1:a1, a2 ]; )
+void toDefaultInitSArray(Loc loc, LLValue *vt, TypeSArray *tsa)
+{
+    auto elemtc = isClassValue(tsa->next);
+    if (!elemtc || !isCPP(elemtc->sym))
+        return;
+
+    auto dim = tsa->dim->toInteger();
+    auto zero = DtoConstUint(0);
+
+    for (unsigned i = 0; i < dim; i++)
     {
-        auto cf = tc->sym->defaultCtor;
-        DtoResolveFunction(cf);
-        DFuncValue dfn(cf, getIrFunc(cf)->func, vt);
-        DtoCallFunction(vd->loc, tc, &dfn, new Expressions);
+        auto arrptr = DtoGEP(vt, zero, DtoConstUint(i));
+        toDefaultInitClassValue(loc, arrptr, elemtc);
     }
 }
 
-void LangPlugin::toDefaultInitVarDeclaration(::VarDeclaration* vd)
-{
-    // HACK-ish, it would be more elegant to add CallExp(TypeExp()) as init
-    // but TypeClass::defaultInit() lacking context causes "recursive" evaluation of the init exp
-    auto irLocal = getIrLocal(vd);
-    toDefaultInitVar(irLocal->value, vd);
-}
-
-static void toInitAggregate(LLValue *val, AggregateDeclaration *ad)
+void toInitAggregate(LLValue *val, AggregateDeclaration *ad)
 {
     if (ad->langPlugin())
         return; // we only scan D aggregates for C++ class members
@@ -789,10 +799,31 @@ static void toInitAggregate(LLValue *val, AggregateDeclaration *ad)
     }
 }
 
-// Scan D aggregates for fields with C++ class types, call their default ctor if they don't have an initializer
-void LangPlugin::toPreInitStruct(TypeStruct *ts, LLValue* dst)
+void toDefaultInitVar(LLValue *vt, ::VarDeclaration *vd)
 {
-    toInitAggregate(dst, ts->sym);
+    auto tb = vd->type->toBasetype();
+
+    // Scan D aggregates for fields with C++ class types, call their default ctor if they don't have an initializer
+    if (tb->ty == Tstruct)
+        toInitAggregate(vt, static_cast<TypeStruct*>(tb)->sym);
+
+    // defaultInit() will return null only for C++ class values and arrays of C++ class values, these are the ones
+    // we need to init here
+    if (vd->init)
+        return;
+
+    if (auto tc = isClassValue(tb))
+        toDefaultInitClassValue(vd->loc, vt, tc);
+    else if (tb->ty == Tsarray)
+        toDefaultInitSArray(vd->loc, vt, static_cast<TypeSArray*>(tb));
+}
+
+void LangPlugin::toPreInitVarDeclaration(::VarDeclaration* vd)
+{
+    // HACK-ish, for class values it would be more elegant to add CallExp(TypeExp()) as init
+    // but TypeClass::defaultInit() lacking context causes "recursive" evaluation of the init exp
+    auto irLocal = getIrLocal(vd);
+    toDefaultInitVar(irLocal->value, vd);
 }
 
 void LangPlugin::toPreInitClass(TypeClass* tc, LLValue* dst)

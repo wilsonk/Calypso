@@ -1059,9 +1059,8 @@ void DtoVarDeclaration(VarDeclaration* vd)
                     CallExp *ce = static_cast<CallExp *>(rhs);
                     if (DtoIsReturnInArg(ce))
                     {
-                        if (tb->ty == Tstruct) // CALYPSO
-                            for (auto lp: global.langPlugins)
-                                lp->codegen()->toPreInitStruct(static_cast<TypeStruct*>(tb), getIrLocal(vd)->value);
+                        for (auto lp: global.langPlugins) // CALYPSO
+                            lp->codegen()->toPreInitVarDeclaration(vd);
 
                         if (isSpecialRefVar(vd))
                         {
@@ -1082,9 +1081,8 @@ void DtoVarDeclaration(VarDeclaration* vd)
 
     IF_LOG Logger::cout() << "llvm value for decl: " << *getIrLocal(vd)->value << '\n';
 
-    if (tb->ty == Tstruct) // CALYPSO
-        for (auto lp: global.langPlugins)
-            lp->codegen()->toPreInitStruct(static_cast<TypeStruct*>(tb), getIrLocal(vd)->value);
+    for (auto lp: global.langPlugins) // CALYPSO
+        lp->codegen()->toPreInitVarDeclaration(vd);
 
     if (vd->init)
     {
@@ -1094,12 +1092,6 @@ void DtoVarDeclaration(VarDeclaration* vd)
             Logger::println("expression initializer");
             toElem(ex->exp);
         }
-    }
-    else
-    {
-        if (auto tsym = tb->toDsymbol(vd->scope)) // CALYPSO
-            if (auto lp = tsym->langPlugin())
-                lp->codegen()->toDefaultInitVarDeclaration(vd);
     }
 }
 

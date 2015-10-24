@@ -38,7 +38,7 @@ public:
     virtual void toDefineVariable(VarDeclaration* vd) = 0;
     virtual void toDefineStruct(StructDeclaration* sd) = 0;
     virtual void toDefineClass(ClassDeclaration* cd) = 0;
-    virtual void toDefaultInitVarDeclaration(VarDeclaration* vd) = 0;
+    virtual void toPreInitVarDeclaration(VarDeclaration* vd) = 0;
 
     virtual LLValue *toVirtualFunctionPointer(DValue* inst, FuncDeclaration* fdecl, char* name) = 0;
     virtual DValue* toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
@@ -50,7 +50,6 @@ public:
     virtual void toInitClassForeign(TypeClass* tc, LLValue* dst) = 0;
 
     // Called for any aggregate (TODO: less ambiguous names?)
-    virtual void toPreInitStruct(TypeStruct *ts, LLValue* dst) = 0;
     virtual void toPreInitClass(TypeClass* tc, LLValue* dst) = 0;
     virtual void toPostNewClass(Loc& loc, TypeClass* tc, DValue* val) = 0;
 };
