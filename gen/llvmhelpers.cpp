@@ -1003,6 +1003,8 @@ void DtoVarDeclaration(VarDeclaration* vd)
         // assert(vd->ir.irLocal && "irLocal is expected to be already set by DtoCreateNestedContext");
     }
 
+    auto tb = vd->type->toBasetype(); // CALYPSO
+
     if (isIrLocalCreated(vd))
     {
         // Nothing to do if it has already been allocated.
@@ -1040,7 +1042,7 @@ void DtoVarDeclaration(VarDeclaration* vd)
             T t = f();    // t's memory address is taken hidden pointer
         */
         ExpInitializer *ei = 0;
-        if ((vd->type->toBasetype()->ty == Tstruct || isClassValue(vd->type->toBasetype()) || // CALYPSO
+        if ((vd->type->toBasetype()->ty == Tstruct || isClassValue(tb) || // CALYPSO
              vd->type->toBasetype()->ty == Tsarray /* new in 2.064*/) &&
             vd->init &&
             (ei = vd->init->isExpInitializer()))
@@ -1057,6 +1059,9 @@ void DtoVarDeclaration(VarDeclaration* vd)
                     CallExp *ce = static_cast<CallExp *>(rhs);
                     if (DtoIsReturnInArg(ce))
                     {
+                        for (auto lp: global.langPlugins) // CALYPSO
+                            lp->codegen()->toPreInitVarDeclaration(vd);
+
                         if (isSpecialRefVar(vd))
                         {
                             LLValue* const val = toElem(ce)->getLVal();
@@ -1076,6 +1081,9 @@ void DtoVarDeclaration(VarDeclaration* vd)
 
     IF_LOG Logger::cout() << "llvm value for decl: " << *getIrLocal(vd)->value << '\n';
 
+    for (auto lp: global.langPlugins) // CALYPSO
+        lp->codegen()->toPreInitVarDeclaration(vd);
+
     if (vd->init)
     {
         if (ExpInitializer* ex = vd->init->isExpInitializer())
@@ -1084,13 +1092,6 @@ void DtoVarDeclaration(VarDeclaration* vd)
             Logger::println("expression initializer");
             toElem(ex->exp);
         }
-    }
-    else
-    {
-        auto tb = vd->type->toBasetype();
-        if (auto tsym = tb->toDsymbol(vd->scope)) // CALYPSO
-            if (auto lp = tsym->langPlugin())
-                lp->codegen()->toDefaultInitVarDeclaration(vd);
     }
 }
 
@@ -1307,6 +1308,11 @@ LLConstant* DtoConstExpInit(Loc& loc, Type* targetType, Expression* exp)
     IF_LOG Logger::println("DtoConstExpInit(targetType = %s, exp = %s)",
         targetType->toChars(), exp->toChars());
     LOG_SCOPE
+
+    if (auto tsym = targetType->toDsymbol(nullptr)) // CALYPSO
+        if (auto lp = tsym->langPlugin())
+            if (auto C = lp->codegen()->toConstExpInit(loc, targetType, exp))
+                return C;
 
     LLConstant* val = toConstElem(exp, gIR);
 

@@ -285,6 +285,21 @@ llvm::FunctionType *LangPlugin::toFunctionType(::FuncDeclaration *fdecl)
     return Resolved.Ty;
 }
 
+LLConstant *LangPlugin::toConstExpInit(Loc, Type *targetType, Expression *exp)
+{
+    if (exp)
+        return nullptr; // we only handle C++ class values which return a null default init
+
+    if (targetType->ty != Tclass)
+        return nullptr;
+
+    auto& Context = calypso.getASTContext();
+    auto& CGM = calypso.CGM;
+
+    auto DestType = Context.getRecordType(getRecordDecl(targetType)).withConst();
+    return CGM->EmitNullConstant(DestType);
+}
+
 static llvm::Constant *buildAggrNullConstant(::AggregateDeclaration *decl,
         const IrAggr::VarInitMap& explicitInitializers)
 {
@@ -412,7 +427,7 @@ LLValue* LangPlugin::toIndexAggregate(LLValue* src, ::AggregateDeclaration* ad,
     return LV.getAddress();
 }
 
-void LangPlugin::toInitClass(TypeClass* tc, LLValue* dst)
+void LangPlugin::toInitClassForeign(TypeClass* tc, LLValue* dst)
 {
     uint64_t const dataBytes = tc->sym->structsize;
     if (dataBytes == 0)
@@ -738,20 +753,82 @@ void LangPlugin::toDefineVariable(::VarDeclaration* vd)
     }
 }
 
-void LangPlugin::toDefaultInitVarDeclaration(::VarDeclaration* vd)
+void toDefaultInitVar(LLValue *vt, ::VarDeclaration *vd);
+
+void toDefaultInitClassValue(Loc loc, LLValue *vt, TypeClass *tc)
 {
-    // HACK-ish, it would be more elegant to add CallExp(TypeExp()) as init and do NRVO
+    assert(tc->sym->defaultCtor); // TODO error during semantic
+    if (!isCPP(tc->sym))
+        return;
+
+    auto cf = tc->sym->defaultCtor;
+    DtoResolveFunction(cf);
+    DFuncValue dfn(cf, getIrFunc(cf)->func, vt);
+    DtoCallFunction(loc, tc, &dfn, new Expressions);
+}
+
+// FIXME: only call default ctors on uninitialized indices (e.g 0 in cppclass[3] a = [ 1:a1, a2 ]; )
+void toDefaultInitSArray(Loc loc, LLValue *vt, TypeSArray *tsa)
+{
+    auto elemtc = isClassValue(tsa->next);
+    if (!elemtc || !isCPP(elemtc->sym))
+        return;
+
+    auto dim = tsa->dim->toInteger();
+    auto zero = DtoConstUint(0);
+
+    for (unsigned i = 0; i < dim; i++)
+    {
+        auto arrptr = DtoGEP(vt, zero, DtoConstUint(i));
+        toDefaultInitClassValue(loc, arrptr, elemtc);
+    }
+}
+
+void toInitAggregate(LLValue *val, AggregateDeclaration *ad)
+{
+    if (ad->langPlugin())
+        return; // we only scan D aggregates for C++ class members
+
+    for (auto field: ad->fields)
+    {
+        if (field->init)
+            continue;
+
+        auto fieldVal = DtoIndexAggregate(val, ad, field);
+        toDefaultInitVar(fieldVal, field);
+    }
+}
+
+void toDefaultInitVar(LLValue *vt, ::VarDeclaration *vd)
+{
+    auto tb = vd->type->toBasetype();
+
+    // Scan D aggregates for fields with C++ class types, call their default ctor if they don't have an initializer
+    if (tb->ty == Tstruct)
+        toInitAggregate(vt, static_cast<TypeStruct*>(tb)->sym);
+
+    // defaultInit() will return null only for C++ class values and arrays of C++ class values, these are the ones
+    // we need to init here
+    if (vd->init)
+        return;
+
+    if (auto tc = isClassValue(tb))
+        toDefaultInitClassValue(vd->loc, vt, tc);
+    else if (tb->ty == Tsarray)
+        toDefaultInitSArray(vd->loc, vt, static_cast<TypeSArray*>(tb));
+}
+
+void LangPlugin::toPreInitVarDeclaration(::VarDeclaration* vd)
+{
+    // HACK-ish, for class values it would be more elegant to add CallExp(TypeExp()) as init
     // but TypeClass::defaultInit() lacking context causes "recursive" evaluation of the init exp
     auto irLocal = getIrLocal(vd);
-    auto tc = isClassValue(vd->type->toBasetype());
+    toDefaultInitVar(irLocal->value, vd);
+}
 
-    if (tc && tc->sym->defaultCtor)
-    {
-        auto cf = tc->sym->defaultCtor;
-        DtoResolveFunction(cf);
-        DFuncValue dfn(cf, getIrFunc(cf)->func, irLocal->value);
-        DtoCallFunction(vd->loc, tc, &dfn, new Expressions);
-    }
+void LangPlugin::toPreInitClass(TypeClass* tc, LLValue* dst)
+{
+    toInitAggregate(dst, tc->sym);
 }
 
 void LangPlugin::EmitInternalDeclsForFields(const clang::RecordDecl *RD)
@@ -817,17 +894,6 @@ void LangPlugin::toDefineClass(::ClassDeclaration* cd)
         return;
 
     EmitInternalDeclsForFields(RD);
-}
-
-void LangPlugin::toDefineTemplateInstance(::TemplateInstance *inst)
-{
-//     auto c_ti = static_cast<cpp::TemplateInstance *>(inst);
-//
-//     if (auto CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(c_ti->Inst))
-//         CGM->UpdateCompletedType(CTSD);
-//
-//     for (auto D: c_ti->Dependencies)
-//         CGM->EmitTopLevelDecl(D);
 }
 
 }

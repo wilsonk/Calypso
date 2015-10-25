@@ -67,6 +67,8 @@ public:
     void makeNested() override;
     void finalizeVtbl() override;
     void buildLayout() override; // determine the agg size and field offsets
+
+    void buildCpCtor(Scope *sc);
 };
 
 class UnionDeclaration : public ::UnionDeclaration

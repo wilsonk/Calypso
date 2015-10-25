@@ -23,6 +23,8 @@ public:
     virtual LLType *toType(Type *t) = 0;
     virtual llvm::FunctionType *toFunctionType(FuncDeclaration *fdecl) = 0;
 
+    virtual LLConstant *toConstExpInit(Loc loc, Type *targetType, Expression *exp) = 0;
+
     virtual llvm::Constant *createInitializerConstant(IrAggr *irAggr,
         const IrAggr::VarInitMap& explicitInitializers,
         llvm::StructType* initializerType = 0) = 0;
@@ -36,8 +38,7 @@ public:
     virtual void toDefineVariable(VarDeclaration* vd) = 0;
     virtual void toDefineStruct(StructDeclaration* sd) = 0;
     virtual void toDefineClass(ClassDeclaration* cd) = 0;
-    virtual void toDefaultInitVarDeclaration(VarDeclaration* vd) = 0;
-    virtual void toDefineTemplateInstance(TemplateInstance *tempinst) = 0;
+    virtual void toPreInitVarDeclaration(VarDeclaration* vd) = 0;
 
     virtual LLValue *toVirtualFunctionPointer(DValue* inst, FuncDeclaration* fdecl, char* name) = 0;
     virtual DValue* toCallFunction(Loc& loc, Type* resulttype, DValue* fnval,
@@ -46,6 +47,9 @@ public:
     virtual LLValue* toIndexAggregate(LLValue* src, AggregateDeclaration* ad, VarDeclaration* vd) = 0;
     virtual void addBaseClassData(AggrTypeBuilder &builder, AggregateDeclaration *base) = 0;
     virtual void emitAdditionalClassSymbols(ClassDeclaration *cd) = 0;
-    virtual void toInitClass(TypeClass* tc, LLValue* dst) = 0;
+    virtual void toInitClassForeign(TypeClass* tc, LLValue* dst) = 0;
+
+    // Called for any aggregate (TODO: less ambiguous names?)
+    virtual void toPreInitClass(TypeClass* tc, LLValue* dst) = 0;
     virtual void toPostNewClass(Loc& loc, TypeClass* tc, DValue* val) = 0;
 };

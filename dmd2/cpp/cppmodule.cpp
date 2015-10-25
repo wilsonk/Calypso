@@ -723,6 +723,7 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
     }
     tf->addSTC(stc);
     
+    auto a = new Dsymbols;
     ::FuncDeclaration *fd;
     if (auto CD = dyn_cast<clang::CXXConstructorDecl>(D))
     {
@@ -755,7 +756,6 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
             fullIdent = opIdent;
 
         // Add the overridable method (or the static function)
-        auto a = new Dsymbols;
         fd = new FuncDeclaration(loc, fullIdent, stc, tf, D);
         a->push(fd);
 
@@ -816,7 +816,8 @@ Dsymbols *DeclMapper::VisitFunctionDecl(const clang::FunctionDecl *D)
         return oneSymbol(td);
     }
 
-    return oneSymbol(fd);
+    a->push(fd);
+    return a;
 }
 
 bool isTemplateParameterPack(const clang::NamedDecl *Param)
