@@ -453,11 +453,10 @@ public:
     {
         // Write file out in D instead of Qt. Error check in Qt, though.
         QString str = textEdit.toPlainText();
-        QByteArray ba = str.toLatin1();
-        auto text = to!string(ba.data());
+        auto text = to!string(str.toLatin1().data());
 
         auto file = QFile(fileName);
-        ba = fileName.toLatin1();
+        QByteArray ba = fileName.toLatin1();
 
         alias omf = QIODevice.OpenModeFlag;
         auto flags = QFlags!(QIODevice.OpenModeFlag)(omf.WriteOnly | omf.Text);
@@ -497,7 +496,7 @@ public:
 
         QString showName = QString(*curFile);
         if (curFile.isEmpty())
-            showName = QString("untitled.txt");
+            showName = "untitled.txt";
 
         setWindowFilePath(showName);
     }
